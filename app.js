@@ -460,13 +460,14 @@ class BudgetApp {
             const amount = parseFloat(transaction.amount);
             
             // Check for existing transactions with the same date, amount, and description
-            const existingTransactions = await this.db.getItems('transactions', {
-                date: formattedDate,
-                description: transaction.description,
-                amount: amount
-            });
+            const allTransactions = await this.db.getAllItems('transactions');
+            const isDuplicate = allTransactions.some(t => 
+                t.date === formattedDate && 
+                t.description === transaction.description && 
+                parseFloat(t.amount) === amount
+            );
             
-            if (existingTransactions && existingTransactions.length > 0) {
+            if (isDuplicate) {
                 console.log('Duplicate transaction found, skipping:', {
                     date: formattedDate,
                     description: transaction.description,
@@ -1145,6 +1146,145 @@ class BudgetApp {
         this.renderCurrentView();
     }
 
+    async renderTransactions() {
+        try {
+            const transactionsEl = document.getElementById('transactions');
+            if (!transactionsEl) return;
+            
+            // Show loading state
+            transactionsEl.innerHTML = '<div class="loading">Loading transactions...</div>';
+            
+            // Get all transactions from the database
+            const transactions = await this.db.getAllItems('transactions');
+            
+            // Sort by date descending (newest first)
+            transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+            
+            // Render the transactions list
+            transactionsEl.innerHTML = `
+                <div class="transactions-header">
+                    <h2>Transactions</h2>
+                    <button class="btn btn-primary" id="add-transaction-btn">
+                        <i class="fas fa-plus"></i> Add Transaction
+                    </button>
+                </div>
+                <div class="transactions-list" id="transactions-list">
+                    ${this.renderTransactionList(transactions)}
+                </div>
+            `;
+            
+            // Add event listeners
+            document.getElementById('add-transaction-btn')?.addEventListener('click', () => {
+                // TODO: Show add transaction form/modal
+                console.log('Add transaction clicked');
+            });
+            
+        } catch (error) {
+            console.error('Error rendering transactions:', error);
+            const transactionsEl = document.getElementById('transactions');
+            if (transactionsEl) {
+                transactionsEl.innerHTML = `
+                    <div class="error">
+                        Error loading transactions: ${error.message}
+                    </div>
+                `;
+            }
+        }
+    }
+    
+    renderTransactionList(transactions = []) {
+        if (!transactions || transactions.length === 0) {
+            return '<div class="no-transactions">No transactions found</div>';
+        }
+        
+        return `
+            <table class="transactions-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Description</th>
+                        <th>Category</th>
+                        <th class="amount-col">Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${transactions.map(transaction => `
+                        <tr data-id="${transaction.id}">
+                            <td>${new Date(transaction.date).toLocaleDateString()}</td>
+                            <td>${this.escapeHtml(transaction.description || '')}</td>
+                            <td>${this.escapeHtml(transaction.category || 'Uncategorized')}</td>
+                            <td class="amount-col ${transaction.amount < 0 ? 'expense' : 'income'}">
+                                ${transaction.amount < 0 ? '-' : ''}${this.formatCurrency(Math.abs(transaction.amount))}
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+    }
+    
+    async renderBudget() {
+        try {
+            const budgetEl = document.getElementById('budget');
+            if (!budgetEl) return;
+            
+            // Show loading state
+            budgetEl.innerHTML = '<div class="loading">Loading budget...</div>';
+            
+            // Get all transactions and categories
+            const transactions = await this.db.getAllItems('transactions');
+            const categories = await this.db.getAllItems('categories');
+            
+            // Calculate budget summary
+            const now = new Date();
+            const currentMonth = now.getMonth();
+            const currentYear = now.getFullYear();
+            
+            const monthlyTransactions = transactions.filter(t => {
+                const date = new Date(t.date);
+                return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
+            });
+            
+            // Group by category and calculate totals
+            const categoryTotals = {};
+            monthlyTransactions.forEach(t => {
+                const category = t.category || 'Uncategorized';
+                if (!categoryTotals[category]) {
+                    categoryTotals[category] = 0;
+                }
+                categoryTotals[category] += parseFloat(t.amount);
+            });
+            
+            // Render the budget view
+            budgetEl.innerHTML = `
+                <div class="budget-header">
+                    <h2>Budget for ${new Date(currentYear, currentMonth).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</h2>
+                </div>
+                <div class="budget-summary">
+                    ${Object.entries(categoryTotals).map(([category, amount]) => `
+                        <div class="budget-category">
+                            <div class="category-name">${this.escapeHtml(category)}</div>
+                            <div class="category-amount ${amount < 0 ? 'expense' : 'income'}">
+                                ${amount < 0 ? '-' : ''}${this.formatCurrency(Math.abs(amount))}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+            
+        } catch (error) {
+            console.error('Error rendering budget:', error);
+            const budgetEl = document.getElementById('budget');
+            if (budgetEl) {
+                budgetEl.innerHTML = `
+                    <div class="error">
+                        Error loading budget: ${error.message}
+                    </div>
+                `;
+            }
+        }
+    }
+    
     async renderCurrentView() {
         try {
             if (!this.dbInitialized) {
@@ -1160,7 +1300,8 @@ class BudgetApp {
                 case 'transactions':
                     await this.renderTransactions();
                     break;
-                case 'budget':
+                case 'budget':  // Note: This is a typo, should be 'budget' to match the view ID
+                case 'budget':  // This is the correct spelling, keeping both for backward compatibility
                     await this.renderBudget();
                     break;
                 case 'reports':
