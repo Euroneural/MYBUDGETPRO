@@ -836,7 +836,7 @@ class BudgetApp {
         transactionsListEl.innerHTML = transactions
             .sort((a, b) => new Date(b.date) - new Date(a.date))
             .map(transaction => `
-                <div class="transaction-item">
+                <div class="transaction-item" data-id="${transaction.id}">
                     <div class="transaction-details">
                         <div class="transaction-header">
                             <div class="transaction-category">${transaction.category || 'Uncategorized'}</div>
@@ -846,8 +846,21 @@ class BudgetApp {
                         </div>
                         ${transaction.description ? `<div class="transaction-description">${transaction.description}</div>` : ''}
                     </div>
+                    <button class="btn btn-icon btn-delete-transaction" title="Delete transaction">
+                        <i class="fas fa-trash"></i>
+                    </button>
                 </div>
             `).join('');
+            
+        // Add event listeners to delete buttons
+        transactionsListEl.querySelectorAll('.btn-delete-transaction').forEach(button => {
+            button.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const transactionItem = button.closest('.transaction-item');
+                const transactionId = transactionItem.dataset.id;
+                this.confirmAndDeleteTransaction(transactionId, date);
+            });
+        });
     }
     
     /**
@@ -3053,6 +3066,96 @@ class BudgetApp {
         const category = this.budgetCategories.find(c => c && c.name === categoryName);
         return category && category.color ? category.color : '#cccccc';
     }
+
+    /**
+     * Confirm and delete a transaction
+     * @param {string} transactionId - The ID of the transaction to delete
+     * @param {Date} currentDate - The current date being viewed (for refreshing the view)
+     */
+    async confirmAndDeleteTransaction(transactionId, currentDate) {
+        // Find the transaction to show details in confirmation
+        const transaction = this.transactions.find(t => t.id === transactionId);
+        if (!transaction) {
+            console.error('Transaction not found:', transactionId);
+            return;
+        }
+
+        // Show confirmation dialog
+        const confirmDelete = confirm(`Are you sure you want to delete this transaction?\n\n` +
+            `Amount: ${this.formatCurrency(transaction.amount)}\n` +
+            `Category: ${transaction.category || 'Uncategorized'}\n` +
+            `${transaction.description ? `Description: ${transaction.description}\n` : ''}`);
+
+        if (!confirmDelete) return;
+
+        try {
+            // Delete from IndexedDB
+            await this.db.deleteTransaction(transactionId);
+            
+            // Update in-memory transactions
+            this.transactions = this.transactions.filter(t => t.id !== transactionId);
+            
+            // Update UI
+            this.showTransactionsForDate(currentDate);
+            this.renderCalendar(currentDate); // Refresh calendar to update transaction counts
+            
+            // Show success message
+            this.showNotification('Transaction deleted successfully', 'success');
+        } catch (error) {
+            console.error('Error deleting transaction:', error);
+            this.showNotification('Failed to delete transaction', 'error');
+        }
+    }
+    
+    /**
+     * Show a notification to the user
+     * @param {string} message - The message to display
+     * @param {string} type - The type of notification (success, error, info)
+     */
+    showNotification(message, type = 'info') {
+        // Check if notification container exists, create it if not
+        let notificationContainer = document.getElementById('notification-container');
+        if (!notificationContainer) {
+            notificationContainer = document.createElement('div');
+            notificationContainer.id = 'notification-container';
+            notificationContainer.style.position = 'fixed';
+            notificationContainer.style.top = '20px';
+            notificationContainer.style.right = '20px';
+            notificationContainer.style.zIndex = '1000';
+            document.body.appendChild(notificationContainer);
+        }
+
+        // Create notification element
+        const notification = document.createElement('div');
+        notification.className = `notification ${type}`;
+        notification.style.padding = '10px 15px';
+        notification.style.marginBottom = '10px';
+        notification.style.borderRadius = '4px';
+        notification.style.color = 'white';
+        notification.style.backgroundColor = type === 'error' ? '#f44336' : 
+                                           type === 'success' ? '#4caf50' : '#2196f3';
+        notification.style.boxShadow = '0 2px 5px rgba(0,0,0,0.2)';
+        notification.style.transform = 'translateX(120%)';
+        notification.style.transition = 'transform 0.3s ease-in-out';
+        notification.textContent = message;
+
+        // Add to container
+        notificationContainer.appendChild(notification);
+
+        // Trigger animation
+        setTimeout(() => {
+            notification.style.transform = 'translateX(0)';
+        }, 10);
+
+        // Remove after delay
+        setTimeout(() => {
+            notification.style.transform = 'translateX(120%)';
+            setTimeout(() => {
+                notification.remove();
+            }, 300);
+        }, 3000);
+    }
+
 
     async initializeApp() {
         try {
