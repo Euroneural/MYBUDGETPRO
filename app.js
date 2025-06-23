@@ -486,24 +486,28 @@ class BudgetApp {
      * Render the calendar view
      * @param {Date} [date] - The date to display (defaults to current month)
      */
-    async renderCalendar(date = new Date()) {
+    renderCalendar(date = new Date()) {
+        // Update current month and year
+        this.currentMonth = date.getMonth();
+        this.currentYear = date.getFullYear();
+        
         const calendarEl = document.getElementById('calendar');
         if (!calendarEl) return;
         
-        // Set current month and year
-        const currentMonth = date.getMonth();
-        const currentYear = date.getFullYear();
+        const month = date.getMonth();
+        const year = date.getFullYear();
+        const today = new Date();
         
         // Get first day of month (0-6, where 0 is Sunday)
-        const firstDay = new Date(currentYear, currentMonth, 1).getDay();
+        const firstDay = new Date(year, month, 1).getDay();
         // Get number of days in month
-        const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
         // Get number of days in previous month
-        const daysInPrevMonth = new Date(currentYear, currentMonth, 0).getDate();
+        const daysInPrevMonth = new Date(year, month, 0).getDate();
         
         // Get transactions for the current month
-        const startDate = new Date(currentYear, currentMonth, 1);
-        const endDate = new Date(currentYear, currentMonth + 1, 0);
+        const startDate = new Date(year, month, 1);
+        const endDate = new Date(year, month + 1, 0);
         const monthlyTransactions = this.getTransactionsByDateRange(startDate, endDate);
         
         // Group transactions by day
@@ -525,7 +529,7 @@ class BudgetApp {
                 <button id="prev-month" class="btn btn--icon">
                     <i class="bi bi-chevron-left"></i>
                 </button>
-                <h2>${monthNames[currentMonth]} ${currentYear}</h2>
+                <h2>${monthNames[month]} ${year}</h2>
                 <button id="next-month" class="btn btn--icon">
                     <i class="bi bi-chevron-right"></i>
                 </button>
@@ -544,8 +548,8 @@ class BudgetApp {
         `;
         
         // Calculate the previous month and year
-        let prevMonth = currentMonth - 1;
-        let prevYear = currentYear;
+        let prevMonth = month - 1;
+        let prevYear = year;
         if (prevMonth < 0) {
             prevMonth = 11;
             prevYear--;
@@ -554,26 +558,32 @@ class BudgetApp {
         // Add empty cells for days from previous month
         for (let i = 0; i < firstDay; i++) {
             const day = daysInPrevMonth - firstDay + i + 1;
+            const dayOfWeek = new Date(prevYear, prevMonth, day).getDay();
+            const dayName = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dayOfWeek];
+            
             calendarHTML += `
                 <div class="calendar__day calendar__day--other-month" 
                      data-date="${prevYear}-${String(prevMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}">
                     <div class="calendar__day-number">${day}</div>
+                    <div class="calendar__day-name">${dayName}</div>
                 </div>`;
         }
         
         // Add days of current month
-        const today = new Date();
-        const isCurrentMonth = today.getMonth() === currentMonth && today.getFullYear() === currentYear;
+        const isCurrentMonth = today.getMonth() === month && today.getFullYear() === year;
         
         for (let day = 1; day <= daysInMonth; day++) {
-            const date = new Date(currentYear, currentMonth, day);
+            const currentDate = new Date(year, month, day);
+            const dayOfWeek = currentDate.getDay();
+            const dayName = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dayOfWeek];
             const isToday = isCurrentMonth && day === today.getDate();
             const isSelected = this.selectedDate && 
-                             date.getDate() === this.selectedDate.getDate() &&
-                             date.getMonth() === this.selectedDate.getMonth() &&
-                             date.getFullYear() === this.selectedDate.getFullYear();
+                             currentDate.getDate() === this.selectedDate.getDate() &&
+                             currentDate.getMonth() === this.selectedDate.getMonth() &&
+                             currentDate.getFullYear() === this.selectedDate.getFullYear();
             
             const dayTransactions = transactionsByDay[day] || [];
+            const hasTransactions = dayTransactions.length > 0;
             const income = dayTransactions
                 .filter(t => parseFloat(t.amount) > 0)
                 .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount)), 0);
@@ -583,8 +593,9 @@ class BudgetApp {
             
             calendarHTML += `
                 <div class="calendar__day ${isToday ? 'calendar__day--today' : ''} ${isSelected ? 'calendar__day--selected' : ''}" 
-                     data-date="${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}">
-                    <div class="calendar__day-number">${day}</div>`;
+                     data-date="${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}">
+                    <div class="calendar__day-number">${day}</div>
+                    <div class="calendar__day-name">${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date(year, month, day).getDay()]}</div>`;
             
             if (dayTransactions.length > 0) {
                 calendarHTML += `
@@ -628,8 +639,8 @@ class BudgetApp {
         const remainingCells = totalCells - (firstDay + daysInMonth);
         
         // Calculate the next month and year
-        let nextMonth = currentMonth + 1;
-        let nextYear = currentYear;
+        let nextMonth = month + 1;
+        let nextYear = year;
         if (nextMonth > 11) {
             nextMonth = 0;
             nextYear++;
@@ -638,14 +649,14 @@ class BudgetApp {
         // Add days from next month
         for (let i = 1; i <= remainingCells; i++) {
             const dayOfWeek = (firstDay + daysInMonth + i - 1) % 7;
-            // Only show days that would complete the current week
-            if (dayOfWeek !== 0) { // Skip if we've already started a new week
-                calendarHTML += `
-                    <div class="calendar__day calendar__day--other-month" 
-                         data-date="${nextYear}-${String(nextMonth + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}">
-                        <div class="calendar__day-number">${i}</div>
-                    </div>`;
-            }
+            const dayName = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dayOfWeek];
+            
+            calendarHTML += `
+                <div class="calendar__day calendar__day--other-month" 
+                     data-date="${nextYear}-${String(nextMonth + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}">
+                    <div class="calendar__day-number">${i}</div>
+                    <div class="calendar__day-name">${dayName}</div>
+                </div>`;
         }
         
         calendarHTML += `
@@ -667,7 +678,7 @@ class BudgetApp {
             monthYearEl.textContent = new Intl.DateTimeFormat('en-US', { 
                 year: 'numeric', 
                 month: 'long' 
-            }).format(date);
+            }).format(new Date(year, month, 1));
         }
         
         // Close calendar days div
@@ -680,10 +691,10 @@ class BudgetApp {
         this.setupCalendarEventListeners();
         
         // Update mini calendar
-        this.renderMiniCalendar(date);
+        this.renderMiniCalendar(new Date(year, month, 1));
         
         // Update summary
-        this.updateCalendarSummary(date);
+        this.updateCalendarSummary(new Date(year, month, 1));
     }
     
     /**
@@ -698,86 +709,134 @@ class BudgetApp {
         const year = date.getFullYear();
         const today = new Date();
         
-        // Generate mini calendar HTML
+        // Get first day of month (0-6, where 0 is Sunday)
+        const firstDay = new Date(year, month, 1).getDay();
+        // Get number of days in month
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        // Get number of days in previous month
+        const daysInPrevMonth = new Date(year, month, 0).getDate();
+        
+        // Get transactions for the current month
+        const startDate = new Date(year, month, 1);
+        const endDate = new Date(year, month + 1, 0);
+        const monthlyTransactions = this.getTransactionsByDateRange(startDate, endDate);
+        
+        // Group transactions by day
+        const transactionsByDay = {};
+        monthlyTransactions.forEach(t => {
+            const day = new Date(t.date).getDate();
+            if (!transactionsByDay[day]) {
+                transactionsByDay[day] = [];
+            }
+            transactionsByDay[day].push(t);
+        });
+        
         const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
                           'July', 'August', 'September', 'October', 'November', 'December'];
+        const dayNames = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
         
-        let miniCalendarHTML = `
-            <div class="mini-calendar__header">
-                <button id="mini-prev-month" class="btn btn--icon btn--sm">
+        let html = `
+            <div class="mini-calendar-header">
+                <button id="mini-prev-month" class="btn btn--icon btn--sm" title="Previous month">
                     <i class="bi bi-chevron-left"></i>
                 </button>
-                <div>${monthNames[month].substring(0, 3)} ${year}</div>
-                <button id="mini-next-month" class="btn btn--icon btn--sm">
+                <h4>${monthNames[month].substring(0, 3)} ${year}</h4>
+                <button id="mini-next-month" class="btn btn--icon btn--sm" title="Next month">
                     <i class="bi bi-chevron-right"></i>
                 </button>
             </div>
-            <div class="mini-calendar__weekdays">
-                <div>S</div><div>M</div><div>T</div><div>W</div>
-                <div>T</div><div>F</div><div>S</div>
-            </div>
-            <div class="mini-calendar__days">
+            <div class="mini-calendar-grid">
+                ${dayNames.map(day => `<div class="mini-calendar-day-header">${day}</div>`).join('')}
         `;
         
-        // Get first day of month and number of days
-        const firstDay = new Date(year, month, 1).getDay();
-        const daysInMonth = new Date(year, month + 1, 0).getDate();
-        const daysInPrevMonth = new Date(year, month, 0).getDate();
+        // Calculate previous month and year
+        let prevMonth = month - 1;
+        let prevYear = year;
+        if (prevMonth < 0) {
+            prevMonth = 11;
+            prevYear--;
+        }
         
-        // Add days from previous month
-        for (let i = firstDay - 1; i >= 0; i--) {
-            miniCalendarHTML += `
-                <div class="mini-calendar__day mini-calendar__day--other-month">
-                    ${daysInPrevMonth - i}
+        // Add empty cells for days from previous month
+        for (let i = 0; i < firstDay; i++) {
+            const day = daysInPrevMonth - firstDay + i + 1;
+            const dateStr = `${prevYear}-${String(prevMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            html += `
+                <div class="mini-calendar-day mini-calendar-day--other-month" data-date="${dateStr}">
+                    <span class="mini-calendar-day-number">${day}</span>
                 </div>`;
         }
         
         // Add days of current month
         for (let day = 1; day <= daysInMonth; day++) {
             const currentDate = new Date(year, month, day);
-            const isToday = currentDate.toDateString() === today.toDateString();
+            const isToday = today.getDate() === day && 
+                          today.getMonth() === month && 
+                          today.getFullYear() === year;
             const isSelected = this.selectedDate && 
-                             currentDate.toDateString() === this.selectedDate.toDateString();
+                             this.selectedDate.getDate() === day &&
+                             this.selectedDate.getMonth() === month &&
+                             this.selectedDate.getFullYear() === year;
             
-            miniCalendarHTML += `
-                <div class="mini-calendar__day 
-                    ${isToday ? 'mini-calendar__day--today' : ''} 
-                    ${isSelected ? 'mini-calendar__day--selected' : ''}"
-                    data-date="${this.formatDateKey(currentDate)}">
-                    ${day}
+            const hasTransactions = transactionsByDay[day]?.length > 0;
+            const dayClass = [
+                'mini-calendar-day',
+                isToday ? 'mini-calendar-day--today' : '',
+                isSelected ? 'mini-calendar-day--selected' : '',
+                hasTransactions ? 'has-transactions' : ''
+            ].filter(Boolean).join(' ');
+            
+            const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            html += `
+                <div class="${dayClass}" data-date="${dateStr}">
+                    <span class="mini-calendar-day-number">${day}</span>
+                    ${hasTransactions ? '<span class="mini-calendar-day-dot"></span>' : ''}
                 </div>`;
         }
         
-        // Add days from next month to complete the grid
+        // Calculate next month and year
+        let nextMonth = month + 1;
+        let nextYear = year;
+        if (nextMonth > 11) {
+            nextMonth = 0;
+            nextYear++;
+        }
+        
+        // Add empty cells for days from next month to complete the grid
         const totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
         const remainingCells = totalCells - (firstDay + daysInMonth);
         
         for (let i = 1; i <= remainingCells; i++) {
-            miniCalendarHTML += `
-                <div class="mini-calendar__day mini-calendar__day--other-month">
-                    ${i}
+            const dateStr = `${nextYear}-${String(nextMonth + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+            html += `
+                <div class="mini-calendar-day mini-calendar-day--other-month" data-date="${dateStr}">
+                    <span class="mini-calendar-day-number">${i}</span>
                 </div>`;
         }
         
-        miniCalendarHTML += '</div>';
-        miniCalendarEl.innerHTML = miniCalendarHTML;
+        html += '</div>';
+        miniCalendarEl.innerHTML = html;
         
         // Add event listeners
-        miniCalendarEl.querySelectorAll('.mini-calendar__day:not(.mini-calendar__day--other-month)').forEach(dayEl => {
+        miniCalendarEl.querySelectorAll('.mini-calendar-day').forEach(dayEl => {
             dayEl.addEventListener('click', () => {
-                const dateStr = dayEl.getAttribute('data-date');
+                const dateStr = dayEl.dataset.date;
                 if (dateStr) {
                     const [y, m, d] = dateStr.split('-').map(Number);
-                    this.selectDate(new Date(y, m - 1, d));
+                    const selectedDate = new Date(y, m - 1, d);
+                    this.selectDate(selectedDate);
+                    this.renderCalendar(selectedDate);
                 }
             });
         });
         
-        document.getElementById('mini-prev-month')?.addEventListener('click', () => {
+        document.getElementById('mini-prev-month')?.addEventListener('click', (e) => {
+            e.stopPropagation();
             this.renderCalendar(new Date(year, month - 1, 1));
         });
         
-        document.getElementById('mini-next-month')?.addEventListener('click', () => {
+        document.getElementById('mini-next-month')?.addEventListener('click', (e) => {
+            e.stopPropagation();
             this.renderCalendar(new Date(year, month + 1, 1));
         });
     }
@@ -833,10 +892,11 @@ class BudgetApp {
         const transactions = this.getTransactionsByDate(date);
         const transactionsListEl = document.getElementById('calendar-transactions-list');
         const noTransactionsEl = document.getElementById('no-transactions-message');
+        const transactionsContainer = document.querySelector('.transactions-container');
         
-        if (!transactionsListEl || !noTransactionsEl) return;
+        if (!transactionsListEl || !noTransactionsEl || !transactionsContainer) return;
         
-        // Update selected date display
+        // Update the selected date display
         const selectedDateEl = document.getElementById('selected-date');
         if (selectedDateEl) {
             selectedDateEl.textContent = date.toLocaleDateString('en-US', {
@@ -847,34 +907,41 @@ class BudgetApp {
             });
         }
         
+        // Show/hide transactions list based on whether there are transactions
         if (transactions.length === 0) {
-            transactionsListEl.innerHTML = '';
+            transactionsListEl.style.display = 'none';
             noTransactionsEl.style.display = 'block';
+            transactionsContainer.style.display = 'block';
             return;
         }
         
+        transactionsListEl.style.display = 'block';
         noTransactionsEl.style.display = 'none';
+        transactionsContainer.style.display = 'block';
         
-        // Render transactions with both description and category
-        transactionsListEl.innerHTML = transactions
-            .sort((a, b) => new Date(b.date) - new Date(a.date))
-            .map(transaction => `
-                <div class="transaction-item" data-id="${transaction.id}">
-                    <div class="transaction-details">
-                        <div class="transaction-header">
-                            <div class="transaction-category">${transaction.category || 'Uncategorized'}</div>
-                            <div class="transaction-amount ${transaction.amount < 0 ? 'expense' : 'income'}">
-                                ${transaction.amount < 0 ? '-' : ''}${this.formatCurrency(Math.abs(transaction.amount))}
-                            </div>
-                        </div>
-                        ${transaction.description ? `<div class="transaction-description">${transaction.description}</div>` : ''}
-                    </div>
-                    <button class="btn btn-icon btn-delete-transaction" title="Delete transaction">
-                        <i class="fas fa-trash"></i>
-                    </button>
+        // Clear existing transactions
+        transactionsListEl.innerHTML = '';
+        
+        // Add transactions to the list
+        transactionsListEl.innerHTML = transactions.map(transaction => `
+            <div class="transaction-item" data-id="${transaction.id}">
+                <div class="transaction-item__details">
+                    <span class="transaction-item__description">${transaction.description || 'No description'}</span>
+                    <span class="transaction-item__amount ${transaction.amount >= 0 ? 'positive' : 'negative'}">
+                        ${transaction.amount >= 0 ? '+' : ''}${this.formatCurrency(transaction.amount)}
+                    </span>
                 </div>
-            `).join('');
-            
+                <div class="transaction-item__meta">
+                    <span class="transaction-item__category">${transaction.category || 'Uncategorized'}</span>
+                    <div class="transaction-actions">
+                        <button class="btn btn--sm btn--icon btn--danger btn-delete-transaction" title="Delete transaction">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+        
         // Add event listeners to delete buttons
         transactionsListEl.querySelectorAll('.btn-delete-transaction').forEach(button => {
             button.addEventListener('click', (e) => {
