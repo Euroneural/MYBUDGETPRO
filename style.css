@@ -913,11 +913,17 @@ select.form-control {
   font-weight: var(--font-weight-medium);
 }
 
+.transactions-container {
+  width: 100%;
+  overflow-x: auto;
+}
+
 .transaction-actions {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
   padding: 4px 0;
+  width: 100%;
 }
 
 .transaction-actions button {
@@ -950,6 +956,15 @@ select.form-control {
   opacity: 0.9;
   transform: translateY(-1px);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Ensure the actions column has enough width and proper alignment */
+.transactions-table th:last-child,
+.transactions-table td:last-child {
+  width: 180px;
+  min-width: 180px;
+  text-align: right;
+  padding-right: 16px;
 }
 
 /* Calendar Container */

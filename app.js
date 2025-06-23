@@ -1552,248 +1552,87 @@ class BudgetApp {
         document.getElementById('close-category-modal')?.addEventListener('click', () => this.closeModal('add-category-modal'));
         document.getElementById('close-csv-modal')?.addEventListener('click', () => this.closeModal('csv-import-modal'));
         
-        // Handle transaction actions (edit/delete)
+        // Handle transaction actions (edit/delete) with event delegation
         document.addEventListener('click', (e) => {
-            // Handle delete button click
+            // Handle delete button clicks
             if (e.target.classList.contains('btn-delete') || e.target.closest('.btn-delete')) {
+                e.preventDefault();
+                e.stopPropagation();
                 const button = e.target.classList.contains('btn-delete') ? e.target : e.target.closest('.btn-delete');
                 const transactionId = button.getAttribute('data-id');
                 if (transactionId) {
                     this.confirmAndDeleteTransaction(transactionId, new Date());
                 }
+                return;
             }
             
-            // Handle edit button click
+            // Handle edit button clicks
             if (e.target.classList.contains('btn-edit') || e.target.closest('.btn-edit')) {
+                e.preventDefault();
+                e.stopPropagation();
                 const button = e.target.classList.contains('btn-edit') ? e.target : e.target.closest('.btn-edit');
                 const transactionId = button.getAttribute('data-id');
                 if (transactionId) {
-                    // You can implement edit functionality here
                     this.showNotification('Edit functionality coming soon!', 'info');
                 }
+                return;
             }
         });
-        document.getElementById('category-form').addEventListener('submit', (e) => this.handleCategorySubmit(e));
+
+        // Category form
+        const categoryForm = document.getElementById('category-form');
+        if (categoryForm) {
+            categoryForm.addEventListener('submit', (e) => this.handleCategorySubmit(e));
+        }
 
         // CSV import
-        document.getElementById('select-csv-btn').addEventListener('click', () => {
-            document.getElementById('csv-file-input').click();
-        });
-        document.getElementById('csv-file-input').addEventListener('change', (e) => this.handleCSVFile(e));
-        document.getElementById('import-csv-confirm').addEventListener('click', () => this.confirmCSVImport());
+        const csvFileInput = document.getElementById('csv-file-input');
+        if (csvFileInput) {
+            csvFileInput.addEventListener('change', (e) => this.handleCSVFile(e));
+        }
+        
+        const importCsvConfirm = document.getElementById('import-csv-confirm');
+        if (importCsvConfirm) {
+            importCsvConfirm.addEventListener('click', () => this.confirmCSVImport());
+        }
 
         // Calendar navigation
-        document.getElementById('prev-month').addEventListener('click', () => this.navigateMonth(-1));
-        document.getElementById('next-month').addEventListener('click', () => this.navigateMonth(1));
+        const prevMonthBtn = document.getElementById('prev-month');
+        const nextMonthBtn = document.getElementById('next-month');
+        if (prevMonthBtn) prevMonthBtn.addEventListener('click', () => this.navigateMonth(-1));
+        if (nextMonthBtn) nextMonthBtn.addEventListener('click', () => this.navigateMonth(1));
 
         // Search and filter
-        document.getElementById('transaction-search').addEventListener('input', (e) => this.filterTransactions());
-        document.getElementById('transaction-filter').addEventListener('change', (e) => this.filterTransactions());
+        const transactionSearch = document.getElementById('transaction-search');
+        const transactionFilter = document.getElementById('transaction-filter');
+        if (transactionSearch) transactionSearch.addEventListener('input', () => this.filterTransactions());
+        if (transactionFilter) transactionFilter.addEventListener('change', () => this.filterTransactions());
 
         // CSV dropzone
         const dropzone = document.getElementById('csv-dropzone');
-        dropzone.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            dropzone.classList.add('csv-upload__dropzone--dragover');
-        });
-        dropzone.addEventListener('dragleave', () => {
-            dropzone.classList.remove('csv-upload__dropzone--dragover');
-        });
-        dropzone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            dropzone.classList.remove('csv-upload__dropzone--dragover');
-            const files = e.dataTransfer.files;
-            if (files.length > 0) {
-                this.processCSVFile(files[0]);
-            }
-        });
-        dropzone.addEventListener('click', () => {
-            document.getElementById('csv-file-input').click();
-        });
-    }
-
-    switchView(view) {
-        // Update navigation
-        document.querySelectorAll('.nav__link').forEach(link => {
-            link.classList.remove('nav__link--active');
-        });
-        document.querySelector(`[data-view="${view}"]`).classList.add('nav__link--active');
-
-        // Update views
-        document.querySelectorAll('.view').forEach(v => {
-            v.classList.remove('view--active');
-        });
-        document.getElementById(`${view}-view`).classList.add('view--active');
-        this.currentView = view;
-        this.renderCurrentView();
-    }
-
-    saveToStorage() {
-        localStorage.setItem('budget-app-transactions', JSON.stringify(this.transactions));
-        localStorage.setItem('budget-app-categories', JSON.stringify(this.budgetCategories));
-        localStorage.setItem('budget-app-accounts', JSON.stringify(this.accounts));
-        localStorage.setItem('budget-app-merchants', JSON.stringify(this.merchantCategories));
-    }
-
-    bindEvents() {
-        // Navigation
-        document.querySelectorAll('.nav__link').forEach(link => {
-            link.addEventListener('click', (e) => {
-                const view = e.target.dataset.view;
-                this.switchView(view);
-            });
-        });
-
-        // Add transaction buttons
-        document.getElementById('add-transaction-btn')?.addEventListener('click', () => this.showTransactionModal());
-        document.getElementById('add-transaction-btn-2')?.addEventListener('click', () => this.showTransactionModal());
-        
-        // Add category button
-        document.getElementById('add-category-btn')?.addEventListener('click', () => this.showCategoryModal());
-
-        // Import CSV button
-        document.getElementById('import-csv-btn')?.addEventListener('click', () => this.showCSVModal());
-
-        // Modal close buttons
-        document.querySelectorAll('.modal__close, #cancel-transaction, #cancel-category, #cancel-csv').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.preventDefault();
-                this.closeModals();
-            });
-        });
-
-        // Form submissions
-        document.getElementById('transaction-form')?.addEventListener('submit', (e) => this.handleTransactionSubmit(e));
-        document.getElementById('category-form')?.addEventListener('submit', (e) => this.handleCategorySubmit(e));
-
-        // CSV import handling
-        const csvFileInput = document.getElementById('csv-file');
-        const dropzone = document.getElementById('csv-dropzone');
-        const importConfirmBtn = document.getElementById('import-csv-confirm');
-        
-        // Handle file selection via input
-        if (csvFileInput) {
-            csvFileInput.addEventListener('change', (e) => {
-                if (e.target.files && e.target.files.length > 0) {
-                    this.processCSVFile(e.target.files[0]);
-                }
-            });
-        }
-        
-        // Handle import confirmation
-        if (importConfirmBtn) {
-            importConfirmBtn.addEventListener('click', () => this.confirmCSVImport());
-        }
-
-        // Calendar navigation
-        document.getElementById('prev-month')?.addEventListener('click', () => this.navigateMonth(-1));
-        document.getElementById('next-month')?.addEventListener('click', () => this.navigateMonth(1));
-
-        // Search and filter
-        document.getElementById('transaction-search')?.addEventListener('input', (e) => this.filterTransactions());
-        document.getElementById('transaction-filter')?.addEventListener('change', (e) => this.filterTransactions());
-
-        // CSV dropzone handling
         if (dropzone) {
-            // Prevent default drag behaviors
-            const preventDefaults = (e) => {
+            dropzone.addEventListener('dragover', (e) => {
                 e.preventDefault();
-                e.stopPropagation();
-            };
-            
-            const highlight = () => {
                 dropzone.classList.add('csv-upload__dropzone--dragover');
-            };
-            
-            const unhighlight = () => {
+            });
+            dropzone.addEventListener('dragleave', () => {
                 dropzone.classList.remove('csv-upload__dropzone--dragover');
-            };
-            
-            const handleDrop = (e) => {
-                const dt = e.dataTransfer;
-                const files = dt.files;
-                
-                if (files.length) {
-                    // If we have files, process the first one
-                    const file = files[0];
-                    if (file.type === 'text/csv' || file.name.endsWith('.csv') || file.name.endsWith('.txt')) {
-                        // Show loading state
-                        const dropzoneContent = dropzone.querySelector('.dropzone-content');
-                        if (dropzoneContent) {
-                            dropzoneContent.innerHTML = `
-                                <div class="text-center">
-                                    <div class="spinner-border text-primary mb-2" role="status">
-                                        <span class="visually-hidden">Loading...</span>
-                                    </div>
-                                    <p>Processing file: ${file.name}</p>
-                                </div>`;
-                        }
-                        
-                        // Process the file
-                        this.processCSVFile(file)
-                            .then(() => {
-                                // Success handling is done in processCSVFile
-                            })
-                            .catch(error => {
-                                console.error('Error processing CSV file:', error);
-                                this.showToast('error', 'Import Failed', 'Failed to process CSV file. Please check the format and try again.');
-                                
-                                // Reset dropzone
-                                if (dropzoneContent) {
-                                    dropzoneContent.innerHTML = `
-                                        <i class="bi bi-cloud-arrow-up-fill display-4 text-muted mb-3"></i>
-                                        <h4>Drag & drop your CSV file here</h4>
-                                        <p class="text-muted mb-3">or</p>
-                                        <button class="btn btn--primary">
-                                            <i class="bi bi-upload me-2"></i>Select File
-                                            <input type="file" id="csv-file" accept=".csv,.txt" class="csv-upload__input">
-                                        </button>
-                                        <p class="small text-muted mt-2">Supports: .csv, .txt (Max 10MB)</p>`;
-                                    
-                                    // Rebind the file input
-                                    const newFileInput = dropzoneContent.querySelector('input[type="file"]');
-                                    if (newFileInput) {
-                                        newFileInput.addEventListener('change', (e) => {
-                                            if (e.target.files && e.target.files.length > 0) {
-                                                this.processCSVFile(e.target.files[0]);
-                                            }
-                                        });
-                                    }
-                                }
-                            });
-                    } else {
-                        this.showToast('error', 'Invalid File', 'Please upload a valid CSV file.');
-                    }
+            });
+            dropzone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropzone.classList.remove('csv-upload__dropzone--dragover');
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    this.processCSVFile(files[0]);
                 }
-            };
-            
-            // Set up event listeners
-            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-                dropzone.addEventListener(eventName, preventDefaults, false);
-                document.body.addEventListener(eventName, preventDefaults, false);
             });
-            
-            // Highlight drop zone when item is dragged over it
-            ['dragenter', 'dragover'].forEach(eventName => {
-                dropzone.addEventListener(eventName, highlight, false);
-            });
-            
-            // Remove highlight when item leaves drop zone
-            ['dragleave', 'drop'].forEach(eventName => {
-                dropzone.addEventListener(eventName, unhighlight, false);
-            });
-            
-            // Handle dropped files
-            dropzone.addEventListener('drop', handleDrop, false);
-            
-            // Handle click to select file
             dropzone.addEventListener('click', () => {
-                const fileInput = document.getElementById('csv-file');
-                if (fileInput) {
-                    fileInput.click();
-                }
+                document.getElementById('csv-file-input').click();
             });
         }
+        
+        // Initialize search manager
+        this.searchManager = new SearchManager(this);
     }
 
     switchView(view) {
@@ -1801,21 +1640,21 @@ class BudgetApp {
         document.querySelectorAll('.nav__link').forEach(link => {
             link.classList.remove('nav__link--active');
         });
-        const activeLink = document.querySelector(`[data-view="${view}"]`);
-        if (activeLink) {
-            activeLink.classList.add('nav__link--active');
+        
+        const activeNav = document.querySelector(`[data-view="${view}"]`);
+        if (activeNav) {
+            activeNav.classList.add('nav__link--active');
         }
 
         // Update views
         document.querySelectorAll('.view').forEach(v => {
             v.classList.remove('view--active');
         });
-        const viewElement = document.getElementById(`${view}-view`);
-        if (viewElement) {
-            viewElement.classList.add('view--active');
-        }
         
-        this.currentView = view;
+        const activeView = document.getElementById(`${view}-view`);
+        if (activeView) {
+            activeView.classList.add('view--active');
+        }
         
         // If switching to calendar view, initialize it with today's date
         if (view === 'calendar' && !this.selectedDate) {
@@ -1823,6 +1662,7 @@ class BudgetApp {
             this.renderCalendar(this.selectedDate);
         }
         
+        this.currentView = view;
         this.renderCurrentView();
     }
 
@@ -1935,37 +1775,39 @@ class BudgetApp {
         }
         
         return `
-            <table class="transactions-table">
-                <thead>
-                    <tr>
-                        <th style="width: 100px;">Date</th>
-                        <th>Description</th>
-                        <th>Category</th>
-                        <th class="amount-col" style="width: 120px;">Amount</th>
-                        <th style="width: 120px;">Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${transactions.map(transaction => `
-                        <tr data-id="${transaction.id}">
-                            <td>${new Date(transaction.date).toLocaleDateString()}</td>
-                            <td>${this.escapeHtml(transaction.description || '')}</td>
-                            <td>${this.escapeHtml(transaction.category || 'Uncategorized')}</td>
-                            <td class="amount-col ${transaction.amount < 0 ? 'expense' : 'income'}">
-                                ${transaction.amount < 0 ? '-' : ''}${this.formatCurrency(Math.abs(transaction.amount))}
-                            </td>
-                            <td class="transaction-actions">
-                                <button class="btn-edit" data-id="${transaction.id}">
-                                    Edit
-                                </button>
-                                <button class="btn-delete" data-id="${transaction.id}">
-                                    Delete
-                                </button>
-                            </td>
+            <div class="transactions-container">
+                <table class="transactions-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 100px;">Date</th>
+                            <th>Description</th>
+                            <th>Category</th>
+                            <th class="amount-col" style="width: 120px;">Amount</th>
+                            <th style="width: 180px; text-align: right;">Actions</th>
                         </tr>
-                    `).join('')}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        ${transactions.map(transaction => `
+                            <tr data-id="${transaction.id}">
+                                <td>${new Date(transaction.date).toLocaleDateString()}</td>
+                                <td>${this.escapeHtml(transaction.description || '')}</td>
+                                <td>${this.escapeHtml(transaction.category || 'Uncategorized')}</td>
+                                <td class="amount-col ${transaction.amount < 0 ? 'expense' : 'income'}">
+                                    ${transaction.amount < 0 ? '-' : ''}${this.formatCurrency(Math.abs(transaction.amount))}
+                                </td>
+                                <td class="transaction-actions">
+                                    <button class="btn-edit" data-id="${transaction.id}">
+                                        Edit
+                                    </button>
+                                    <button class="btn-delete" data-id="${transaction.id}">
+                                        Delete
+                                    </button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
         `;
     }
     
