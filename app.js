@@ -543,11 +543,20 @@ class BudgetApp {
                 <div class="calendar__body">
         `;
         
+        // Calculate the previous month and year
+        let prevMonth = currentMonth - 1;
+        let prevYear = currentYear;
+        if (prevMonth < 0) {
+            prevMonth = 11;
+            prevYear--;
+        }
+        
         // Add empty cells for days from previous month
         for (let i = 0; i < firstDay; i++) {
             const day = daysInPrevMonth - firstDay + i + 1;
             calendarHTML += `
-                <div class="calendar__day calendar__day--other-month">
+                <div class="calendar__day calendar__day--other-month" 
+                     data-date="${prevYear}-${String(prevMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}">
                     <div class="calendar__day-number">${day}</div>
                 </div>`;
         }
@@ -618,11 +627,25 @@ class BudgetApp {
         const totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
         const remainingCells = totalCells - (firstDay + daysInMonth);
         
+        // Calculate the next month and year
+        let nextMonth = currentMonth + 1;
+        let nextYear = currentYear;
+        if (nextMonth > 11) {
+            nextMonth = 0;
+            nextYear++;
+        }
+        
+        // Add days from next month
         for (let i = 1; i <= remainingCells; i++) {
-            calendarHTML += `
-                <div class="calendar__day calendar__day--other-month">
-                    <div class="calendar__day-number">${i}</div>
-                </div>`;
+            const dayOfWeek = (firstDay + daysInMonth + i - 1) % 7;
+            // Only show days that would complete the current week
+            if (dayOfWeek !== 0) { // Skip if we've already started a new week
+                calendarHTML += `
+                    <div class="calendar__day calendar__day--other-month" 
+                         data-date="${nextYear}-${String(nextMonth + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}">
+                        <div class="calendar__day-number">${i}</div>
+                    </div>`;
+            }
         }
         
         calendarHTML += `
