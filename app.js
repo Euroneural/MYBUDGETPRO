@@ -1544,22 +1544,35 @@ class BudgetApp {
         });
 
         // Add transaction buttons
-        document.getElementById('add-transaction-btn').addEventListener('click', () => this.showTransactionModal());
-        document.getElementById('add-transaction-btn-2').addEventListener('click', () => this.showTransactionModal());
+        document.getElementById('add-transaction-btn')?.addEventListener('click', () => this.showTransactionModal());
+        document.getElementById('add-transaction-btn-2')?.addEventListener('click', () => this.showTransactionModal());
+        document.getElementById('add-category-btn')?.addEventListener('click', () => this.showCategoryModal());
+        document.getElementById('import-csv-btn')?.addEventListener('click', () => this.showCSVModal());
+        document.getElementById('close-transaction-modal')?.addEventListener('click', () => this.closeModal('add-transaction-modal'));
+        document.getElementById('close-category-modal')?.addEventListener('click', () => this.closeModal('add-category-modal'));
+        document.getElementById('close-csv-modal')?.addEventListener('click', () => this.closeModal('csv-import-modal'));
         
-        // Add category button
-        document.getElementById('add-category-btn').addEventListener('click', () => this.showCategoryModal());
-
-        // Import CSV button
-        document.getElementById('import-csv-btn').addEventListener('click', () => this.showCSVModal());
-
-        // Modal close buttons
-        document.querySelectorAll('.modal__close, #cancel-transaction, #cancel-category, #cancel-csv').forEach(btn => {
-            btn.addEventListener('click', () => this.closeModals());
+        // Handle transaction actions (edit/delete)
+        document.addEventListener('click', (e) => {
+            // Handle delete button click
+            if (e.target.classList.contains('btn-delete') || e.target.closest('.btn-delete')) {
+                const button = e.target.classList.contains('btn-delete') ? e.target : e.target.closest('.btn-delete');
+                const transactionId = button.getAttribute('data-id');
+                if (transactionId) {
+                    this.confirmAndDeleteTransaction(transactionId, new Date());
+                }
+            }
+            
+            // Handle edit button click
+            if (e.target.classList.contains('btn-edit') || e.target.closest('.btn-edit')) {
+                const button = e.target.classList.contains('btn-edit') ? e.target : e.target.closest('.btn-edit');
+                const transactionId = button.getAttribute('data-id');
+                if (transactionId) {
+                    // You can implement edit functionality here
+                    this.showNotification('Edit functionality coming soon!', 'info');
+                }
+            }
         });
-
-        // Form submissions
-        document.getElementById('transaction-form').addEventListener('submit', (e) => this.handleTransactionSubmit(e));
         document.getElementById('category-form').addEventListener('submit', (e) => this.handleCategorySubmit(e));
 
         // CSV import
@@ -1925,10 +1938,11 @@ class BudgetApp {
             <table class="transactions-table">
                 <thead>
                     <tr>
-                        <th>Date</th>
+                        <th style="width: 100px;">Date</th>
                         <th>Description</th>
                         <th>Category</th>
-                        <th class="amount-col">Amount</th>
+                        <th class="amount-col" style="width: 120px;">Amount</th>
+                        <th style="width: 120px;">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -1939,6 +1953,14 @@ class BudgetApp {
                             <td>${this.escapeHtml(transaction.category || 'Uncategorized')}</td>
                             <td class="amount-col ${transaction.amount < 0 ? 'expense' : 'income'}">
                                 ${transaction.amount < 0 ? '-' : ''}${this.formatCurrency(Math.abs(transaction.amount))}
+                            </td>
+                            <td class="transaction-actions">
+                                <button class="btn-edit" data-id="${transaction.id}">
+                                    Edit
+                                </button>
+                                <button class="btn-delete" data-id="${transaction.id}">
+                                    Delete
+                                </button>
                             </td>
                         </tr>
                     `).join('')}

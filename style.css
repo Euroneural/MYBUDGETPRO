@@ -915,12 +915,41 @@ select.form-control {
 
 .transaction-actions {
   display: flex;
-  gap: var(--space-4);
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 4px 0;
 }
 
 .transaction-actions button {
-  padding: var(--space-4) var(--space-8);
-  font-size: var(--font-size-sm);
+  padding: 6px 12px;
+  font-size: 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 500;
+  line-height: 1.2;
+  min-width: 60px;
+}
+
+.transaction-actions .btn-edit {
+  background-color: var(--color-primary);
+  color: white;
+}
+
+.transaction-actions .btn-delete {
+  background-color: var(--color-error);
+  color: white;
+}
+
+.transaction-actions button:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 /* Calendar Container */
@@ -929,6 +958,22 @@ select.form-control {
   grid-template-columns: 1fr 300px;
   gap: var(--space-16);
   margin-top: var(--space-16);
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  box-sizing: border-box;
+  min-height: 0; /* Allow the container to shrink below its content size */
+  min-width: 0;  /* Allow the container to shrink below its content size */
+}
+
+@media (max-width: 1024px) {
+  .calendar-container {
+    grid-template-columns: 1fr;
+  }
+  
+  .calendar-sidebar {
+    grid-row: 1;
+  }
 }
 
 .calendar-main {
@@ -948,11 +993,13 @@ select.form-control {
 .calendar {
   width: 100%;
   border-collapse: collapse;
-  table-layout: fixed;
   background: var(--color-surface);
   border-radius: var(--radius-base);
   overflow: hidden;
   box-shadow: var(--shadow-sm);
+  table-layout: fixed;
+  min-width: 100%;
+  max-width: 100%;
 }
 
 .calendar__header {
@@ -981,13 +1028,17 @@ select.form-control {
 
 .calendar__body {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  grid-auto-rows: minmax(120px, auto);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-auto-rows: minmax(100px, 1fr);
   background-color: var(--color-border);
   grid-gap: 1px;
   border: 1px solid var(--color-border);
   border-radius: 0 0 var(--radius-base) var(--radius-base);
   overflow: hidden;
+  width: 100%;
+  min-height: 70vh;
+  max-height: 80vh;
+  box-sizing: border-box;
 }
 
 .calendar__day {
@@ -1602,10 +1653,37 @@ select.form-control {
   margin-top: var(--space-16);
 }
 
-.csv-preview__table {
+.transactions-table {
   width: 100%;
   border-collapse: collapse;
-  margin-top: var(--space-8);
+  margin-top: var(--space-16);
+  table-layout: fixed;
+}
+
+.transactions-table th,
+.transactions-table td {
+  padding: 12px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transactions-table th:last-child,
+.transactions-table td:last-child {
+  width: 180px;
+  min-width: 180px;
+  text-align: right;
+  padding-right: 16px;
+}
+
+.transactions-table th {
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.5px;
 }
 
 .csv-preview__table th,
