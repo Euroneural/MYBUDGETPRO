@@ -422,7 +422,6 @@ class BudgetApp {
         this.currentView = 'dashboard';
         this.currentMonth = new Date().getMonth();
         this.currentYear = new Date().getFullYear();
-        this.charts = {};
         this.db = localDB;
         this.dbInitialized = false;
         this.unsubscribeCallbacks = [];
@@ -432,14 +431,558 @@ class BudgetApp {
         this.initializeApp();
     }
 
+    async loadTransactions() {
+        try {
+            this.transactions = await this.db.getAllItems('transactions') || [];
+            // Sort by date (newest first)
+            this.transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+            console.log(`Loaded ${this.transactions.length} transactions into memory`);
+            return this.transactions;
+        } catch (error) {
+            console.error('Error loading transactions:', error);
+            this.transactions = [];
+            return [];
+        }
+    }
+    
+    /**
+     * Get transactions for a specific date range
+     * @param {Date} startDate - Start date
+     * @param {Date} endDate - End date
+     * @returns {Array} Filtered transactions
+     */
+    getTransactionsByDateRange(startDate, endDate) {
+        return this.transactions.filter(t => {
+            const transactionDate = new Date(t.date);
+            return transactionDate >= startDate && transactionDate <= endDate;
+        });
+    }
+    
+    /**
+     * Get transactions for a specific date
+     * @param {Date} date - The date to get transactions for
+     * @returns {Array} Filtered transactions
+     */
+    getTransactionsByDate(date) {
+        const startOfDay = new Date(date);
+        startOfDay.setHours(0, 0, 0, 0);
+        
+        const endOfDay = new Date(date);
+        endOfDay.setHours(23, 59, 59, 999);
+        
+        return this.getTransactionsByDateRange(startOfDay, endOfDay);
+    }
+    
+    /**
+     * Format date as YYYY-MM-DD
+     * @param {Date} date - The date to format
+     * @returns {string} Formatted date string
+     */
+    formatDateKey(date) {
+        return date.toISOString().split('T')[0];
+    }
+    
+    /**
+     * Render the calendar view
+     * @param {Date} [date] - The date to display (defaults to current month)
+     */
+    async renderCalendar(date = new Date()) {
+        const calendarEl = document.getElementById('calendar');
+        if (!calendarEl) return;
+        
+        // Set current month and year
+        const currentMonth = date.getMonth();
+        const currentYear = date.getFullYear();
+        
+        // Get first day of month (0-6, where 0 is Sunday)
+        const firstDay = new Date(currentYear, currentMonth, 1).getDay();
+        // Get number of days in month
+        const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+        // Get number of days in previous month
+        const daysInPrevMonth = new Date(currentYear, currentMonth, 0).getDate();
+        
+        // Get transactions for the current month
+        const startDate = new Date(currentYear, currentMonth, 1);
+        const endDate = new Date(currentYear, currentMonth + 1, 0);
+        const monthlyTransactions = this.getTransactionsByDateRange(startDate, endDate);
+        
+        // Group transactions by day
+        const transactionsByDay = {};
+        monthlyTransactions.forEach(t => {
+            const day = new Date(t.date).getDate();
+            if (!transactionsByDay[day]) {
+                transactionsByDay[day] = [];
+            }
+            transactionsByDay[day].push(t);
+        });
+        
+        // Generate calendar HTML
+        const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                          'July', 'August', 'September', 'October', 'November', 'December'];
+        
+        let calendarHTML = `
+            <div class="calendar-controls">
+                <button id="prev-month" class="btn btn--icon">
+                    <i class="bi bi-chevron-left"></i>
+                </button>
+                <h2>${monthNames[currentMonth]} ${currentYear}</h2>
+                <button id="next-month" class="btn btn--icon">
+                    <i class="bi bi-chevron-right"></i>
+                </button>
+            </div>
+            <div class="calendar">
+                <div class="calendar__header">
+                    <div class="calendar__day">Sun</div>
+                    <div class="calendar__day">Mon</div>
+                    <div class="calendar__day">Tue</div>
+                    <div class="calendar__day">Wed</div>
+                    <div class="calendar__day">Thu</div>
+                    <div class="calendar__day">Fri</div>
+                    <div class="calendar__day">Sat</div>
+                </div>
+                <div class="calendar__body">
+        `;
+        
+        // Add empty cells for days from previous month
+        for (let i = 0; i < firstDay; i++) {
+            const day = daysInPrevMonth - firstDay + i + 1;
+            calendarHTML += `
+                <div class="calendar__day calendar__day--other-month">
+                    <div class="calendar__day-number">${day}</div>
+                </div>`;
+        }
+        
+        // Add days of current month
+        const today = new Date();
+        const isCurrentMonth = today.getMonth() === currentMonth && today.getFullYear() === currentYear;
+        
+        for (let day = 1; day <= daysInMonth; day++) {
+            const date = new Date(currentYear, currentMonth, day);
+            const isToday = isCurrentMonth && day === today.getDate();
+            const isSelected = this.selectedDate && 
+                             date.getDate() === this.selectedDate.getDate() &&
+                             date.getMonth() === this.selectedDate.getMonth() &&
+                             date.getFullYear() === this.selectedDate.getFullYear();
+            
+            const dayTransactions = transactionsByDay[day] || [];
+            const income = dayTransactions
+                .filter(t => parseFloat(t.amount) > 0)
+                .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount)), 0);
+            const expenses = dayTransactions
+                .filter(t => parseFloat(t.amount) < 0)
+                .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount)), 0);
+            
+            calendarHTML += `
+                <div class="calendar__day ${isToday ? 'calendar__day--today' : ''} ${isSelected ? 'calendar__day--selected' : ''}" 
+                     data-date="${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}">
+                    <div class="calendar__day-number">${day}</div>`;
+            
+            if (dayTransactions.length > 0) {
+                calendarHTML += `
+                    <div class="calendar__transactions">`;
+
+                // Show up to 2 transactions per day in the calendar
+                dayTransactions.slice(0, 2).forEach(transaction => {
+                    const isIncome = parseFloat(transaction.amount) > 0;
+                    calendarHTML += `
+                        <div class="calendar__transaction ${isIncome ? 'income' : 'expense'}">
+                            <span class="transaction-description">${transaction.description || 'No description'}</span>
+                            <span class="transaction-amount">${this.formatCurrency(transaction.amount)}</span>
+                        </div>`;
+                });
+
+                // Show indicator if there are more transactions
+                if (dayTransactions.length > 2) {
+                    calendarHTML += `
+                        <div class="calendar__transaction-more">+${dayTransactions.length - 2} more</div>`;
+                }
+                
+                calendarHTML += `
+                    </div>`;
+            }
+            
+            // Show daily total if there are transactions
+            if (dayTransactions.length > 0) {
+                const net = income - expenses;
+                calendarHTML += `
+                    <div class="calendar__total ${net >= 0 ? 'calendar__total--positive' : 'calendar__total--negative'}">
+                        ${net >= 0 ? '+' : ''}${this.formatCurrency(net)}
+                    </div>`;
+            }
+            
+            calendarHTML += `
+                </div>`;
+        }
+        
+        // Add empty cells for days from next month to complete the grid
+        const totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
+        const remainingCells = totalCells - (firstDay + daysInMonth);
+        
+        for (let i = 1; i <= remainingCells; i++) {
+            calendarHTML += `
+                <div class="calendar__day calendar__day--other-month">
+                    <div class="calendar__day-number">${i}</div>
+                </div>`;
+        }
+        
+        calendarHTML += `
+                </div>
+            </div>`;
+        
+        // Update the calendar element
+        calendarEl.innerHTML = calendarHTML;
+        
+        // Set up event listeners
+        this.setupCalendarEventListeners();
+        
+        // Update the calendar summary
+        this.updateCalendarSummary(date);
+        
+        // Update month/year display
+        const monthYearEl = document.getElementById('calendar-month-year');
+        if (monthYearEl) {
+            monthYearEl.textContent = new Intl.DateTimeFormat('en-US', { 
+                year: 'numeric', 
+                month: 'long' 
+            }).format(date);
+        }
+        
+        // Close calendar days div
+        calendarHTML += '</div>';
+        
+        // Update the DOM
+        calendarEl.innerHTML = calendarHTML;
+        
+        // Add event listeners
+        this.setupCalendarEventListeners();
+        
+        // Update mini calendar
+        this.renderMiniCalendar(date);
+        
+        // Update summary
+        this.updateCalendarSummary(date);
+    }
+    
+    /**
+     * Render the mini calendar in the sidebar
+     * @param {Date} date - The date to display
+     */
+    renderMiniCalendar(date) {
+        const miniCalendarEl = document.getElementById('mini-calendar');
+        if (!miniCalendarEl) return;
+        
+        const month = date.getMonth();
+        const year = date.getFullYear();
+        const today = new Date();
+        
+        // Generate mini calendar HTML
+        const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                          'July', 'August', 'September', 'October', 'November', 'December'];
+        
+        let miniCalendarHTML = `
+            <div class="mini-calendar__header">
+                <button id="mini-prev-month" class="btn btn--icon btn--sm">
+                    <i class="bi bi-chevron-left"></i>
+                </button>
+                <div>${monthNames[month].substring(0, 3)} ${year}</div>
+                <button id="mini-next-month" class="btn btn--icon btn--sm">
+                    <i class="bi bi-chevron-right"></i>
+                </button>
+            </div>
+            <div class="mini-calendar__weekdays">
+                <div>S</div><div>M</div><div>T</div><div>W</div>
+                <div>T</div><div>F</div><div>S</div>
+            </div>
+            <div class="mini-calendar__days">
+        `;
+        
+        // Get first day of month and number of days
+        const firstDay = new Date(year, month, 1).getDay();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const daysInPrevMonth = new Date(year, month, 0).getDate();
+        
+        // Add days from previous month
+        for (let i = firstDay - 1; i >= 0; i--) {
+            miniCalendarHTML += `
+                <div class="mini-calendar__day mini-calendar__day--other-month">
+                    ${daysInPrevMonth - i}
+                </div>`;
+        }
+        
+        // Add days of current month
+        for (let day = 1; day <= daysInMonth; day++) {
+            const currentDate = new Date(year, month, day);
+            const isToday = currentDate.toDateString() === today.toDateString();
+            const isSelected = this.selectedDate && 
+                             currentDate.toDateString() === this.selectedDate.toDateString();
+            
+            miniCalendarHTML += `
+                <div class="mini-calendar__day 
+                    ${isToday ? 'mini-calendar__day--today' : ''} 
+                    ${isSelected ? 'mini-calendar__day--selected' : ''}"
+                    data-date="${this.formatDateKey(currentDate)}">
+                    ${day}
+                </div>`;
+        }
+        
+        // Add days from next month to complete the grid
+        const totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
+        const remainingCells = totalCells - (firstDay + daysInMonth);
+        
+        for (let i = 1; i <= remainingCells; i++) {
+            miniCalendarHTML += `
+                <div class="mini-calendar__day mini-calendar__day--other-month">
+                    ${i}
+                </div>`;
+        }
+        
+        miniCalendarHTML += '</div>';
+        miniCalendarEl.innerHTML = miniCalendarHTML;
+        
+        // Add event listeners
+        miniCalendarEl.querySelectorAll('.mini-calendar__day:not(.mini-calendar__day--other-month)').forEach(dayEl => {
+            dayEl.addEventListener('click', () => {
+                const dateStr = dayEl.getAttribute('data-date');
+                if (dateStr) {
+                    const [y, m, d] = dateStr.split('-').map(Number);
+                    this.selectDate(new Date(y, m - 1, d));
+                }
+            });
+        });
+        
+        document.getElementById('mini-prev-month')?.addEventListener('click', () => {
+            this.renderCalendar(new Date(year, month - 1, 1));
+        });
+        
+        document.getElementById('mini-next-month')?.addEventListener('click', () => {
+            this.renderCalendar(new Date(year, month + 1, 1));
+        });
+    }
+    
+    /**
+     * Set up event listeners for the calendar
+     */
+    setupCalendarEventListeners() {
+        const calendarEl = document.getElementById('calendar');
+        if (!calendarEl) return;
+        
+        // Day click handler
+        calendarEl.querySelectorAll('.calendar__day').forEach(dayEl => {
+            dayEl.addEventListener('click', () => {
+                const dateStr = dayEl.getAttribute('data-date');
+                if (dateStr) {
+                    const [year, month, day] = dateStr.split('-').map(Number);
+                    this.selectDate(new Date(year, month - 1, day));
+                }
+            });
+        });
+        
+        // Navigation buttons
+        document.getElementById('prev-month')?.addEventListener('click', () => {
+            this.renderCalendar(new Date(this.currentYear, this.currentMonth - 1, 1));
+        });
+        
+        document.getElementById('next-month')?.addEventListener('click', () => {
+            this.renderCalendar(new Date(this.currentYear, this.currentMonth + 1, 1));
+        });
+        
+        document.getElementById('today')?.addEventListener('click', () => {
+            const today = new Date();
+            this.selectDate(today);
+            this.renderCalendar(today);
+        });
+    }
+    
+    /**
+     * Select a date and show its transactions
+     * @param {Date} date - The date to select
+     */
+    selectDate(date) {
+        this.selectedDate = date;
+        this.showTransactionsForDate(date);
+    }
+    
+    /**
+     * Show transactions for a specific date
+     * @param {Date} date - The date to show transactions for
+     */
+    showTransactionsForDate(date) {
+        const transactions = this.getTransactionsByDate(date);
+        const transactionsListEl = document.getElementById('calendar-transactions-list');
+        const noTransactionsEl = document.getElementById('no-transactions-message');
+        
+        if (!transactionsListEl || !noTransactionsEl) return;
+        
+        // Update selected date display
+        const selectedDateEl = document.getElementById('selected-date');
+        if (selectedDateEl) {
+            selectedDateEl.textContent = date.toLocaleDateString('en-US', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+        }
+        
+        if (transactions.length === 0) {
+            transactionsListEl.innerHTML = '';
+            noTransactionsEl.style.display = 'block';
+            return;
+        }
+        
+        noTransactionsEl.style.display = 'none';
+        
+        // Render transactions with both description and category
+        transactionsListEl.innerHTML = transactions
+            .sort((a, b) => new Date(b.date) - new Date(a.date))
+            .map(transaction => `
+                <div class="transaction-item">
+                    <div class="transaction-details">
+                        <div class="transaction-header">
+                            <div class="transaction-category">${transaction.category || 'Uncategorized'}</div>
+                            <div class="transaction-amount ${transaction.amount < 0 ? 'expense' : 'income'}">
+                                ${transaction.amount < 0 ? '-' : ''}${this.formatCurrency(Math.abs(transaction.amount))}
+                            </div>
+                        </div>
+                        ${transaction.description ? `<div class="transaction-description">${transaction.description}</div>` : ''}
+                    </div>
+                </div>
+            `).join('');
+    }
+    
+    /**
+     * Update the calendar summary section
+     * @param {Date} date - The reference date for the summary
+     */
+    updateCalendarSummary(date = new Date()) {
+        // Get the selected period (day, week, month, year)
+        const period = document.querySelector('.period-selector .active')?.dataset.period || 'day';
+        let startDate, endDate, periodName;
+        
+        // Calculate date range based on selected period
+        switch (period) {
+            case 'day':
+                startDate = new Date(date);
+                startDate.setHours(0, 0, 0, 0);
+                endDate = new Date(date);
+                endDate.setHours(23, 59, 59, 999);
+                periodName = 'Today';
+                break;
+                
+            case 'week':
+                startDate = new Date(date);
+                startDate.setDate(date.getDate() - date.getDay()); // Start of week (Sunday)
+                startDate.setHours(0, 0, 0, 0);
+                endDate = new Date(startDate);
+                endDate.setDate(startDate.getDate() + 6); // End of week (Saturday)
+                endDate.setHours(23, 59, 59, 999);
+                periodName = 'This Week';
+                break;
+                
+            case 'month':
+                startDate = new Date(date.getFullYear(), date.getMonth(), 1);
+                startDate.setHours(0, 0, 0, 0);
+                endDate = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+                endDate.setHours(23, 59, 59, 999);
+                periodName = 'This Month';
+                break;
+                
+            case 'year':
+                startDate = new Date(date.getFullYear(), 0, 1);
+                startDate.setHours(0, 0, 0, 0);
+                endDate = new Date(date.getFullYear(), 11, 31);
+                endDate.setHours(23, 59, 59, 999);
+                periodName = 'This Year';
+                break;
+                
+            default:
+                return;
+        }
+        
+        // Get transactions for the period
+        const periodTransactions = this.getTransactionsByDateRange(startDate, endDate);
+        
+        // Calculate summary values
+        const income = periodTransactions
+            .filter(t => parseFloat(t.amount) > 0)
+            .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount)), 0);
+            
+        const expenses = periodTransactions
+            .filter(t => parseFloat(t.amount) < 0)
+            .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount)), 0);
+            
+        const net = income - expenses;
+        
+        // Update the summary cards
+        const summaryEl = document.getElementById('calendar-summary');
+        if (summaryEl) {
+            summaryEl.innerHTML = `
+                <div class="summary-card">
+                    <div class="summary-card__header">
+                        <h3>${periodName}</h3>
+                        <div class="period-selector">
+                            <button class="btn btn--sm ${period === 'day' ? 'active' : ''}" data-period="day">Day</button>
+                            <button class="btn btn--sm ${period === 'week' ? 'active' : ''}" data-period="week">Week</button>
+                            <button class="btn btn--sm ${period === 'month' ? 'active' : ''}" data-period="month">Month</button>
+                            <button class="btn btn--sm ${period === 'year' ? 'active' : ''}" data-period="year">Year</button>
+                        </div>
+                    </div>
+                    <div class="summary-card__content">
+                        <div class="summary-item">
+                            <span class="summary-item__label">Income</span>
+                            <span class="summary-item__value positive">+${this.formatCurrency(income)}</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-item__label">Expenses</span>
+                            <span class="summary-item__value negative">-${this.formatCurrency(expenses)}</span>
+                        </div>
+                        <div class="summary-item summary-item--total">
+                            <span class="summary-item__label">Net</span>
+                            <span class="summary-item__value ${net >= 0 ? 'positive' : 'negative'}">
+                                ${net >= 0 ? '+' : ''}${this.formatCurrency(net)}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Add event listeners to period selector buttons
+            summaryEl.querySelectorAll('.period-selector button').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.period-selector button').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    this.updateCalendarSummary(date);
+                });
+            });
+        }
+        
+        // Update the selected date display
+        const selectedDateEl = document.getElementById('selected-date');
+        if (selectedDateEl && !selectedDateEl.textContent) {
+            selectedDateEl.textContent = date.toLocaleDateString('en-US', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+        }
+    }
+    
     async init() {
         try {
             await this.db.initializeDB;
+            // Load transactions first
+            await this.loadTransactions();
+            
             this.bindEvents();
             this.setupRealtimeListeners();
             this.renderCurrentView();
             this.updateDashboard();
-            this.loadSampleData();
+            
+            // Only load sample data if no transactions exist
+            if (this.transactions.length === 0) {
+                await this.loadSampleData();
+            }
         } catch (error) {
             console.error('Error initializing app:', error);
         }
@@ -450,6 +993,9 @@ class BudgetApp {
             console.error('Database not initialized');
             return false;
         }
+        
+        // Make sure we have a copy and not a reference
+        transaction = {...transaction};
         
         try {
             // Ensure we wait for DB to be ready
@@ -481,8 +1027,8 @@ class BudgetApp {
             
             // Prepare the transaction data
             const transactionData = {
-                id: transactionId,
                 ...transaction,
+                id: transactionId,
                 amount: amount,
                 date: formattedDate,
                 createdAt: new Date().toISOString(),
@@ -493,6 +1039,16 @@ class BudgetApp {
             
             // Add the transaction to the database
             await this.db.addItem('transactions', transactionData);
+            
+            // Update local state
+            const existingIndex = this.transactions.findIndex(t => t.id === transactionData.id);
+            if (existingIndex >= 0) {
+                this.transactions[existingIndex] = transactionData;
+            } else {
+                this.transactions.push(transactionData);
+                // Keep transactions sorted by date
+                this.transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+            }
             
             // Update account balance if account is specified
             if (transaction.account) {
@@ -1142,53 +1698,118 @@ class BudgetApp {
         if (viewElement) {
             viewElement.classList.add('view--active');
         }
+        
         this.currentView = view;
+        
+        // If switching to calendar view, initialize it with today's date
+        if (view === 'calendar' && !this.selectedDate) {
+            this.selectedDate = new Date();
+            this.renderCalendar(this.selectedDate);
+        }
+        
         this.renderCurrentView();
     }
 
     async renderTransactions() {
         try {
-            const transactionsEl = document.getElementById('transactions');
-            if (!transactionsEl) return;
+            // Get the transactions view container
+            const transactionsView = document.getElementById('transactions-view');
+            if (!transactionsView) {
+                console.error('Transactions view not found');
+                return;
+            }
+            
+            // Get the transactions table container
+            const transactionsTable = document.getElementById('transactions-table');
+            if (!transactionsTable) {
+                console.error('Transactions table not found');
+                return;
+            }
             
             // Show loading state
-            transactionsEl.innerHTML = '<div class="loading">Loading transactions...</div>';
+            transactionsTable.innerHTML = '<div class="loading">Loading transactions...</div>';
+            console.log('Fetching transactions from database...');
             
-            // Get all transactions from the database
-            const transactions = await this.db.getAllItems('transactions');
+            try {
+                // Get all transactions from the database
+                const transactions = await this.db.getAllItems('transactions');
+                console.log('Retrieved transactions:', transactions);
+                
+                if (!transactions || transactions.length === 0) {
+                    console.log('No transactions found in the database');
+                    transactionsTable.innerHTML = `
+                        <div class="no-transactions">
+                            <p>No transactions found.</p>
+                            <button class="btn btn--primary" id="add-sample-data">Add Sample Data</button>
+                        </div>
+                    `;
+                    document.getElementById('add-sample-data')?.addEventListener('click', () => this.loadSampleData());
+                    return;
+                }
             
-            // Sort by date descending (newest first)
-            transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
-            
-            // Render the transactions list
-            transactionsEl.innerHTML = `
-                <div class="transactions-header">
-                    <h2>Transactions</h2>
-                    <button class="btn btn-primary" id="add-transaction-btn">
-                        <i class="fas fa-plus"></i> Add Transaction
-                    </button>
-                </div>
-                <div class="transactions-list" id="transactions-list">
-                    ${this.renderTransactionList(transactions)}
-                </div>
-            `;
-            
-            // Add event listeners
-            document.getElementById('add-transaction-btn')?.addEventListener('click', () => {
-                // TODO: Show add transaction form/modal
-                console.log('Add transaction clicked');
-            });
-            
-        } catch (error) {
-            console.error('Error rendering transactions:', error);
-            const transactionsEl = document.getElementById('transactions');
-            if (transactionsEl) {
-                transactionsEl.innerHTML = `
+                // Sort by date descending (newest first)
+                transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+                
+                // Render the transactions list
+                transactionsTable.innerHTML = this.renderTransactionList(transactions);
+                
+            } catch (error) {
+                console.error('Error loading transactions:', error);
+                transactionsTable.innerHTML = `
                     <div class="error">
                         Error loading transactions: ${error.message}
                     </div>
                 `;
             }
+        } catch (error) {
+            console.error('Error in renderTransactions:', error);
+            const transactionsView = document.getElementById('transactions-view');
+            if (transactionsView) {
+                transactionsView.innerHTML = `
+                    <div class="error">
+                        An error occurred while loading transactions. Please try again.
+                    </div>
+                `;
+            }
+        }
+    }
+    
+    async filterTransactions() {
+        try {
+            const searchTerm = (document.getElementById('transaction-search')?.value || '').toLowerCase();
+            const filterValue = document.getElementById('transaction-filter')?.value || '';
+            
+            // Get all transactions
+            const transactions = await this.db.getAllItems('transactions');
+            
+            // Apply filters
+            let filtered = [...transactions];
+            
+            // Apply search term filter
+            if (searchTerm) {
+                filtered = filtered.filter(t => 
+                    (t.description && t.description.toLowerCase().includes(searchTerm)) ||
+                    (t.notes && t.notes.toLowerCase().includes(searchTerm)) ||
+                    (t.category && t.category.toLowerCase().includes(searchTerm))
+                );
+            }
+            
+            // Apply category filter
+            if (filterValue) {
+                filtered = filtered.filter(t => t.category === filterValue);
+            }
+            
+            // Sort by date (newest first)
+            filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
+            
+            // Update the transactions list
+            const transactionsTable = document.getElementById('transactions-table');
+            if (transactionsTable) {
+                transactionsTable.innerHTML = this.renderTransactionList(filtered);
+            }
+            
+        } catch (error) {
+            console.error('Error filtering transactions:', error);
         }
     }
     
@@ -1326,6 +1947,69 @@ class BudgetApp {
         document.getElementById('csv-import-modal').classList.add('modal--active');
         document.body.classList.add('modal-open');
     }
+    
+    // Common bank formats with their column mappings
+    static get BANK_FORMATS() {
+        return {
+        'chase': {
+            name: 'Chase Bank',
+            date: 'Posting Date',
+            description: 'Description',
+            amount: 'Amount',
+            type: 'Type',
+            skipLines: 0,
+            dateFormat: 'MM/DD/YYYY'
+        },
+        'bankofamerica': {
+            name: 'Bank of America',
+            date: 'Date',
+            description: 'Description',
+            amount: 'Amount',
+            type: 'Type',
+            skipLines: 0,
+            dateFormat: 'MM/DD/YYYY'
+        },
+        'wellsfargo': {
+            name: 'Wells Fargo',
+            date: 'Date',
+            description: 'Description',
+            amount: 'Amount',
+            type: 'Type',
+            skipLines: 0,
+            dateFormat: 'MM/DD/YYYY'
+        },
+        'citi': {
+            name: 'Citi Bank',
+            date: 'Date',
+            description: 'Description',
+            amount: 'Debit',
+            credit: 'Credit',
+            type: 'Type',
+            skipLines: 0,
+            dateFormat: 'MM/DD/YYYY'
+        }
+        };
+    }
+
+    // Detect bank format from CSV headers
+    detectBankFormat(headers) {
+        if (!headers || !headers.length) return null;
+        
+        const headerLine = headers.join(',').toLowerCase();
+        
+        for (const [key, format] of Object.entries(BudgetApp.BANK_FORMATS)) {
+            const requiredFields = [format.date, format.description, format.amount]
+                .filter(Boolean)
+                .map(f => f.toLowerCase());
+                
+            if (requiredFields.every(field => headerLine.includes(field))) {
+                console.log(`Detected ${format.name} format`);
+                return format;
+            }
+        }
+        
+        return null;
+    }
 
     // Handle file selection
     handleCSVFile(e) {
@@ -1334,9 +2018,9 @@ class BudgetApp {
             this.processCSVFile(file);
         }
     }
-    
+
     // Process CSV file and extract transactions
-    async processCSVFile(file) {
+    processCSVFile(file) {
         if (!file) return Promise.reject(new Error('No file provided'));
         
         return new Promise((resolve, reject) => {
@@ -1345,41 +2029,63 @@ class BudgetApp {
             reader.onload = (e) => {
                 try {
                     const text = e.target.result;
-                    const lines = text.split(/\r\n|\n/).filter(line => line.trim() !== '');
+                    const allLines = text.split(/\r\n|\n/).filter(line => line.trim() !== '');
                     
-                    if (lines.length < 2) {
+                    if (allLines.length < 2) {
                         throw new Error('CSV file is empty or has no data rows');
                     }
                     
                     // Parse header row to detect column indices
-                    const headers = this.parseCSVLine(lines[0]);
-                    const columnIndices = {
+                    const headers = this.parseCSVLine(allLines[0]);
+                    const bankFormat = this.detectBankFormat(headers);
+                    let skipLines = 0;
+                    let columnIndices = {
                         date: -1,
                         description: -1,
                         amount: -1,
-                        type: -1,
                         category: -1,
-                        account: -1
+                        account: -1,
+                        notes: -1,
+                        type: -1,
+                        credit: -1
                     };
                     
-                    // Map common column names to our expected format
-                    headers.forEach((header, index) => {
-                        const lowerHeader = header.toLowerCase().trim();
+                    // If bank format detected, use its column mapping
+                    if (bankFormat) {
+                        skipLines = bankFormat.skipLines || 0;
+                        columnIndices = {
+                            date: headers.findIndex(h => h.toLowerCase() === bankFormat.date.toLowerCase()),
+                            description: headers.findIndex(h => h.toLowerCase() === bankFormat.description.toLowerCase()),
+                            amount: headers.findIndex(h => h.toLowerCase() === bankFormat.amount.toLowerCase()),
+                            type: bankFormat.type ? 
+                                headers.findIndex(h => h.toLowerCase() === bankFormat.type.toLowerCase()) : -1,
+                            credit: bankFormat.credit ? 
+                                headers.findIndex(h => h.toLowerCase() === bankFormat.credit.toLowerCase()) : -1,
+                            category: -1,
+                            account: -1,
+                            notes: -1
+                        };
                         
-                        if (lowerHeader.includes('date')) {
-                            columnIndices.date = index;
-                        } else if (lowerHeader.includes('desc') || lowerHeader.includes('memo') || lowerHeader.includes('note')) {
-                            columnIndices.description = index;
-                        } else if (lowerHeader.includes('amount') || lowerHeader.includes('value') || lowerHeader.includes('total')) {
-                            columnIndices.amount = index;
-                        } else if (lowerHeader.includes('type') || lowerHeader.includes('transaction type')) {
-                            columnIndices.type = index;
-                        } else if (lowerHeader.includes('category') || lowerHeader.includes('cat')) {
-                            columnIndices.category = index;
-                        } else if (lowerHeader.includes('account') || lowerHeader.includes('bank') || lowerHeader.includes('source')) {
-                            columnIndices.account = index;
-                        }
-                    });
+                        console.log(`Using ${bankFormat.name} format with column mapping:`, columnIndices);
+                    } else {
+                        // Default column mapping (try to auto-detect)
+                        headers.forEach((header, index) => {
+                            const lowerHeader = header.toLowerCase();
+                            if (lowerHeader.includes('date')) {
+                                columnIndices.date = index;
+                            } else if (lowerHeader.includes('desc') || lowerHeader.includes('memo') || lowerHeader.includes('note')) {
+                                columnIndices.description = index;
+                            } else if (lowerHeader.includes('amount') || lowerHeader.includes('value') || lowerHeader.includes('total')) {
+                                columnIndices.amount = index;
+                            } else if (lowerHeader.includes('type') || lowerHeader.includes('transaction type')) {
+                                columnIndices.type = index;
+                            } else if (lowerHeader.includes('category') || lowerHeader.includes('cat')) {
+                                columnIndices.category = index;
+                            } else if (lowerHeader.includes('account') || lowerHeader.includes('bank') || lowerHeader.includes('source')) {
+                                columnIndices.account = index;
+                            }
+                        });
+                    }
                     
                     console.log('Detected column indices:', columnIndices);
                     
@@ -1387,9 +2093,9 @@ class BudgetApp {
                     const transactions = [];
                     const skippedRows = [];
                     
-                    for (let i = 1; i < lines.length; i++) {
+                    for (let i = 1; i < allLines.length; i++) {
                         try {
-                            const values = this.parseCSVLine(lines[i]);
+                            const values = this.parseCSVLine(allLines[i]);
                             if (values.length === 0) continue;
                             
                             // Parse date with fallback to today
@@ -2215,152 +2921,6 @@ class BudgetApp {
         } catch (error) {
             console.error('Error formatting date:', error);
             return dateString; // Return original string if date parsing fails
-        }
-    }
-
-    /**
-     * Render the calendar view with transactions
-     * @param {Date} [date] - Optional date to display (defaults to current month)
-     */
-    async renderCalendar(date = new Date()) {
-        const calendarView = document.getElementById('calendar-view');
-        if (!calendarView) return;
-
-        try {
-            // Set the current month and year
-            this.currentMonth = date.getMonth();
-            this.currentYear = date.getFullYear();
-            
-            // Get transactions for the current month
-            const startDate = new Date(this.currentYear, this.currentMonth, 1);
-            const endDate = new Date(this.currentYear, this.currentMonth + 1, 0);
-            
-            // Filter transactions for the current month
-            const monthlyTransactions = this.transactions.filter(t => {
-                const transactionDate = new Date(t.date);
-                return transactionDate >= startDate && transactionDate <= endDate;
-            });
-            
-            // Group transactions by day
-            const transactionsByDay = {};
-            monthlyTransactions.forEach(t => {
-                const day = new Date(t.date).getDate();
-                if (!transactionsByDay[day]) {
-                    transactionsByDay[day] = [];
-                }
-                transactionsByDay[day].push(t);
-            });
-            
-            // Generate calendar HTML
-            const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
-                              'July', 'August', 'September', 'October', 'November', 'December'];
-            
-            // Get first day of month (0-6, where 0 is Sunday)
-            const firstDay = new Date(this.currentYear, this.currentMonth, 1).getDay();
-            // Get number of days in month
-            const daysInMonth = new Date(this.currentYear, this.currentMonth + 1, 0).getDate();
-            
-            let calendarHTML = `
-                <div class="calendar-header">
-                    <h2>${monthNames[this.currentMonth]} ${this.currentYear}</h2>
-                    <div class="calendar-nav">
-                        <button id="prev-month" class="btn btn--icon">
-                            <i class="bi bi-chevron-left"></i>
-                        </button>
-                        <button id="today" class="btn btn--text">Today</button>
-                        <button id="next-month" class="btn btn--icon">
-                            <i class="bi bi-chevron-right"></i>
-                        </button>
-                    </div>
-                </div>
-                <div class="calendar-grid">
-                    <div class="calendar-weekday">Sun</div>
-                    <div class="calendar-weekday">Mon</div>
-                    <div class="calendar-weekday">Tue</div>
-                    <div class="calendar-weekday">Wed</div>
-                    <div class="calendar-weekday">Thu</div>
-                    <div class="calendar-weekday">Fri</div>
-                    <div class="calendar-weekday">Sat</div>
-            `;
-            
-            // Add empty cells for days before the first of the month
-            for (let i = 0; i < firstDay; i++) {
-                calendarHTML += '<div class="calendar-day empty"></div>';
-            }
-            
-            // Add days of the month
-            for (let day = 1; day <= daysInMonth; day++) {
-                const dayTransactions = transactionsByDay[day] || [];
-                const totalAmount = dayTransactions.reduce((sum, t) => sum + parseFloat(t.amount), 0);
-                const isToday = new Date().getDate() === day && 
-                               new Date().getMonth() === this.currentMonth && 
-                               new Date().getFullYear() === this.currentYear;
-                
-                calendarHTML += `
-                    <div class="calendar-day ${isToday ? 'today' : ''}">
-                        <div class="calendar-day-number">${day}</div>
-                        ${dayTransactions.length > 0 ? `
-                            <div class="calendar-day-transactions">
-                                ${dayTransactions.slice(0, 2).map(t => `
-                                    <div class="calendar-transaction ${t.amount < 0 ? 'expense' : 'income'}">
-                                        <span class="transaction-amount">${this.formatCurrency(t.amount)}</span>
-                                        <span class="transaction-category">${t.category || 'Uncategorized'}</span>
-                                    </div>
-                                `).join('')}
-                                ${dayTransactions.length > 2 ? `
-                                    <div class="calendar-more-transactions">
-                                        +${dayTransactions.length - 2} more
-                                    </div>
-                                ` : ''}
-                            </div>
-                        ` : ''}
-                        ${totalAmount !== 0 ? `
-                            <div class="calendar-day-total ${totalAmount < 0 ? 'negative' : 'positive'}">
-                                ${this.formatCurrency(totalAmount)}
-                            </div>
-                        ` : ''}
-                    </div>
-                `;
-            }
-            
-            // Close calendar grid
-            calendarHTML += '</div>';
-            
-            // Update the DOM
-            calendarView.innerHTML = calendarHTML;
-            
-            // Add event listeners for navigation
-            document.getElementById('prev-month')?.addEventListener('click', () => {
-                const prevMonth = new Date(this.currentYear, this.currentMonth - 1, 1);
-                this.renderCalendar(prevMonth);
-            });
-            
-            document.getElementById('next-month')?.addEventListener('click', () => {
-                const nextMonth = new Date(this.currentYear, this.currentMonth + 1, 1);
-                this.renderCalendar(nextMonth);
-            });
-            
-            document.getElementById('today')?.addEventListener('click', () => {
-                this.renderCalendar(new Date());
-            });
-            
-            // Add click handler for calendar days
-            calendarView.querySelectorAll('.calendar-day:not(.empty)').forEach(dayEl => {
-                dayEl.addEventListener('click', (e) => {
-                    const day = parseInt(dayEl.querySelector('.calendar-day-number').textContent);
-                    const selectedDate = new Date(this.currentYear, this.currentMonth, day);
-                    this.showTransactionsForDate(selectedDate);
-                });
-            });
-            
-        } catch (error) {
-            console.error('Error rendering calendar:', error);
-            calendarView.innerHTML = `
-                <div class="alert alert-danger">
-                    <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                    Error loading calendar. Please try again.
-                </div>
-            `;
         }
     }
     

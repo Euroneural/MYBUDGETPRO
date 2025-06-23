@@ -924,10 +924,21 @@ select.form-control {
 }
 
 /* Calendar */
+.calendar-container {
+  grid-column: 1 / -1;
+}
+
 .calendar-controls {
   display: flex;
   align-items: center;
-  gap: var(--space-16);
+  gap: var(--space-8);
+  flex-wrap: wrap;
+}
+
+.calendar-title {
+  margin: 0;
+  min-width: 180px;
+  text-align: center;
 }
 
 .calendar {
@@ -937,78 +948,338 @@ select.form-control {
   background: var(--color-border);
   border-radius: var(--radius-base);
   overflow: hidden;
+  margin-bottom: var(--space-16);
 }
 
-.calendar__header {
+.calendar__weekday {
   background: var(--color-secondary);
-  padding: var(--space-12);
+  padding: var(--space-8);
   text-align: center;
   font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-sm);
   color: var(--color-text);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .calendar__day {
   background: var(--color-surface);
-  min-height: 100px;
+  min-height: 120px;
   padding: var(--space-8);
   position: relative;
   cursor: pointer;
-  transition: background-color var(--duration-fast) var(--ease-standard);
+  transition: all var(--duration-fast) var(--ease-standard);
+  border: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
 }
 
 .calendar__day:hover {
   background: var(--color-secondary);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  z-index: 1;
 }
 
 .calendar__day--other-month {
   background: var(--color-secondary);
   color: var(--color-text-secondary);
+  opacity: 0.6;
 }
 
 .calendar__day--today {
-  background: var(--color-primary);
-  color: var(--color-btn-primary-text);
+  background: var(--color-primary-light);
+  border: 1px solid var(--color-primary);
+}
+
+.calendar__day--selected {
+  background: var(--color-primary-light);
+  border: 1px solid var(--color-primary);
 }
 
 .calendar__day-number {
-  font-weight: var(--font-weight-medium);
+  font-weight: var(--font-weight-semibold);
   margin-bottom: var(--space-4);
+  align-self: flex-end;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.calendar__day--today .calendar__day-number {
+  background: var(--color-primary);
+  color: var(--color-btn-primary-text);
 }
 
 .calendar__transactions {
-  font-size: var(--font-size-xs);
+  flex: 1;
+  overflow: hidden;
+  margin: 0 -4px;
 }
 
 .calendar__transaction {
-  background: var(--color-primary);
-  color: var(--color-btn-primary-text);
-  padding: var(--space-2) var(--space-4);
+  font-size: var(--font-size-xs);
+  padding: 2px 4px;
   border-radius: var(--radius-sm);
-  margin: var(--space-2) 0;
+  margin: 2px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 4px;
+}
+
+.calendar__transaction.income {
+  background: var(--color-success-light);
+  color: var(--color-success-dark);
+}
+
+.calendar__transaction.expense {
+  background: var(--color-error-light);
+  color: var(--color-error-dark);
+}
+
+.calendar__transaction-amount {
+  font-weight: var(--font-weight-medium);
+}
+
+.calendar__transaction-category {
+  font-size: 0.7em;
+  opacity: 0.8;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.calendar__transaction--forecasted {
-  background: var(--color-warning);
-  opacity: 0.7;
-}
-
-.calendar__total {
-  position: absolute;
-  bottom: var(--space-4);
-  right: var(--space-4);
+.calendar__day-total {
+  margin-top: auto;
+  padding-top: 4px;
+  border-top: 1px dashed var(--color-border);
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
+  text-align: right;
 }
 
-.calendar__total--positive {
+.calendar__day-total.positive {
   color: var(--color-success);
 }
 
-.calendar__total--negative {
+.calendar__day-total.negative {
   color: var(--color-error);
+}
+
+/* Mini Calendar */
+.mini-calendar {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  text-align: center;
+}
+
+.mini-calendar__header {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-8);
+}
+
+.mini-calendar__weekday {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  padding: var(--space-4);
+}
+
+.mini-calendar__day {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  transition: all var(--duration-fast) var(--ease-standard);
+}
+
+.mini-calendar__day:hover {
+  background: var(--color-secondary);
+}
+
+.mini-calendar__day--today {
+  background: var(--color-primary);
+  color: var(--color-btn-primary-text);
+  font-weight: var(--font-weight-bold);
+}
+
+.mini-calendar__day--selected {
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  font-weight: var(--font-weight-bold);
+}
+
+.mini-calendar__day--other-month {
+  opacity: 0.4;
+}
+
+/* Transaction List */
+.transaction-list {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.transaction-item {
+  display: flex;
+  align-items: center;
+  padding: var(--space-12);
+  border-bottom: 1px solid var(--color-border);
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+
+.transaction-item:last-child {
+  border-bottom: none;
+}
+
+.transaction-item:hover {
+  background-color: var(--color-secondary);
+}
+
+.transaction-item__icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: var(--space-12);
+  flex-shrink: 0;
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+}
+
+.transaction-item__details {
+  flex: 1;
+  min-width: 0;
+}
+
+.transaction-item__description {
+  font-weight: var(--font-weight-medium);
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.transaction-item__category {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.transaction-item__amount {
+  font-weight: var(--font-weight-semibold);
+  margin-left: var(--space-12);
+  white-space: nowrap;
+}
+
+.transaction-item.income .transaction-item__amount {
+  color: var(--color-success);
+}
+
+.transaction-item.expense .transaction-item__amount {
+  color: var(--color-error);
+}
+
+/* Summary Cards */
+.summary-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--space-16);
+  margin-bottom: var(--space-16);
+}
+
+.summary-card {
+  background: var(--color-surface);
+  border-radius: var(--radius-base);
+  padding: var(--space-16);
+  text-align: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.summary-card__label {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-4);
+}
+
+.summary-card__amount {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.2;
+}
+
+.summary-chart {
+  height: 200px;
+  margin-top: var(--space-16);
+}
+
+/* Responsive */
+@media (max-width: 992px) {
+  .grid--2-col {
+    grid-template-columns: 1fr;
+  }
+  
+  .calendar-sidebar {
+    margin-top: var(--space-24);
+  }
+  
+  .summary-cards {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .summary-cards {
+    grid-template-columns: 1fr;
+    gap: var(--space-12);
+  }
+  
+  .calendar__day {
+    min-height: 80px;
+    padding: 4px 2px;
+  }
+  
+  .calendar__transaction {
+    font-size: 10px;
+    padding: 1px 2px;
+  }
+  
+  .calendar__day-number {
+    width: 20px;
+    height: 20px;
+    font-size: 12px;
+  }
+}
+
+/* Empty State */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-32) var(--space-16);
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+
+.empty-state i {
+  font-size: 48px;
+  margin-bottom: var(--space-16);
+  opacity: 0.5;
 }
 
 /* Analytics grid */

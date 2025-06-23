@@ -131,25 +131,107 @@
             <div id="calendar-view" class="view">
                 <div class="view__header">
                     <h2>Transaction Calendar</h2>
-                    <div class="calendar-controls">
-                        <button class="btn btn--secondary" id="prev-month">&lt;</button>
-                        <span id="calendar-month-year"></span>
-                        <button class="btn btn--secondary" id="next-month">&gt;</button>
+                    <div class="view__actions">
+                        <button class="btn btn--primary" id="add-transaction">
+                            <i class="bi bi-plus-lg"></i> Add Transaction
+                        </button>
                     </div>
                 </div>
 
-                <div class="card">
-                    <div class="card__body">
-                        <div class="calendar" id="calendar"></div>
-                    </div>
-                </div>
+                <div class="grid grid--2-col">
+                    <!-- Main Calendar -->
+                    <div class="calendar-container">
+                        <div class="card">
+                            <div class="card__header">
+                                <div class="calendar-controls">
+                                    <button class="btn btn--icon" id="prev-year" title="Previous Year">
+                                        <i class="bi bi-chevron-double-left"></i>
+                                    </button>
+                                    <button class="btn btn--icon" id="prev-month" title="Previous Month">
+                                        <i class="bi bi-chevron-left"></i>
+                                    </button>
+                                    <h3 id="calendar-month-year" class="calendar-title"></h3>
+                                    <button class="btn btn--icon" id="next-month" title="Next Month">
+                                        <i class="bi bi-chevron-right"></i>
+                                    </button>
+                                    <button class="btn btn--icon" id="next-year" title="Next Year">
+                                        <i class="bi bi-chevron-double-right"></i>
+                                    </button>
+                                    <button id="today" class="btn btn--text">Today</button>
+                                </div>
+                            </div>
+                            <div class="card__body">
+                                <div class="calendar" id="calendar"></div>
+                            </div>
+                        </div>
 
-                <div class="card">
-                    <div class="card__header">
-                        <h3>Recurring Transactions</h3>
+                        
+                        <!-- Transaction Summary -->
+                        <div class="card">
+                            <div class="card__header">
+                                <h3>Transaction Summary</h3>
+                                <div class="view-options">
+                                    <div class="btn-group" role="group">
+                                        <button type="button" class="btn btn--sm btn--outline active" data-period="day">Day</button>
+                                        <button type="button" class="btn btn--sm btn--outline" data-period="week">Week</button>
+                                        <button type="button" class="btn btn--sm btn--outline" data-period="month">Month</button>
+                                        <button type="button" class="btn btn--sm btn--outline" data-period="year">Year</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card__body">
+                                <div class="summary-cards">
+                                    <div class="summary-card">
+                                        <div class="summary-card__label">Income</div>
+                                        <div class="summary-card__amount text-success" id="summary-income">$0.00</div>
+                                    </div>
+                                    <div class="summary-card">
+                                        <div class="summary-card__label">Expenses</div>
+                                        <div class="summary-card__amount text-error" id="summary-expenses">$0.00</div>
+                                    </div>
+                                    <div class="summary-card">
+                                        <div class="summary-card__label">Net</div>
+                                        <div class="summary-card__amount" id="summary-net">$0.00</div>
+                                    </div>
+                                </div>
+                                <div class="summary-chart">
+                                    <canvas id="calendar-summary-chart"></canvas>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="card__body">
-                        <div id="recurring-transactions"></div>
+
+                    <!-- Sidebar -->
+                    <div class="calendar-sidebar">
+                        <!-- Mini Calendar -->
+                        <div class="card">
+                            <div class="card__header">
+                                <h3>Mini Calendar</h3>
+                            </div>
+                            <div class="card__body">
+                                <div class="mini-calendar" id="mini-calendar"></div>
+                            </div>
+                        </div>
+
+                        <!-- Selected Day Transactions -->
+                        <div class="card">
+                            <div class="card__header">
+                                <h3 id="selected-date-title">Today's Transactions</h3>
+                                <div class="btn-group" role="group">
+                                    <button type="button" class="btn btn--sm btn--outline active" data-filter="all">All</button>
+                                    <button type="button" class="btn btn--sm btn--outline" data-filter="income">Income</button>
+                                    <button type="button" class="btn btn--sm btn--outline" data-filter="expense">Expenses</button>
+                                </div>
+                            </div>
+                            <div class="card__body">
+                                <div class="transaction-list" id="selected-day-transactions">
+                                    <div class="empty-state">
+                                        <i class="bi bi-calendar-check"></i>
+                                        <p>Select a date to view transactions</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

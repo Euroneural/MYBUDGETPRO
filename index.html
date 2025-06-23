@@ -143,25 +143,50 @@
             <div id="calendar-view" class="view">
                 <div class="view__header">
                     <h2>Transaction Calendar</h2>
-                    <div class="calendar-controls">
-                        <button class="btn btn--secondary" id="prev-month">&lt;</button>
-                        <span id="calendar-month-year"></span>
-                        <button class="btn btn--secondary" id="next-month">&gt;</button>
+                    <div class="view-actions">
+                        <button class="btn btn--primary" id="add-transaction-btn">Add Transaction</button>
                     </div>
                 </div>
 
-                <div class="card">
-                    <div class="card__body">
-                        <div class="calendar" id="calendar"></div>
+                <div class="calendar-container">
+                    <div class="calendar-main">
+                        <div id="calendar"></div>
                     </div>
-                </div>
-
-                <div class="card">
-                    <div class="card__header">
-                        <h3>Recurring Transactions</h3>
-                    </div>
-                    <div class="card__body">
-                        <div id="recurring-transactions"></div>
+                    
+                    <div class="calendar-sidebar">
+                        <div class="card">
+                            <div class="card__header">
+                                <h3>Selected Date</h3>
+                                <div id="selected-date"></div>
+                            </div>
+                            <div class="card__body">
+                                <div id="selected-date-transactions">
+                                    <p class="text-muted">Select a date to view transactions</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="card">
+                            <div class="card__header">
+                                <h3>Summary</h3>
+                            </div>
+                            <div class="card__body">
+                                <div id="calendar-summary">
+                                    <!-- Summary will be populated by JavaScript -->
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="card">
+                            <div class="card__header">
+                                <h3>Mini Calendar</h3>
+                            </div>
+                            <div class="card__body">
+                                <div id="mini-calendar">
+                                    <!-- Mini calendar will be populated by JavaScript -->
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
