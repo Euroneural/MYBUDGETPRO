@@ -1,0 +1,49 @@
+Make sure to keep all existing features, styling and functionality of the app, only improve and add new features.
+
+commit git
+
+make the import csv file feature work; it doesn't let me select a file
+
+create a universal semantic and exact search for transactions, that show matching transactions, 
+each transaction amount, the total of all the transactions in the search result,
+if the transactions were the same but changed, how much the changes are,
+when the changes happened, how much the changes are based on sesonality, 
+what future changes are predicted and when based on historical data,
+And a few helpful interactive charts and insights based on the search results.
+
+commit git
+Make sure to keep all existing features, styling and functionality of the app, only improve and add new features.
+
+identify recurring transactions and show them on the calenedar, also predict future transactions
+based on historical data date and amount based on sesonality and show the predicted dates and amounts on the calenedar
+Show totals spent for the day, week, month, year, and total. on the calendar. and show the predicted totals for the same varibles.
+Make the predictions based on sesonality and historical data as accurate as possible. account for seaonsality, inflation, tarrifs, etc.
+
+commit git
+Make sure to keep all existing features, styling and functionality of the app, only improve and add new features.
+
+add an anlysis tab that shows the following:
+
+categories, accounts, and patterns.
+
+think of all of the helpful and sophisticated proactive analysis features and add them to this app.
+
+commit git
+Make sure to keep all existing features, styling and functionality of the app, only improve and add new features.
+
+when I import a new csv file that has some of the same data as existing transactions, 
+make the app ignore the transactions that are the same and only add the new transactions.
+
+add smart categories to the app that can be used to categorize transactions based on the transaction description.
+
+allow me to delete individual transactions, or delete all transactions, or bulk delete transactions and update the totals and predictions based on the deleted transactions.
+
+allow me to edit individual transactions, or edit all transactions, or bulk edit transactions and update the totals and predictions based on the edited transactions.
+
+commit git
+Make sure to keep all existing features, styling and functionality of the app, only improve and add new features.
+
+make sure all charts and visuals are interactive and responsive to the data and predictions. 
+make sure all prompts are clear and concise and provide helpful insights and analysis.
+make sure app prompts and charts are fully working and not placeholders.
+make sure all charts and visuals work on mobile and desktop

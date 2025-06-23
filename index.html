@@ -6,8 +6,13 @@
     <title>Budget Pro - YNAB-Inspired Budgeting App</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Local Database -->
+    <script type="module" src="local-db.js"></script>
+    <!-- App -->
+    <script type="module" src="app.js"></script>
 </head>
 <body>
+    <!-- Main App Container -->
     <div class="app-container">
         <!-- Navigation -->
         <nav class="nav">
@@ -20,6 +25,7 @@
                 <button class="nav__link" data-view="transactions">Transactions</button>
                 <button class="nav__link" data-view="calendar">Calendar</button>
                 <button class="nav__link" data-view="analytics">Analytics</button>
+                <button class="nav__link" data-view="search">Search & Insights</button>
             </div>
         </nav>
 
@@ -194,6 +200,87 @@
                         </div>
                         <div class="card__body">
                             <canvas id="budget-performance-chart" width="400" height="200"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Search & Insights View -->
+            <div id="search-view" class="view">
+                <div class="view__header">
+                    <h2>Transaction Search & Insights</h2>
+                </div>
+                <div class="search-container">
+                    <div class="search-box">
+                        <input type="text" id="transaction-search" placeholder="Search transactions by description, amount, or category..." class="search-input">
+                        <button id="search-btn" class="btn btn--primary">Search</button>
+                        <div class="search-options">
+                            <label><input type="checkbox" id="exact-match" checked> Exact match</label>
+                            <label><input type="checkbox" id="include-notes"> Include notes</label>
+                            <select id="time-range">
+                                <option value="all">All Time</option>
+                                <option value="year">This Year</option>
+                                <option value="6months">Last 6 Months</option>
+                                <option value="month" selected>This Month</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="search-results">
+                        <div class="search-summary">
+                            <h3>Search Results</h3>
+                            <div class="search-stats">
+                                <span id="result-count">0</span> transactions found | 
+                                Total: <span id="result-total">$0.00</span>
+                            </div>
+                        </div>
+                        <div class="search-insights">
+                            <div class="insight-cards">
+                                <div class="card">
+                                    <div class="card__body">
+                                        <h4>Spending Trend</h4>
+                                        <div class="chart-container">
+                                            <canvas id="search-trend-chart"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="card">
+                                    <div class="card__body">
+                                        <h4>Category Breakdown</h4>
+                                        <div class="chart-container">
+                                            <canvas id="search-category-chart"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card">
+                                <div class="card__body">
+                                    <h4>Transaction History</h4>
+                                    <div class="table-responsive">
+                                        <table class="transactions-table" id="search-results-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Date</th>
+                                                    <th>Description</th>
+                                                    <th>Category</th>
+                                                    <th>Amount</th>
+                                                    <th>Change</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="search-results-body">
+                                                <!-- Results will be populated here -->
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card">
+                                <div class="card__body">
+                                    <h4>Insights & Predictions</h4>
+                                    <div id="search-insights">
+                                        <!-- Insights will be populated here -->
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
