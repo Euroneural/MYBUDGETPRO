@@ -83,8 +83,7 @@ class SearchManager {
             searchBtn.addEventListener('click', safeSearch);
             console.log('Search button event listener added');
         }
-        
-        if (searchInput) {
+                if (searchInput) {
             // Remove any existing event listeners to prevent duplicates
             searchInput.removeEventListener('keypress', this.handleSearchKeyPress);
             
@@ -97,13 +96,6 @@ class SearchManager {
                     if (searchTerm.length >= 2) {
                         console.log('Input changed, performing search for:', searchTerm);
                         safeSearch();
-                    } else if (searchTerm.length === 0) {
-                        // Clear results if search is empty
-                        console.log('Search input cleared');
-                        self.searchResults = [];
-                        safeRenderResults();
-                        self.renderSearchCharts();
-                        self.generateSearchInsights();
                     }
                 }, 500); // 500ms debounce delay
             });
@@ -114,6 +106,18 @@ class SearchManager {
                     console.log('Enter key pressed in search input');
                     clearTimeout(searchTimeout); // Clear any pending debounced search
                     safeSearch();
+                }
+            });
+            
+            // Handle clearing the search
+            searchInput.addEventListener('change', (e) => {
+                const searchTerm = e.target.value.trim();
+                if (searchTerm.length === 0) {
+                    console.log('Search input cleared');
+                    self.searchResults = [];
+                    safeRenderResults();
+                    self.renderSearchCharts();
+                    self.generateSearchInsights();
                 }
             });
             
@@ -164,10 +168,12 @@ class SearchManager {
         }
         
         const searchTerm = searchInput.value.trim();
-        if (!searchTerm) {
-            console.log('No search term entered');
+        if (searchTerm.length < 2) {
+            console.log('Search term too short');
             return;
         }
+        
+        console.log('Searching for:', searchTerm);
         
         console.log('Searching for:', searchTerm);
         
@@ -199,35 +205,25 @@ class SearchManager {
                 case 'month':
                     startDate = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
                     break;
-                case '6months':
-                    startDate = new Date(today.getFullYear(), today.getMonth() - 5, 1).toISOString().split('T')[0];
-                    break;
                 case 'year':
                     startDate = new Date(today.getFullYear(), 0, 1).toISOString().split('T')[0];
                     break;
+                case 'custom':
+                    const customStartDate = document.getElementById('custom-start-date')?.value;
+                    const customEndDate = document.getElementById('custom-end-date')?.value;
+                    if (customStartDate) startDate = customStartDate;
+                    if (customEndDate) endDate = customEndDate;
+                    break;
+                case '6months':
+                    startDate = new Date(today.getFullYear(), today.getMonth() - 5, 1).toISOString().split('T')[0];
+                    break;
                 default: // 'all'
-                    startDate = '1970-01-01';
+                    startDate = null; // No date filter
+                    break;
             }
             
-            console.log('Date range:', { startDate, endDate });
-            
-            let transactions;
-            try {
-                console.log(`Fetching transactions from ${startDate} to ${endDate}`);
-                transactions = await this.app.db.getTransactions({
-                    startDate,
-                    endDate
-                });
-                
-                if (!Array.isArray(transactions)) {
-                    throw new Error('Invalid transactions data received from database');
-                }
-                
-                console.log(`Found ${transactions.length} transactions in date range`);
-            } catch (error) {
-                console.error('Error fetching transactions:', error);
-                throw new Error('Could not load transactions. Please try again.');
-            }
+            // Get transactions from app
+            const transactions = this.app.transactions;
             
             // Process search terms
             const searchTerms = searchTerm.toLowerCase()
@@ -244,7 +240,7 @@ class SearchManager {
             console.log(`Searching with terms:`, searchTerms);
             
             // Filter transactions based on search term with detailed logging
-            this.searchResults = transactions.filter(transaction => {
+            const filteredTransactions = transactions.filter(transaction => {
                 try {
                     if (!transaction) {
                         console.warn('Encountered undefined transaction in search');
@@ -277,45 +273,23 @@ class SearchManager {
                 }
             });
             
-            console.log(`Found ${this.searchResults.length} matching transactions`);
-            
-            // Calculate search statistics
-            this.calculateSearchStats();
-            
-            // Debug: Log before rendering
-            console.log('About to render search results');
-            
-            // Render results with error handling for each step
-            try {
-                this.renderSearchResults();
-                console.log('Search results rendered');
-                
-                this.renderSearchCharts();
-                console.log('Search charts rendered');
-                
-                this.generateSearchInsights();
-                console.log('Search insights generated');
-            } catch (renderError) {
-                console.error('Error during search result rendering:', renderError);
-                throw renderError; // Re-throw to be caught by the outer try-catch
+            // Filter by date range if applicable
+            if (startDate && endDate) {
+                try {
+                    const filteredByDate = filteredTransactions.filter(transaction => {
+                        const transactionDate = new Date(transaction.date);
+                        const start = new Date(startDate);
+                        const end = new Date(endDate);
+                        return transactionDate >= start && transactionDate <= end;
+                    });
+                } catch (error) {
+                    console.error('Error filtering transactions by date:', error);
+                    return filteredTransactions; // Return all transactions if date filtering fails
+                }
             }
-            
-        } catch (error) {
-            console.error('Error performing search:', error);
-            // Show error to user
-            const tbody = document.getElementById('search-results-body');
-            if (tbody) {
-                tbody.innerHTML = `
-                    <tr>
-                        <td colspan="5" class="text-center text-error">Error performing search: ${error.message}</td>
-                    </tr>`;
-            }
-        } finally {
-            // Reset button state
-            const searchBtn = document.getElementById('search-btn');
             if (searchBtn) {
                 searchBtn.disabled = false;
-                searchBtn.textContent = 'Search';
+                searchBtn.innerHTML = '<i class="bi bi-search"></i> Search';
             }
         }
     }
@@ -349,6 +323,55 @@ class SearchManager {
             const validTransactions = this.searchResults
                 .filter(transaction => {
                     if (!transaction) return false;
+                });
+            
+            // Calculate statistics
+            const stats = validTransactions.reduce((acc, transaction) => {
+                const amount = parseFloat(transaction.amount) || 0;
+                
+                // Update totals
+                acc.totalAmount += amount;
+                if (amount > 0) {
+                    acc.incomeTotal += amount;
+                } else {
+                    acc.expenseTotal += Math.abs(amount);
+                }
+                
+                // Update min/max
+                if (amount < acc.minAmount) acc.minAmount = amount;
+                if (amount > acc.maxAmount) acc.maxAmount = amount;
+                
+                // Update transaction count
+                acc.transactionCount++;
+                
+                // Update date range
+                const date = new Date(transaction.date);
+                if (!acc.firstTransactionDate || date < new Date(acc.firstTransactionDate)) {
+                    acc.firstTransactionDate = date.toISOString().split('T')[0];
+                }
+                if (!acc.lastTransactionDate || date > new Date(acc.lastTransactionDate)) {
+                    acc.lastTransactionDate = date.toISOString().split('T')[0];
+                }
+                
+                // Add to transaction dates
+                acc.transactionDates.push(date.toISOString().split('T')[0]);
+                
+                return acc;
+            }, { ...defaultStats });
+            
+            // Calculate average
+            stats.averageAmount = stats.transactionCount > 0 ? 
+                stats.totalAmount / stats.transactionCount : 0;
+            
+            // Update search stats
+            this.searchStats = stats;
+            
+        } catch (error) {
+            console.error('Error calculating search statistics:', error);
+            // Reset to default stats on error
+            this.searchStats = { ...defaultStats };
+        }
+    }
                     const amount = parseFloat(transaction.amount);
                     return !isNaN(amount);
                 });
@@ -1099,6 +1122,244 @@ class BudgetApp {
         }
     }
     
+    initializeEventListeners() {
+        try {
+            // CSV import
+            const csvImportBtn = document.getElementById('csv-import-btn');
+            if (csvImportBtn) {
+                csvImportBtn.addEventListener('click', () => {
+                    document.getElementById('csv-file')?.click();
+                });
+            }
+
+            // Transaction buttons
+            const transactionButtons = document.querySelectorAll('.transaction-button');
+            transactionButtons.forEach(button => {
+                button.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const id = button.dataset.transactionId;
+                    if (id) {
+                        this.handleTransactionSubmit(button);
+                    }
+                });
+            });
+
+            // Category buttons
+            const categoryButtons = document.querySelectorAll('.category-button');
+            categoryButtons.forEach(button => {
+                button.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const id = button.dataset.categoryId;
+                    if (id) {
+                        this.handleCategorySubmit(button);
+                    }
+                });
+            });
+
+            // Account buttons
+            const accountButtons = document.querySelectorAll('.account-button');
+            accountButtons.forEach(button => {
+                button.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const id = button.dataset.accountId;
+                    if (id) {
+                        this.handleAccountSubmit(button);
+                    }
+                });
+            });
+
+            // Budget buttons
+            const budgetButtons = document.querySelectorAll('.budget-button');
+            budgetButtons.forEach(button => {
+                button.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const id = button.dataset.budgetId;
+                    if (id) {
+                        this.handleBudgetSubmit(button);
+                    }
+                });
+            });
+
+            // File input
+            const fileInput = document.getElementById('csv-file');
+            if (fileInput) {
+                fileInput.addEventListener('change', (e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                        this.processCSVFile(file);
+                    }
+                });
+            }
+
+            // CSV dropzone
+            const dropzone = document.getElementById('csv-dropzone');
+            if (dropzone) {
+                dropzone.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    dropzone.classList.add('csv-upload__dropzone--dragover');
+                });
+                dropzone.addEventListener('dragleave', () => {
+                    dropzone.classList.remove('csv-upload__dropzone--dragover');
+                });
+                dropzone.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    dropzone.classList.remove('csv-upload__dropzone--dragover');
+                    const files = e.dataTransfer.files;
+                    if (files.length > 0) {
+                        this.processCSVFile(files[0]);
+                    }
+                });
+            }
+        } catch (error) {
+            console.error('Error initializing event listeners:', error);
+            throw error;
+        }
+    };
+
+    async processCSVFile(file) {
+        if (!file) return Promise.reject(new Error('No file provided'));
+
+        return new Promise(async (resolve, reject) => {
+            try {
+                const reader = new FileReader();
+                const transactions = [];
+                const skippedRows = [];
+                const format = this.getCSVFormat();
+
+                reader.onload = async (e) => {
+                    try {
+                        const text = e.target.result;
+                        const rows = text.split('\n');
+
+                        // Skip header row
+                        for (let i = 1; i < rows.length; i++) {
+                            const row = rows[i].trim();
+                            if (!row) continue;
+
+                            const values = row.split(',');
+                            if (values.length < format.date + 1) {
+                                skippedRows.push({ line: i + 1, reason: 'Insufficient columns' });
+                                continue;
+                            }
+
+                            try {
+                                // Parse date
+                                let transactionDate;
+                                try {
+                                    transactionDate = this.parseDate(values[format.date]);
+                                } catch (error) {
+                                    console.error(`Error parsing date in row ${i + 1}:`, error);
+                                    skippedRows.push({ line: i + 1, reason: error.message });
+                                    continue;
+                                }
+
+                                // Parse amount
+                                let amount;
+                                try {
+                                    amount = this.parseAmount(values[format.amount]);
+                                } catch (error) {
+                                    console.error(`Error parsing amount in row ${i + 1}:`, error);
+                                    skippedRows.push({ line: i + 1, reason: error.message });
+                                    continue;
+                                }
+
+                                // Create transaction object
+                                const transaction = {
+                                    id: crypto.randomUUID(),
+                                    date: transactionDate.toISOString().split('T')[0],
+                                    description: values[format.description] || 'Imported Transaction',
+                                    amount: amount,
+                                    category: 'Uncategorized',
+                                    account: format.account || 'Imported',
+                                    notes: '',
+                                    createdAt: new Date().toISOString()
+                                };
+
+                                transactions.push(transaction);
+                            } catch (error) {
+                                console.error(`Error processing row ${i + 1}:`, error);
+                                skippedRows.push({ line: i + 1, reason: error.message });
+                            }
+                        }
+
+                        // Show preview
+                        this.showCSVPreview(transactions, skippedRows);
+                        resolve({ transactions, skippedRows });
+                    } catch (error) {
+                        console.error('Error processing CSV:', error);
+                        reject(error);
+                    }
+                };
+
+                reader.onerror = (error) => {
+                    console.error('Error reading file:', error);
+                    reject(new Error('Error reading file'));
+                };
+
+                reader.readAsText(file);
+            } catch (error) {
+                console.error('Error setting up CSV processing:', error);
+                reject(error);
+            }
+        });
+    };
+
+    async confirmCSVImport(transactions) {
+        try {
+            if (!transactions || !Array.isArray(transactions)) {
+                throw new Error('No transactions provided for import');
+            }
+
+            // Save transactions to database
+            await this.db.transactions.bulkAdd(transactions);
+
+            // Update local state
+            this.transactions = await this.db.transactions.getAll();
+
+            // Update UI
+            this.renderTransactions();
+            this.renderStats();
+            this.renderCharts();
+
+            // Show success message
+            this.showNotification('CSV import successful!', 'success');
+
+            // Close preview modal
+            const modal = document.getElementById('csv-preview-modal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+        } catch (error) {
+            console.error('Error confirming CSV import:', error);
+            this.showNotification(`Error importing CSV: ${error.message}`, 'error');
+            throw error;
+        }
+    };
+
+    showError(message) {
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'alert alert-danger alert-dismissible fade show';
+        errorDiv.innerHTML = `
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        document.body.appendChild(errorDiv);
+        setTimeout(() => errorDiv.remove(), 5000);
+    };
+
+    showNotification(message, type = 'info') {
+        const notificationDiv = document.createElement('div');
+        notificationDiv.className = `alert alert-${type} alert-dismissible fade show`;
+        notificationDiv.innerHTML = `
+            <i class="bi bi-info-circle-fill me-2"></i>
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        document.body.appendChild(notificationDiv);
+        setTimeout(() => notificationDiv.remove(), 5000);
+    };
+
     async initializeApp() {
         try {
             console.log('Initializing app...');
@@ -1106,22 +1367,649 @@ class BudgetApp {
             // Initialize the database first
             await this.db.initializeDB();
             this.dbInitialized = true;
-            
-            // Load initial data
-            await this.loadTransactions();
-            await this.loadBudgetCategories();
-            await this.loadAccounts();
-            
-            // Set up real-time listeners
-            this.setupRealtimeListeners();
-            
-            // Initial render
-            this.renderCurrentView();
-            
-            console.log('App initialized successfully');
         } catch (error) {
-            console.error('Failed to initialize app:', error);
+            console.error('Error initializing app:', error);
+            throw error;
         }
+    }
+
+    async processCSVFile(file) {
+        if (!file) return Promise.reject(new Error('No file provided'));
+        
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            
+            reader.onload = (e) => {
+                try {
+                    const text = e.target.result;
+                    const allLines = text.split(/\r?\n/).filter(line => line.trim() !== '');
+                    
+                    if (allLines.length < 2) {
+                        throw new Error('CSV file must have at least one data row');
+                    }
+                    
+                    const transactions = [];
+                    const skippedRows = [];
+                    
+                    // Process header row
+                    const header = this.parseCSVLine(allLines[0]);
+                    const format = this.detectCSVFormat(header);
+                    
+                    // Process data rows
+                    for (let i = 1; i < allLines.length; i++) {
+                        try {
+                            const values = this.parseCSVLine(allLines[i]);
+                            if (values.length === 0) continue;
+                            
+                            // Parse date with fallback to today
+                            let transactionDate;
+                            try {
+                                transactionDate = this.parseDate(values[format.date], format.dateFormat);
+                            } catch (error) {
+                                transactionDate = new Date();
+                            }
+                            
+                            // Parse amount
+                            let amount;
+                            try {
+                                amount = this.parseAmount(values[format.amount]);
+                            } catch (error) {
+                                amount = 0;
+                            }
+                            
+                            // Create transaction object
+                            const transaction = {
+                                id: crypto.randomUUID(),
+                                date: transactionDate.toISOString().split('T')[0],
+                                description: values[format.description] || 'Imported Transaction',
+                                amount: amount,
+                                category: 'Uncategorized',
+                                account: format.account || 'Imported',
+                                notes: '',
+                                createdAt: new Date().toISOString()
+                            };
+                            
+                            transactions.push(transaction);
+                        } catch (error) {
+                            console.error(`Error processing row ${i + 1}:`, error);
+                            skippedRows.push({ line: i + 1, reason: error.message || 'Error processing row' });
+                        }
+                    }
+                    
+                    // Show preview
+                    this.showCSVPreview(transactions, skippedRows);
+                    resolve({ transactions, skippedRows });
+                } catch (error) {
+                    console.error('Error processing CSV:', error);
+                    reject(error);
+                }
+            };
+            
+            reader.onerror = (error) => {
+                console.error('Error reading file:', error);
+                reject(new Error('Error reading file'));
+            };
+            
+            reader.readAsText(file);
+        });
+    };
+
+    async confirmCSVImport() {
+        try {
+            // Get the transactions from the preview
+            const previewModal = document.getElementById('csv-preview-modal');
+            if (!previewModal) {
+                this.showNotification('CSV preview modal not found', 'error');
+                return;
+    };
+
+    // Transaction buttons
+    const transactionButtons = document.querySelectorAll('.transaction-button');
+    transactionButtons.forEach(button => {
+        button.addEventListener('click', (e) => {
+            e.preventDefault();
+            const id = button.dataset.transactionId;
+            if (id) {
+                this.handleTransactionSubmit(button);
+            }
+        });
+    });
+
+    // Category buttons
+    const categoryButtons = document.querySelectorAll('.category-button');
+    categoryButtons.forEach(button => {
+        button.addEventListener('click', (e) => {
+            e.preventDefault();
+            const id = button.dataset.categoryId;
+            if (id) {
+                this.handleCategorySubmit(button);
+            }
+        });
+    });
+
+    // Account buttons
+    const accountButtons = document.querySelectorAll('.account-button');
+    accountButtons.forEach(button => {
+        button.addEventListener('click', (e) => {
+            e.preventDefault();
+            const id = button.dataset.accountId;
+            if (id) {
+                this.handleAccountSubmit(button);
+            }
+        });
+    });
+
+    // Budget buttons
+    const budgetButtons = document.querySelectorAll('.budget-button');
+    budgetButtons.forEach(button => {
+        button.addEventListener('click', (e) => {
+            e.preventDefault();
+            const id = button.dataset.budgetId;
+            if (id) {
+                this.handleBudgetSubmit(button);
+            }
+        });
+    });
+
+    // File input
+    const fileInput = document.getElementById('csv-file');
+    if (fileInput) {
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                this.processCSVFile(file);
+            }
+        });
+    }
+}
+
+async processCSVFile(file) {
+    if (!file) return Promise.reject(new Error('No file provided'));
+
+    return new Promise(async (resolve, reject) => {
+        const reader = new FileReader();
+        const transactions = [];
+        const skippedRows = [];
+        const format = this.getCSVFormat();
+
+        reader.onload = async (e) => {
+            try {
+                const text = e.target.result;
+                const rows = text.split('\n');
+
+                // Skip header row
+                for (let i = 1; i < rows.length; i++) {
+                    const row = rows[i].trim();
+                    if (!row) continue;
+
+                    const values = row.split(',');
+                    if (values.length < format.date + 1) {
+                        skippedRows.push({ line: i + 1, reason: 'Insufficient columns' });
+                        continue;
+                    }
+
+                    try {
+                        // Parse date
+                        let transactionDate;
+                        try {
+                            transactionDate = this.parseDate(values[format.date]);
+                        } catch (error) {
+                            transactionDate = new Date();
+                        }
+
+                        // Parse amount
+                        let amount;
+                        try {
+                            amount = this.parseAmount(values[format.amount]);
+                        } catch (error) {
+                            amount = 0;
+                        }
+
+                        // Create transaction object
+                        const transaction = {
+                            id: crypto.randomUUID(),
+                            date: transactionDate.toISOString().split('T')[0],
+                            description: values[format.description] || 'Imported Transaction',
+                            amount: amount,
+                            category: 'Uncategorized',
+                            account: format.account || 'Imported',
+                            notes: '',
+                            createdAt: new Date().toISOString()
+                        };
+
+                        transactions.push(transaction);
+                    } catch (error) {
+                        console.error(`Error processing row ${i + 1}:`, error);
+                        skippedRows.push({ line: i + 1, reason: error.message || 'Error processing row' });
+                    }
+                }
+
+                // Show preview of transactions
+                this.showCSVPreview(transactions, skippedRows);
+                resolve({ transactions, skippedRows });
+            } catch (error) {
+                console.error('Error processing CSV file:', error);
+                reject(error);
+            }
+        };
+
+        reader.onerror = (error) => {
+            console.error('Error reading file:', error);
+            reject(new Error('Error reading file. Please try again.'));
+        };
+
+        reader.readAsText(file);
+    });
+}
+
+async confirmCSVImport() {
+    try {
+        // Get the transactions from the preview
+        const previewModal = document.getElementById('csv-preview-modal');
+        // ... (rest of the code remains the same)
+        if (!previewModal) {
+            this.showNotification('CSV preview modal not found', 'error');
+            return;
+            transactions.forEach(t => {
+                const amount = parseFloat(t.amount);
+                if (amount > 0) {
+                    income += amount;
+                } else {
+                    expenses += Math.abs(amount);
+                }
+            });
+            
+            // Update summary elements
+            const summaryEl = document.getElementById('calendar-summary');
+            if (summaryEl) {
+                summaryEl.innerHTML = `
+                    <div class="calendar-summary-item">
+                        <span class="calendar-summary-label">Income:</span>
+                        <span class="calendar-summary-value">${this.formatCurrency(income)}</span>
+                    </div>
+                    <div class="calendar-summary-item">
+                        <span class="calendar-summary-label">Expenses:</span>
+                        <span class="calendar-summary-value">${this.formatCurrency(expenses)}</span>
+                    </div>
+                    <div class="calendar-summary-item">
+                        <span class="calendar-summary-label">Net:</span>
+                        <span class="calendar-summary-value ${income - expenses >= 0 ? 'positive' : 'negative'}">
+                            ${this.formatCurrency(income - expenses)}
+                        </span>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            console.error('Error updating calendar summary:', error);
+        }
+    }
+
+    // Select a date
+    selectDate(date) {
+        this.selectedDate = date;
+        this.renderCalendar(date);
+        this.renderTransactionsForDate(date);
+    }
+
+    // Render current view
+    renderCurrentView() {
+        const view = this.currentView;
+        
+        switch (view) {
+            case 'dashboard':
+                this.renderDashboard();
+                break;
+            case 'budget':
+                this.renderBudget();
+                break;
+            case 'transactions':
+                this.renderTransactions();
+                break;
+            case 'calendar':
+                this.renderCalendar();
+                break;
+            case 'search':
+                this.renderSearch();
+                break;
+            default:
+                this.renderDashboard();
+        }
+    }
+
+    async loadBudgetCategories() {
+        try {
+            this.budgetCategories = await this.db.getAllItems('budgetCategories') || [];
+            return this.budgetCategories;
+        } catch (error) {
+            console.error('Failed to load budget categories:', error);
+            return [];
+        }
+    }
+
+    // Render transactions view
+    async renderTransactions() {
+        try {
+            const transactionsView = document.getElementById('transactions-view');
+            if (!transactionsView) {
+                console.error('Transactions view container not found');
+                return;
+            }
+
+            // Show loading state
+            transactionsView.innerHTML = `
+                <div class="loading">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p>Loading transactions...</p>
+                </div>`;
+
+            // Get all transactions
+            const transactions = await this.db.getAllItems('transactions');
+            if (!transactions) {
+                console.error('No transactions found in database');
+                transactionsView.innerHTML = `
+                    <div class="no-transactions">
+                        <p>No transactions found.</p>
+                        <button class="btn btn-primary" onclick="window.app.showTransactionModal()">
+                            Add New Transaction
+                        </button>
+                    </div>`;
+                return;
+            }
+
+            // Sort transactions by date (newest first)
+            const sortedTransactions = [...transactions].sort((a, b) => 
+                new Date(b.date) - new Date(a.date)
+            );
+
+            // Create table header
+            let html = `
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Description</th>
+                            <th>Amount</th>
+                            <th>Category</th>
+                            <th>Account</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+
+            // Add transactions to table
+            sortedTransactions.forEach(t => {
+                const amount = parseFloat(t.amount);
+                const amountClass = amount >= 0 ? 'text-success' : 'text-danger';
+                const amountStr = this.formatCurrency(amount);
+                
+                html += `
+                    <tr>
+                        <td>${new Date(t.date).toLocaleDateString()}</td>
+                        <td>${t.description}</td>
+                        <td class="text-end ${amountClass}">${amountStr}</td>
+                        <td>${t.category || 'Uncategorized'}</td>
+                        <td>${t.account || 'Unknown'}</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" 
+                                    onclick="window.app.editTransaction('${t.id}')">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button class="btn btn-sm btn-danger" 
+                                    onclick="window.app.confirmAndDeleteTransaction('${t.id}', new Date('${t.date}'))">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </td>
+                    </tr>`;
+            });
+
+            // Close table
+            html += `</tbody></table>`;
+
+            // Add filters
+            html += `
+                <div class="filters mt-3">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <input type="text" 
+                                   class="form-control" 
+                                   id="transaction-search" 
+                                   placeholder="Search transactions...">
+                        </div>
+                        <div class="col-md-4">
+                            <select class="form-select" id="transaction-filter">
+                                <option value="">All Categories</option>
+                                ${this.budgetCategories.map(cat => 
+                                    `<option value="${cat.name}">${cat.name}</option>`
+                                ).join('')}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <button class="btn btn-primary" onclick="window.app.showTransactionModal()">
+                                Add New Transaction
+                            </button>
+                        </div>
+                    </div>
+                </div>`;
+
+            // Update the view
+            transactionsView.innerHTML = html;
+
+        } catch (error) {
+            console.error('Error rendering transactions:', error);
+            const errorHtml = `
+                <div class="alert alert-danger">
+                    <p>Error loading transactions: ${error.message}</p>
+                    <button class="btn btn-primary" onclick="window.app.renderTransactions()">
+                        Try Again
+                    </button>
+                </div>`;
+            transactionsView.innerHTML = errorHtml;
+        }
+    }
+
+    async loadAccounts() {
+        try {
+            this.accounts = await this.db.getAllItems('accounts') || [];
+            return this.accounts;
+        } catch (error) {
+            console.error('Failed to load accounts:', error);
+            return [];
+        }
+    }
+
+    // Render budget view
+    async renderBudget() {
+        try {
+            const budgetView = document.getElementById('budget-view');
+            if (!budgetView) {
+                console.error('Budget view container not found');
+                return;
+            }
+
+            // Show loading state
+            budgetView.innerHTML = `
+                <div class="loading">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p>Loading budget data...</p>
+                </div>`;
+
+            // Get current month's budget categories
+            const currentMonth = new Date().getMonth();
+            const currentYear = new Date().getFullYear();
+
+            // Get all transactions for current month
+            const startDate = new Date(currentYear, currentMonth, 1);
+            const endDate = new Date(currentYear, currentMonth + 1, 0);
+            const transactions = this.getTransactionsByDateRange(startDate, endDate);
+
+            // Group transactions by category
+            const categoryTotals = {};
+            transactions.forEach(t => {
+                const category = t.category || 'Uncategorized';
+                if (!categoryTotals[category]) {
+                    categoryTotals[category] = 0;
+                }
+                categoryTotals[category] += parseFloat(t.amount);
+            });
+
+            // Get budget allocations
+            const budgetAllocations = {};
+            this.budgetCategories.forEach(cat => {
+                if (cat.active && cat.monthlyLimit > 0) {
+                    budgetAllocations[cat.name] = {
+                        limit: parseFloat(cat.monthlyLimit),
+                        color: cat.color || '#6c757d'
+                    };
+                }
+            });
+
+            // Create budget cards
+            let html = '<div class="row">';
+
+            // Create a card for each budget category
+            Object.keys(budgetAllocations).forEach(category => {
+                const totalSpent = categoryTotals[category] || 0;
+                const limit = budgetAllocations[category].limit;
+                const color = budgetAllocations[category].color;
+                const percentage = Math.min((totalSpent / limit) * 100, 100);
+                const remaining = limit - totalSpent;
+                const statusClass = percentage >= 80 ? 'text-warning' : 
+                                   percentage >= 100 ? 'text-danger' : '';
+
+                html += `
+                    <div class="col-md-4 mb-4">
+                        <div class="card h-100">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="card-title mb-0">${category}</h5>
+                                <button class="btn btn-sm btn-primary" 
+                                        onclick="window.app.editBudgetCategory('${category}')">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                            </div>
+                            <div class="card-body">
+                                <div class="progress mb-3">
+                                    <div class="progress-bar" 
+                                         role="progressbar" 
+                                         style="width: ${percentage}%; background-color: ${color};"
+                                         aria-valuenow="${percentage}" 
+                                         aria-valuemin="0" 
+                                         aria-valuemax="100">
+                                        ${percentage.toFixed(1)}%
+                                    </div>
+                                </div>
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span>Spent:</span>
+                                    <span class="text-end">${this.formatCurrency(totalSpent)}</span>
+                                </div>
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span>Limit:</span>
+                                    <span class="text-end">${this.formatCurrency(limit)}</span>
+                                </div>
+                                <div class="d-flex justify-content-between">
+                                    <span class="${statusClass}">Remaining:</span>
+                                    <span class="text-end ${statusClass}">${this.formatCurrency(remaining)}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>`;
+            });
+
+            // Close row
+            html += '</div>';
+
+            // Add budget summary
+            html += `
+                <div class="mt-4">
+                    <h4>Budget Summary</h4>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h5 class="card-title">Total Spent</h5>
+                                    <p class="card-text display-6">${this.formatCurrency(
+                                        Object.values(categoryTotals).reduce((a, b) => a + b, 0)
+                                    )}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h5 class="card-title">Remaining Budget</h5>
+                                    <p class="card-text display-6">${this.formatCurrency(
+                                        Object.values(budgetAllocations).reduce((a, b) => a + b.limit, 0) -
+                                        Object.values(categoryTotals).reduce((a, b) => a + b, 0)
+                                    )}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+
+            // Add budget controls
+            html += `
+                <div class="mt-4">
+                    <button class="btn btn-primary" onclick="window.app.showNewBudgetCategoryModal()">
+                        Add New Category
+                    </button>
+                    <button class="btn btn-secondary ms-2" onclick="window.app.importBudgetCategories()">
+                        Import Categories
+                    </button>
+                </div>`;
+
+            // Update the view
+            budgetView.innerHTML = html;
+
+        } catch (error) {
+            console.error('Error rendering budget:', error);
+            const errorHtml = `
+                <div class="alert alert-danger">
+                    <p>Error loading budget data: ${error.message}</p>
+                    <button class="btn btn-primary" onclick="window.app.renderBudget()">
+                        Try Again
+                    </button>
+                </div>`;
+            budgetView.innerHTML = errorHtml;
+        }
+    }
+
+    setupRealtimeListeners() {
+        // Add real-time listeners for transactions
+        this.unsubscribeCallbacks.push(
+            this.db.subscribeToStore('transactions', (newTransactions) => {
+                // Only reload if there are actual changes
+                if (JSON.stringify(newTransactions) !== JSON.stringify(this.transactions)) {
+                    this.transactions = newTransactions;
+                    this.renderCurrentView();
+                }
+            })
+        );
+
+        // Add real-time listeners for budget categories
+        this.unsubscribeCallbacks.push(
+            this.db.subscribeToStore('budgetCategories', (newCategories) => {
+                // Only reload if there are actual changes
+                if (JSON.stringify(newCategories) !== JSON.stringify(this.budgetCategories)) {
+                    this.budgetCategories = newCategories;
+                    this.renderCurrentView();
+                }
+            })
+        );
+
+        // Add real-time listeners for accounts
+        this.unsubscribeCallbacks.push(
+            this.db.subscribeToStore('accounts', (newAccounts) => {
+                // Only reload if there are actual changes
+                if (JSON.stringify(newAccounts) !== JSON.stringify(this.accounts)) {
+                    this.accounts = newAccounts;
+                    this.renderCurrentView();
+                }
+            })
+        );
     }
 
     async loadTransactions() {
@@ -1600,65 +2488,27 @@ class BudgetApp {
             });
         });
     }
+    
+   
 
-    // Add event listeners for the app
-    bindEventListeners() {
-        // Add transaction buttons
-        document.getElementById('add-transaction-btn')?.addEventListener('click', () => this.showTransactionModal());
-        document.getElementById('add-transaction-btn-2')?.addEventListener('click', () => this.showTransactionModal());
-        document.getElementById('add-category-btn')?.addEventListener('click', () => this.showCategoryModal());
-        document.getElementById('import-csv-btn')?.addEventListener('click', () => this.showCSVModal());
-        document.getElementById('close-transaction-modal')?.addEventListener('click', () => this.closeModal('add-transaction-modal'));
-        document.getElementById('close-category-modal')?.addEventListener('click', () => this.closeModal('add-category-modal'));
-        document.getElementById('close-csv-modal')?.addEventListener('click', () => this.closeModal('csv-import-modal'));
-        
-        // Handle transaction actions (edit/delete) with event delegation
-        document.addEventListener('click', (e) => {
-            // Handle delete button clicks
-            if (e.target.classList.contains('btn-delete') || e.target.closest('.btn-delete')) {
+        // Transaction buttons
+        const transactionButtons = document.querySelectorAll('.transaction-button');
+        transactionButtons.forEach(button => {
+            button.addEventListener('click', (e) => {
                 e.preventDefault();
-                e.stopPropagation();
-                const button = e.target.classList.contains('btn-delete') ? e.target : e.target.closest('.btn-delete');
-                const transactionId = button.getAttribute('data-id');
-                if (transactionId) {
-                    this.confirmAndDeleteTransaction(transactionId, new Date());
+                const id = button.dataset.transactionId;
+                if (id) {
+                    this.handleTransactionSubmit(button);
                 }
-                return;
-            }
-            
-            // Handle edit button clicks
-            if (e.target.classList.contains('btn-edit') || e.target.closest('.btn-edit')) {
-                e.preventDefault();
-                e.stopPropagation();
-                const button = e.target.classList.contains('btn-edit') ? e.target : e.target.closest('.btn-edit');
-                const transactionId = button.getAttribute('data-id');
-                if (transactionId) {
-                    this.editTransaction(transactionId);
-                }
-                return;
-            }
+            });
         });
 
-        // Forms
-        const categoryForm = document.getElementById('category-form');
-        if (categoryForm) {
-            categoryForm.addEventListener('submit', (e) => this.handleCategorySubmit(e));
-        }
-        
-        const transactionForm = document.getElementById('transaction-form');
-        if (transactionForm) {
-            transactionForm.addEventListener('submit', (e) => this.handleTransactionSubmit(e));
-        }
-
         // CSV import
-        const csvFileInput = document.getElementById('csv-file-input');
-        if (csvFileInput) {
-            csvFileInput.addEventListener('change', (e) => this.handleCSVFile(e));
-        }
-        
-        const importCsvConfirm = document.getElementById('import-csv-confirm');
-        if (importCsvConfirm) {
-            importCsvConfirm.addEventListener('click', () => this.confirmCSVImport());
+        const csvImportBtn = document.getElementById('csv-import-btn');
+        if (csvImportBtn) {
+            csvImportBtn.addEventListener('click', () => {
+                document.getElementById('csv-file')?.click();
+            });
         }
 
         // Calendar navigation
@@ -1692,50 +2542,47 @@ class BudgetApp {
                 }
             });
             dropzone.addEventListener('click', () => {
-                document.getElementById('csv-file-input').click();
+                document.getElementById('csv-file')?.click();
             });
         }
-        
-        // Initialize search manager
-        this.searchManager = new SearchManager(this);
     }
 
-    switchView(view) {
-        // Update navigation
-        document.querySelectorAll('.nav__link').forEach(link => {
-            link.classList.remove('nav__link--active');
-        });
-        
-        const activeNav = document.querySelector(`[data-view="${view}"]`);
-        if (activeNav) {
-            activeNav.classList.add('nav__link--active');
-        }
-
-        // Update views
-        document.querySelectorAll('.view').forEach(v => {
-            v.classList.remove('view--active');
-        });
-        
-        const activeView = document.getElementById(`${view}-view`);
-        if (activeView) {
-            activeView.classList.add('view--active');
-        }
-        
-        // If switching to calendar view, initialize it with today's date
-        if (view === 'calendar' && !this.selectedDate) {
-            this.selectedDate = new Date();
-            this.renderCalendar(this.selectedDate);
-        }
-        
-        // If switching to search view, ensure search UI is properly initialized
-        if (view === 'search' && this.searchManager) {
-            // Re-bind events in case the search tab was not loaded when the page first loaded
-            this.searchManager.bindEvents();
-        }
-        
-        this.currentView = view;
-        this.renderCurrentView();
+// Update navigation state
+updateNavigation(view) {
+    document.querySelectorAll('.nav__link').forEach(link => {
+        link.classList.remove('nav__link--active');
+    });
+    
+    const activeNav = document.querySelector(`[data-view="${view}"]`);
+    if (activeNav) {
+        activeNav.classList.add('nav__link--active');
     }
+
+    // Update views
+    document.querySelectorAll('.view').forEach(v => {
+        v.classList.remove('view--active');
+    });
+    
+    const activeView = document.getElementById(`${view}-view`);
+    if (activeView) {
+        activeView.classList.add('view--active');
+    }
+
+    // If switching to calendar view, initialize it with today's date
+    if (view === 'calendar' && !this.selectedDate) {
+        this.selectedDate = new Date();
+        this.renderCalendar(this.selectedDate);
+    }
+    
+    // If switching to search view, ensure search UI is properly initialized
+    if (view === 'search' && this.searchManager) {
+        // Re-bind events in case the search tab was not loaded when the page first loaded
+        this.searchManager.bindEvents();
+    }
+    
+    this.currentView = view;
+    this.renderCurrentView();
+}
 
     async renderTransactions() {
         try {
@@ -2183,7 +3030,6 @@ class BudgetApp {
                     // Show success message
                     alert(`Successfully parsed ${transactions.length} transactions. ${skippedRows.length} rows were skipped.`);
                     resolve(transactions);
-                    
                 } catch (error) {
                     console.error('Error processing CSV file:', error);
                     alert(`Error processing CSV file: ${error.message}`);
@@ -2192,108 +3038,97 @@ class BudgetApp {
                     if (fileInput) fileInput.value = '';
                     reject(error);
                 }
-            };
-            
-            reader.onerror = (error) => {
-                console.error('Error reading file:', error);
-                alert('Error reading file. Please try again.');
-                reject(error);
-            };
-            
-            reader.readAsText(file);
-        });
-    }
-    
-    // Parse date string in various formats to YYYY-MM-DD
-    parseDate(dateStr) {
-        if (!dateStr) return new Date().toISOString().split('T')[0];
-        
-        // Try parsing with Date object first
-        const date = new Date(dateStr);
-        if (!isNaN(date.getTime())) {
-            return date.toISOString().split('T')[0];
+            });
+        } catch (error) {
+            console.error('Error setting up CSV file processing:', error);
+            reject(error);
         }
-        
-        // Try common date formats
-        const formats = [
-            // MM/DD/YYYY or M/D/YYYY
-            /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/,
-            // YYYY-MM-DD
-            /^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/,
-            // DD-MM-YYYY
-            /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/,
-            // Month name formats (Jan 1, 2023 or January 1, 2023)
-            /^([A-Za-z]{3,9})\s+(\d{1,2}),?\s*(\d{2,4})$/,
-            // DD/MM/YYYY (European format)
-            /^(\d{1,2})[\/](\d{1,2})[\/](\d{2,4})$/,
-        ];
-        
-        for (const format of formats) {
-            const match = dateStr.match(format);
-            if (match) {
-                let year, month, day;
+    };
+
+});
+
+            
+            // Handle auto format detection
+            if (format === 'auto') {
+                const formats = [
+                    /^\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b\s+(\d{1,2})\s+(\d{4})$/i,
+                    /^(\d{4})-(\d{2})-(\d{2})$/,
+                    /^(\d{1,2})-(\d{1,2})-(\d{4})$/,
+                    /^(\d{1,2})-(\d{1,2})-(\d{2})$/
+                ];
                 
-                if (match[1].length > 2) { // Month name format
-                    const monthNames = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
-                    const monthIndex = monthNames.findIndex(m => 
-                        m.startsWith(match[1].toLowerCase().substring(0, 3))
-                    );
-                    if (monthIndex === -1) continue;
-                    
-                    month = monthIndex + 1;
-                    day = parseInt(match[2], 10);
-                    year = parseInt(match[3], 10);
-                } else {
-                    // Numeric formats
-                    if (match[1].length === 4) { // YYYY-MM-DD
-                        year = parseInt(match[1], 10);
-                        month = parseInt(match[2], 10);
-                        day = parseInt(match[3], 10);
-                    } else if (match[3].length === 4) { // DD-MM-YYYY or MM-DD-YYYY
-                        // Try to determine if it's DD-MM-YYYY or MM-DD-YYYY
-                        const first = parseInt(match[1], 10);
-                        const second = parseInt(match[2], 10);
+                for (const format of formats) {
+                    const match = dateStr.match(format);
+                    if (match) {
+                        let year, month, day;
                         
-                        if (first > 12) {
-                            // Must be DD-MM-YYYY
-                            day = first;
-                            month = second;
-                        } else if (second > 12) {
-                            // Must be MM-DD-YYYY
-                            month = first;
-                            day = second;
+                        // Handle month names
+                        if (match[1].length > 2) {
+                            const monthNames = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+                            const monthIndex = monthNames.findIndex(
+                                m => m.startsWith(match[1].toLowerCase().substring(0, 3))
+                            );
+                            if (monthIndex === -1) continue;
+                            
+                            month = monthIndex + 1;
+                            day = parseInt(match[2], 10);
+                            year = parseInt(match[3], 10);
                         } else {
-                            // Ambiguous, default to DD-MM-YYYY
-                            day = first;
-                            month = second;
+                            // Handle numeric formats
+                            if (match[1].length === 4) { // YYYY-MM-DD
+                                year = parseInt(match[1], 10);
+                                month = parseInt(match[2], 10);
+                                day = parseInt(match[3], 10);
+                            } else if (match[3].length === 4) { // DD-MM-YYYY or MM-DD-YYYY
+                                // Try to determine if it's DD-MM-YYYY or MM-DD-YYYY
+                                const first = parseInt(match[1], 10);
+                                const second = parseInt(match[2], 10);
+                                
+                                if (first > 12) {
+                                    // Must be DD-MM-YYYY
+                                    day = first;
+                                    month = second;
+                                } else if (second > 12) {
+                                    // Must be MM-DD-YYYY
+                                    month = first;
+                                    day = second;
+                                } else {
+                                    // Ambiguous, default to DD-MM-YYYY
+                                    day = first;
+                                    month = second;
+                                }
+                                year = parseInt(match[3], 10);
+                            } else {
+                                // Default to MM-DD-YY
+                                month = parseInt(match[1], 10);
+                                day = parseInt(match[2], 10);
+                                year = 2000 + parseInt(match[3], 10);
+                            }
                         }
-                        year = parseInt(match[3], 10);
-                    } else {
-                        // Default to MM-DD-YY
-                        month = parseInt(match[1], 10);
-                        day = parseInt(match[2], 10);
-                        year = 2000 + parseInt(match[3], 10);
+                        
+                        // Handle two-digit years
+                        if (year < 100) {
+                            year = 2000 + year;
+                        }
+                        
+                        // Create date object
+                        const parsedDate = new Date(year, month - 1, day);
+                        if (!isNaN(parsedDate.getTime())) {
+                            return parsedDate.toISOString().split('T')[0];
+                        }
                     }
                 }
-                
-                // Handle two-digit years
-                if (year < 100) {
-                    year = 2000 + year;
-                }
-                
-                // Create date object
-                const parsedDate = new Date(year, month - 1, day);
-                if (!isNaN(parsedDate.getTime())) {
-                    return parsedDate.toISOString().split('T')[0];
-                }
             }
+            
+            // If we get here, return today's date as fallback
+            console.warn(`Could not parse date: ${dateStr}, using today's date`);
+            return new Date().toISOString().split('T')[0];
+        } catch (error) {
+            console.error('Error parsing date:', error);
+            return new Date().toISOString().split('T')[0];
         }
-        
-        // If we get here, return today's date as fallback
-        console.warn(`Could not parse date: ${dateStr}, using today's date`);
-        return new Date().toISOString().split('T')[0];
-    }
-    
+    };
+
     /**
      * Escape HTML special characters to prevent XSS
      * @param {string} unsafe - The string to escape
@@ -2307,7 +3142,7 @@ class BudgetApp {
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#039;');
-    }
+    };
 
     /**
      * Parse CSV line with proper handling of quoted fields and escaped quotes
@@ -2371,53 +3206,86 @@ class BudgetApp {
      * @returns {string} Formatted date string (YYYY-MM-DD)
      */
     parseDate(dateStr, format = 'auto') {
-        if (!dateStr) return new Date().toISOString().split('T')[0];
-        
-        // Try parsing with Date object first (handles ISO 8601 and other standard formats)
-        const date = new Date(dateStr);
-        if (!isNaN(date.getTime())) {
-            return date.toISOString().split('T')[0];
-        }
-        
-        // Try common date formats
-        const formats = [
-            // MM/DD/YYYY or M/D/YYYY
-            /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/,
-            // YYYY-MM-DD
-            /^(\d{4})-(\d{1,2})-(\d{1,2})$/,
-            // DD-MM-YYYY
-            /^(\d{1,2})-(\d{1,2})-(\d{4})$/,
-            // Month DD, YYYY (e.g., Jan 5, 2023)
-            /^([A-Za-z]{3,9})\s+(\d{1,2}),?\s*(\d{4})$/i
-        ];
-        
-        for (const pattern of formats) {
-            const match = dateStr.match(pattern);
-            if (!match) continue;
+        try {
+            if (!dateStr) return new Date().toISOString().split('T')[0];
             
-            let day, month, year;
+            // Try parsing with Date object first (handles ISO 8601 and other standard formats)
+            const date = new Date(dateStr);
+            if (!isNaN(date.getTime())) {
+                return date.toISOString().split('T')[0];
+            }
             
-            // Handle different format patterns
-            if (pattern === formats[0]) { // MM/DD/YYYY or M/D/YYYY
-                if (format === 'DD-MM-YYYY' || format === 'DD/MM/YYYY') {
+            // Try common date formats
+            const formats = [
+                // MM/DD/YYYY or M/D/YYYY
+                /^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/,
+                // YYYY-MM-DD
+                /^(\d{4})-(\d{1,2})-(\d{1,2})$/,
+                // DD-MM-YYYY
+                /^(\d{1,2})-(\d{1,2})-(\d{4})$/,
+                // Month DD, YYYY (e.g., Jan 5, 2023)
+                /^([A-Za-z]{3,9})\s+(\d{1,2}),?\s*(\d{4})$/i
+            ];
+            
+            for (const pattern of formats) {
+                const match = dateStr.match(pattern);
+                if (!match) continue;
+                
+                let day, month, year;
+                
+                // Handle different format patterns
+                if (pattern === formats[0]) { // MM/DD/YYYY or M/D/YYYY
+                    if (format === 'DD-MM-YYYY' || format === 'DD/MM/YYYY') {
+                        day = parseInt(match[1], 10);
+                        month = parseInt(match[2], 10);
+                    } else {
+                        month = parseInt(match[1], 10);
+                        day = parseInt(match[2], 10);
+                    }
+                    year = parseInt(match[3], 10);
+                } else if (pattern === formats[1]) { // YYYY-MM-DD
+                    year = parseInt(match[1], 10);
+                    month = parseInt(match[2], 10);
+                    day = parseInt(match[3], 10);
+                } else if (pattern === formats[2]) { // DD-MM-YYYY
                     day = parseInt(match[1], 10);
                     month = parseInt(match[2], 10);
-                } else {
-                    month = parseInt(match[1], 10);
+                    year = parseInt(match[3], 10);
+                } else if (pattern === formats[3]) { // Month DD, YYYY
+                    const monthNames = [
+                        "january", "february", "march", "april", "may", "june",
+                        "july", "august", "september", "october", "november", "december"
+                    ];
+                    const monthIndex = monthNames.findIndex(
+                        m => m.toLowerCase().startsWith(match[1].toLowerCase().substring(0, 3))
+                    );
+                    if (monthIndex === -1) continue;
+                    
+                    month = monthIndex + 1;
                     day = parseInt(match[2], 10);
+                    year = parseInt(match[3], 10);
                 }
-                year = parseInt(match[3], 10);
-            } else if (pattern === formats[1]) { // YYYY-MM-DD
-                year = parseInt(match[1], 10);
-                month = parseInt(match[2], 10);
-                day = parseInt(match[3], 10);
-            } else if (pattern === formats[2]) { // DD-MM-YYYY
-                day = parseInt(match[1], 10);
-                month = parseInt(match[2], 10);
-                year = parseInt(match[3], 10);
-            } else if (pattern === formats[3]) { // Month DD, YYYY
-                const monthNames = ["january", "february", "march", "april", "may", "june",
-                                  "july", "august", "september", "october", "november", "december"];
+                
+                // Handle two-digit years
+                if (year < 100) {
+                    year = 2000 + year;
+                }
+                
+                // Create date object
+                const parsedDate = new Date(year, month - 1, day);
+                if (!isNaN(parsedDate.getTime())) {
+                    return parsedDate.toISOString().split('T')[0];
+                }
+            }
+            
+            // If we get here, return today's date as fallback
+            console.warn(`Could not parse date: ${dateStr}, using today's date`);
+            return new Date().toISOString().split('T')[0];
+        } catch (error) {
+            console.error('Error parsing date:', error);
+            return new Date().toISOString().split('T')[0];
+        }
+    };
                 const monthName = match[1].toLowerCase();
                 month = monthNames.findIndex(m => monthName.startsWith(m.toLowerCase())) + 1;
                 if (month === 0) continue; // Month not found
@@ -2601,7 +3469,7 @@ class BudgetApp {
                                         .filter(t => (parseFloat(t.amount) || 0) < 0)
                                         .reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0)
                                     ))
-                                }}) 
+                                }) 
                             </span>
                         </div>
                         <div class="summary-item">
@@ -2853,6 +3721,7 @@ class BudgetApp {
         } finally {
             this.pendingImport = [];
         }
+    };
     }
     
     /**
@@ -2953,6 +3822,29 @@ class BudgetApp {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2
         }).format(amount);
+    };
+
+    parseCurrency(currencyString) {
+        if (!currencyString) return 0;
+        // Remove any non-numeric characters except decimal point and minus sign
+        const numberString = currencyString.replace(/[^0-9.-]+/g, "");
+        return parseFloat(numberString) || 0;
+    };
+
+    formatDate(dateString) {
+        if (!dateString) return '';
+        try {
+            const date = new Date(dateString);
+            return date.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric'
+            });
+        } catch (error) {
+            console.error('Error formatting date:', error);
+            return dateString; // Return original string if date parsing fails
+        }
+    };
     }
 
     parseCurrency(currencyString) {
@@ -3083,6 +3975,38 @@ class BudgetApp {
                             ${this.formatCurrency(totals.income - totals.expenses)}
                         </div>
                     </div>
+                </div>
+                <div class="dashboard-charts">
+                    <div class="chart-container">
+                        <canvas id="monthly-trend-chart"></canvas>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="category-breakdown-chart"></canvas>
+                    </div>
+                </div>
+                <div class="dashboard-recent">
+                    <h3>Recent Transactions</h3>
+                    <div class="transaction-list">
+                        ${transactions.slice(0, 5).map(t => `
+                            <div class="transaction-item ${t.amount < 0 ? 'expense' : 'income'}">
+                                <div class="transaction-main">
+                                    <div class="transaction-category">${t.category || 'Uncategorized'}</div>
+                                    <div class="transaction-amount">${this.formatCurrency(t.amount)}</div>
+                                </div>
+                                <div class="transaction-date">${this.formatDate(t.date)}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>`;
+            
+            // Initialize charts
+            await this.initializeDashboardCharts(transactions);
+            
+        } catch (error) {
+            console.error('Error rendering dashboard:', error);
+            this.showToast('error', 'Error', 'Failed to load dashboard data');
+        }
+    };
                 </div>
                 <div class="recent-transactions">
                     <h3>Recent Transactions</h3>
@@ -3256,6 +4180,8 @@ class BudgetApp {
             console.error('Error saving transaction:', error);
             this.showNotification(`Failed to save transaction: ${error.message}`, 'error');
         }
+    };
+}
     }
     
     /**
@@ -3305,7 +4231,8 @@ class BudgetApp {
                 notification.remove();
             }, 300);
         }, 3000);
-    }
+    };
+}
 }
 
 // Initialize the app when the DOM is fully loaded

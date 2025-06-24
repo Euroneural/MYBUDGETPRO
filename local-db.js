@@ -1,7 +1,7 @@
 class LocalDB {
     constructor() {
         this.dbName = 'BudgetProDB';
-        this.dbVersion = 1;
+        this.dbVersion = 2; // Incremented to trigger schema update
         this.db = null;
         this.initializeDB();
     }
@@ -21,9 +21,27 @@ class LocalDB {
                     store.createIndex('type', 'type', { unique: false });
                 }
                 
-                if (!db.objectStoreNames.contains('categories')) {
-                    const store = db.createObjectStore('categories', { keyPath: 'id', autoIncrement: true });
+                if (!db.objectStoreNames.contains('budgetCategories')) {
+                    const store = db.createObjectStore('budgetCategories', { keyPath: 'id', autoIncrement: true });
                     store.createIndex('name', 'name', { unique: true });
+                    
+                    // Add some default categories
+                    const defaultCategories = [
+                        { name: 'Food & Dining', color: '#FF6B6B' },
+                        { name: 'Transportation', color: '#4ECDC4' },
+                        { name: 'Housing', color: '#45B7D1' },
+                        { name: 'Utilities', color: '#96CEB4' },
+                        { name: 'Entertainment', color: '#FFEEAD' },
+                        { name: 'Shopping', color: '#FF6F61' },
+                        { name: 'Health', color: '#9B59B6' },
+                        { name: 'Education', color: '#3498DB' },
+                        { name: 'Savings', color: '#2ECC71' },
+                        { name: 'Miscellaneous', color: '#95A5A6' }
+                    ];
+                    
+                    defaultCategories.forEach(category => {
+                        store.add(category);
+                    });
                 }
                 
                 if (!db.objectStoreNames.contains('accounts')) {
@@ -110,6 +128,25 @@ class LocalDB {
             request.onsuccess = () => resolve(request.result || []);
             request.onerror = () => reject(request.error);
         });
+    }
+
+    // Method to subscribe to store changes (using polling)
+    subscribeToStore(storeName, callback) {
+        const checkForChanges = async () => {
+            const items = await this.getAllItems(storeName);
+            callback(items);
+        };
+
+        // Initial call
+        checkForChanges();
+
+        // Check for changes every second
+        const intervalId = setInterval(checkForChanges, 1000);
+
+        // Return cleanup function
+        return () => {
+            clearInterval(intervalId);
+        };
     }
 
     // Transaction methods
