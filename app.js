@@ -2,22 +2,29 @@ import { localDB } from './local-db.js';
 
 class SearchManager {
     constructor(app) {
-        console.log('SearchManager: Initializing SearchManager');
         this.app = app;
         this.searchResults = [];
         this.searchStats = {
-            totalAmount: 0,
-            averageAmount: 0,
-            minAmount: 0,
-            maxAmount: 0,
             transactionCount: 0,
             firstTransactionDate: null,
-            lastTransactionDate: null
+            lastTransactionDate: null,
+            incomeTotal: 0,
+            expenseTotal: 0,
+            transactionDates: []
         };
-        console.log('SearchManager: Calling init()');
-        this.init();
+        this.searchOptions = {
+            exactMatch: false,
+            includeNotes: false,
+            timeRange: 'all'
+        };
+
+        try {
+            this.initializeEventListeners();
+        } catch (error) {
+            console.error('Error initializing SearchManager:', error);
+        }
     }
-    
+
     // Helper method to escape HTML to prevent XSS
     escapeHtml(unsafe) {
         if (typeof unsafe !== 'string') return '';
@@ -29,216 +36,343 @@ class SearchManager {
             .replace(/'/g, '&#039;');
     }
 
-    init() {
-        console.log('SearchManager: Initializing search functionality');
+    initializeEventListeners() {
         try {
-            this.bindEvents();
-            console.log('SearchManager: Event binding completed');
+            // Store reference to 'this' for use in callbacks
+            const self = this;
+
+            // Initialize search button and input
+            const searchBtn = document.getElementById('search-btn');
+            const searchInput = document.getElementById('transaction-search');
+
+            if (!searchBtn) {
+                console.error('Search button not found');
+                return;
+            }
+            if (!searchInput) {
+                console.error('Search input not found');
+                return;
+            }
+
+            // Bind search button click
+            searchBtn.addEventListener('click', () => {
+                console.log('Search button clicked');
+                self.safeSearch();
+            });
+
+            // Bind search input keyup
+            searchInput.addEventListener('keyup', (e) => {
+                if (e.key === 'Enter') {
+                    console.log('Enter key pressed in search input');
+                    self.safeSearch();
+                }
+            });
+
+            // Initialize event listeners
+            const exactMatch = document.getElementById('exact-match');
+            const includeNotes = document.getElementById('include-notes');
+            const timeRange = document.getElementById('time-range');
+
+            if (!exactMatch) console.warn('Exact match checkbox not found');
+            if (!includeNotes) console.warn('Include notes checkbox not found');
+            if (!timeRange) console.warn('Time range select not found');
+
+            // Set up event listeners
+            if (exactMatch) {
+                exactMatch.addEventListener('change', () => {
+                    console.log('Exact match changed:', exactMatch.checked);
+                    self.safeRenderResults();
+                });
+            }
+
+            if (includeNotes) {
+                includeNotes.addEventListener('change', () => {
+                    console.log('Include notes changed:', includeNotes.checked);
+                    self.safeSearch();
+                });
+            }
+
+            if (timeRange) {
+                timeRange.addEventListener('change', () => {
+                    console.log('Time range changed:', timeRange.value);
+                    self.safeSearch();
+                });
+            }
         } catch (error) {
-            console.error('SearchManager: Error during initialization:', error);
+            console.error('Error initializing event listeners:', error);
         }
     }
 
-    bindEvents() {
-        console.log('Binding search events...');
-        
-        // Store reference to 'this' for use in callbacks
-        const self = this;
-        
-        const searchBtn = document.getElementById('search-btn');
-        const searchInput = document.getElementById('transaction-search');
-        
-        if (!searchBtn) console.warn('Search button not found');
-        if (!searchInput) console.warn('Search input not found');
-        
-        // Helper function to safely perform search
-        const safeSearch = async () => {
-            try {
-                await self.performSearch();
-            } catch (error) {
-                console.error('Search error:', error);
-                const resultsBody = document.getElementById('search-results-body');
-                if (resultsBody) {
-                    resultsBody.innerHTML = `
-                        <tr>
-                            <td colspan="5" class="text-center text-danger py-4">
-                                Error performing search: ${error.message}
-                            </td>
-                        </tr>`;
-                }
-            }
-        };
-        
-        // Helper function to safely render results
-        const safeRenderResults = () => {
-            try {
-                self.renderSearchResults();
-            } catch (error) {
-                console.error('Error rendering search results:', error);
-            }
-        };
-        
-        if (searchBtn) {
-            searchBtn.removeEventListener('click', safeSearch);
-            searchBtn.addEventListener('click', safeSearch);
-            console.log('Search button event listener added');
+    // Helper methods for safe search operations
+    safeSearch() {
+        try {
+            this.performSearch();
+        } catch (error) {
+            console.error('Error in safeSearch:', error);
         }
-                if (searchInput) {
-            // Remove any existing event listeners to prevent duplicates
-            searchInput.removeEventListener('keypress', this.handleSearchKeyPress);
-            
-            // Add debounced search on input
-            let searchTimeout;
-            searchInput.addEventListener('input', (e) => {
-                clearTimeout(searchTimeout);
-                searchTimeout = setTimeout(() => {
-                    const searchTerm = e.target.value.trim();
-                    if (searchTerm.length >= 2) {
-                        console.log('Input changed, performing search for:', searchTerm);
-                        safeSearch();
-                    }
-                }, 500); // 500ms debounce delay
-            });
-            
-            // Also search on Enter key
-            searchInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    console.log('Enter key pressed in search input');
-                    clearTimeout(searchTimeout); // Clear any pending debounced search
-                    safeSearch();
-                }
-            });
-            
-            // Handle clearing the search
-            searchInput.addEventListener('change', (e) => {
-                const searchTerm = e.target.value.trim();
-                if (searchTerm.length === 0) {
-                    console.log('Search input cleared');
-                    self.searchResults = [];
-                    safeRenderResults();
-                    self.renderSearchCharts();
-                    self.generateSearchInsights();
-                }
-            });
-            
-            console.log('Search input event listeners added');
-        }
-        
-        const exactMatch = document.getElementById('exact-match');
-        const includeNotes = document.getElementById('include-notes');
-        const timeRange = document.getElementById('time-range');
-        
-        if (!exactMatch) console.warn('Exact match checkbox not found');
-        if (!includeNotes) console.warn('Include notes checkbox not found');
-        if (!timeRange) console.warn('Time range select not found');
-        
-        if (exactMatch) {
-            exactMatch.removeEventListener('change', safeRenderResults);
-            exactMatch.addEventListener('change', () => {
-                console.log('Exact match changed:', exactMatch.checked);
-                safeRenderResults();
-            });
-        }
-        
-        if (includeNotes) {
-            includeNotes.removeEventListener('change', safeSearch);
-            includeNotes.addEventListener('change', () => {
-                console.log('Include notes changed:', includeNotes.checked);
-                safeSearch();
-            });
-        }
-        
-        if (timeRange) {
-            timeRange.removeEventListener('change', safeSearch);
-            timeRange.addEventListener('change', () => {
-                console.log('Time range changed:', timeRange.value);
-                safeSearch();
-            });
+    }
+
+    safeRenderResults() {
+        try {
+            this.renderSearch();
+        } catch (error) {
+            console.error('Error in safeRenderResults:', error);
         }
     }
 
     async performSearch() {
-        console.log('performSearch called');
-        
-        // Get search input and validate
-        const searchInput = document.getElementById('transaction-search');
-        if (!searchInput) {
-            console.error('Search input element not found');
-            return;
-        }
-        
-        const searchTerm = searchInput.value.trim();
-        if (searchTerm.length < 2) {
-            console.log('Search term too short');
-            return;
-        }
-        
-        console.log('Searching for:', searchTerm);
-        
-        console.log('Searching for:', searchTerm);
-        
-        // Show loading state
-        const searchBtn = document.getElementById('search-btn');
-        if (searchBtn) {
-            searchBtn.disabled = true;
-            searchBtn.innerHTML = '<i class="bi bi-hourglass"></i> Searching...';
-        }
-        
         try {
+            const searchInput = document.getElementById('transaction-search');
+            if (!searchInput) {
+                console.error('Search input element not found');
+                return [];
+            }
+
+            const searchTerm = searchInput.value.trim();
+            if (searchTerm.length < 2) {
+                console.log('Search term too short');
+                this.searchResults = [];
+                this.calculateSearchStats();
+                return [];
+            }
+
+            const searchBtn = document.getElementById('search-btn');
+            if (searchBtn) {
+                searchBtn.disabled = true;
+                searchBtn.innerHTML = '<i class="bi bi-search"></i> Searching...';
+            }
+
             // Get search options
             const exactMatch = document.getElementById('exact-match')?.checked || false;
             const includeNotes = document.getElementById('include-notes')?.checked || false;
             const timeRange = document.getElementById('time-range')?.value || 'all';
-            
-            console.log('Search options:', { exactMatch, includeNotes, timeRange });
-            
-            // Calculate date range based on selection
+
+            // Get today's date for time range calculations
             const today = new Date();
-            let startDate, endDate = today.toISOString().split('T')[0];
-            
-            switch(timeRange) {
+            let startDate = null;
+            let endDate = null;
+
+            switch (timeRange) {
+                case 'all':
+                    break;
+                case 'today':
+                    startDate = today.toISOString().split('T')[0];
+                    endDate = startDate;
+                    break;
                 case 'week':
-                    startDate = new Date(today);
-                    startDate.setDate(today.getDate() - 7);
-                    startDate = startDate.toISOString().split('T')[0];
+                    today.setDate(today.getDate() - 7);
+                    startDate = today.toISOString().split('T')[0];
+                    endDate = new Date().toISOString().split('T')[0];
                     break;
                 case 'month':
-                    startDate = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
-                    break;
-                case 'year':
-                    startDate = new Date(today.getFullYear(), 0, 1).toISOString().split('T')[0];
-                    break;
-                case 'custom':
-                    const customStartDate = document.getElementById('custom-start-date')?.value;
-                    const customEndDate = document.getElementById('custom-end-date')?.value;
-                    if (customStartDate) startDate = customStartDate;
-                    if (customEndDate) endDate = customEndDate;
+                    today.setMonth(today.getMonth() - 1);
+                    startDate = today.toISOString().split('T')[0];
+                    endDate = new Date().toISOString().split('T')[0];
                     break;
                 case '6months':
-                    startDate = new Date(today.getFullYear(), today.getMonth() - 5, 1).toISOString().split('T')[0];
+                    today.setMonth(today.getMonth() - 5);
+                    startDate = today.toISOString().split('T')[0];
+                    endDate = new Date().toISOString().split('T')[0];
                     break;
-                default: // 'all'
-                    startDate = null; // No date filter
+                default:
                     break;
             }
-            
-            // Get transactions from app
+
+            // Get transactions
             const transactions = this.app.transactions;
+
+            // Process search terms
+            const searchTerms = searchTerm.toLowerCase()
+                .split(' ')
+                .map(term => term.trim())
+                .filter(term => term.length > 0);
+
+            // Filter transactions
+            let filteredTransactions = transactions;
+
+            // Apply search terms
+            if (searchTerms.length > 0) {
+                filteredTransactions = filteredTransactions.filter(transaction => {
+                    try {
+                        if (!transaction) {
+                            console.warn('Encountered undefined transaction in search');
+                            return false;
+                        }
+
+                        const description = transaction.description?.toLowerCase() || '';
+                        const notes = transaction.notes?.toLowerCase() || '';
+
+                        // Check description and notes (if included)
+                        const matchesDescription = searchTerms.every(term =>
+                            exactMatch ? description.includes(term) :
+                                description.indexOf(term) >= 0
+                        );
+
+                        const matchesNotes = includeNotes && searchTerms.every(term =>
+                            exactMatch ? notes.includes(term) :
+                                notes.indexOf(term) >= 0
+                        );
+
+                        return matchesDescription || (includeNotes && matchesNotes);
+                    } catch (filterError) {
+                        console.error('Error filtering transaction:', filterError);
+                        return false; // Skip this transaction if there's an error
+                    }
+                });
+            }
+
+            // Apply date range filter
+            if (startDate && endDate) {
+                filteredTransactions = filteredTransactions.filter(transaction => {
+                    try {
+                        const transactionDate = new Date(transaction.date);
+                        const start = new Date(startDate);
+                        const end = new Date(endDate);
+                        return transactionDate >= start && transactionDate <= end;
+                    } catch (dateParseError) {
+                        console.warn('Error parsing transaction date:', dateParseError);
+                        return false; // Skip this transaction if date parsing fails
+                    }
+                });
+            }
+
+            // Update search results
+            this.searchResults = filteredTransactions;
+
+            // Calculate statistics
+            this.calculateSearchStats();
+
+            // Re-enable search button and update UI
+            if (searchBtn) {
+                searchBtn.disabled = false;
+                searchBtn.innerHTML = '<i class="bi bi-search"></i> Search';
+            }
+
+            // Update search results display
+            this.renderSearch();
+
+            return filteredTransactions;
+        } catch (error) {
+            console.error('Error in performSearch:', error);
+            if (searchBtn) {
+                searchBtn.disabled = false;
+                searchBtn.innerHTML = '<i class="bi bi-search"></i> Search';
+            }
+            return [];
+        }
+    }
+
+    calculateSearchStats() {
+        try {
+            // Initialize default stats
+            const defaultStats = {
+                transactionCount: 0,
+                firstTransactionDate: null,
+                lastTransactionDate: null,
+                incomeTotal: 0,
+                expenseTotal: 0,
+                transactionDates: []
+            };
+
+            if (!Array.isArray(this.searchResults) || this.searchResults.length === 0) {
+                this.searchStats = { ...defaultStats };
+                return;
+            }
+
+            const validTransactions = this.searchResults.filter(t => t.amount && !isNaN(parseFloat(t.amount)));
+            if (validTransactions.length === 0) {
+                this.searchStats = { ...defaultStats, transactionCount: this.searchResults.length };
+                return;
+            }
+
+            const amounts = validTransactions.map(t => {
+                try {
+                    const amount = parseFloat(t.amount);
+                    return isNaN(amount) ? 0 : amount;
+                } catch (e) {
+                    console.error('Error parsing amount:', e);
+                    return 0;
+                }
+            });
+
+            // Calculate totals and dates
+            const incomeTotal = amounts.filter(a => a >= 0).reduce((acc, curr) => acc + curr, 0);
+            const expenseTotal = Math.abs(amounts.filter(a => a < 0).reduce((acc, curr) => acc + curr, 0));
+            const transactionDates = validTransactions.map(t => new Date(t.date));
+            const firstTransactionDate = new Date(Math.min(...transactionDates));
+            const lastTransactionDate = new Date(Math.max(...transactionDates));
+
+            this.searchStats = {
+                transactionCount: this.searchResults.length,
+                firstTransactionDate: firstTransactionDate.toISOString().split('T')[0],
+                lastTransactionDate: lastTransactionDate.toISOString().split('T')[0],
+                incomeTotal: incomeTotal,
+                expenseTotal: expenseTotal,
+                transactionDates: transactionDates.map(d => d.toISOString().split('T')[0])
+            };
+        } catch (error) {
+            console.error('Error calculating search statistics:', error);
+            this.searchStats = {
+                transactionCount: this.searchResults ? this.searchResults.length : 0,
+                firstTransactionDate: null,
+                lastTransactionDate: null,
+                incomeTotal: 0,
+                expenseTotal: 0,
+                transactionDates: []
+            };
+        }
+    }
+    determineDateRange() {
+        const today = new Date();
+        let startDate = null;
+        let endDate = null;
+
+        switch (this.searchOptions.timeRange) {
+            case 'today':
+                startDate = today.toISOString().split('T')[0];
+                break;
+            case 'month':
+                startDate = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+                break;
+            case 'year':
+                startDate = new Date(today.getFullYear(), 0, 1).toISOString().split('T')[0];
+                break;
+            case 'custom':
+                const customStartDate = document.getElementById('custom-start-date')?.value;
+                const customEndDate = document.getElementById('custom-end-date')?.value;
+                if (customStartDate) startDate = customStartDate;
+                if (customEndDate) endDate = customEndDate;
+                break;
+            case '6months':
+                startDate = new Date(today.getFullYear(), today.getMonth() - 5, 1).toISOString().split('T')[0];
+                break;
+            case 'all':
+            default:
+                startDate = null;
+        }
+
+        return { startDate, endDate };
+    }
+
+    performSearch() {
+        try {
+            const transactions = this.app.transactions;
+            const { searchTerm, exactMatch, includeNotes } = this.searchOptions;
             
             // Process search terms
             const searchTerms = searchTerm.toLowerCase()
                 .split(' ')
                 .map(term => term.trim())
                 .filter(term => term.length > 0);
-                
+
             if (searchTerms.length === 0) {
                 console.log('No valid search terms after processing');
                 this.searchResults = [];
                 return;
             }
-            
+
             console.log(`Searching with terms:`, searchTerms);
-            
+
             // Filter transactions based on search term with detailed logging
             const filteredTransactions = transactions.filter(transaction => {
                 try {
@@ -246,63 +380,83 @@ class SearchManager {
                         console.warn('Encountered undefined transaction in search');
                         return false;
                     }
-                    
+
                     // Build searchable text
                     const searchText = [
                         String(transaction.description || '').toLowerCase(),
                         String(transaction.category || '').toLowerCase()
                     ];
-                    
+
                     if (includeNotes && transaction.notes) {
                         searchText.push(String(transaction.notes).toLowerCase());
                     }
-                    
+
                     const searchTextStr = searchText.join(' ');
-                    
+
                     // Apply search logic
                     if (exactMatch) {
                         // All search terms must be present
                         return searchTerms.every(term => searchTextStr.includes(term));
                     } else {
-                        // Any search term can match (OR logic)
-                        return searchTerms.some(term => searchTextStr.includes(term));
-                    }
-                } catch (error) {
-                    console.error('Error processing transaction during search:', error, transaction);
-                    return false; // Skip this transaction if there's an error
-                }
-            });
-            
+// Any search term can match (OR logic)
+return searchTerms.some(term => searchTextStr.includes(term));
+}
+} catch (error) {
+console.error('Error processing transaction during search:', error, transaction);
+return false; // Skip this transaction if there's an error
+}
+});
+
+
             // Filter by date range if applicable
+            const { startDate, endDate } = this.determineDateRange();
+            let finalResults = filteredTransactions;
             if (startDate && endDate) {
                 try {
-                    const filteredByDate = filteredTransactions.filter(transaction => {
+                    finalResults = filteredTransactions.filter(transaction => {
                         const transactionDate = new Date(transaction.date);
                         const start = new Date(startDate);
                         const end = new Date(endDate);
                         return transactionDate >= start && transactionDate <= end;
                     });
                 } catch (error) {
-                    console.error('Error filtering transactions by date:', error);
-                    return filteredTransactions; // Return all transactions if date filtering fails
+                    console.error('Error applying date filter:', error);
                 }
             }
-            if (searchBtn) {
-                searchBtn.disabled = false;
-                searchBtn.innerHTML = '<i class="bi bi-search"></i> Search';
+
+            // Update search results and stats
+            this.searchResults = finalResults;
+            this.calculateSearchStats();
+
+            // Update UI
+            try {
+                const searchBtn = document.getElementById('search-btn');
+                if (searchBtn) {
+                    searchBtn.disabled = false;
+                    searchBtn.innerHTML = '<i class="bi bi-search"></i> Search';
+                }
+                this.safeRenderResults();
+            } catch (error) {
+                console.error('Error updating UI:', error);
             }
+        } catch (error) {
+            console.error('Error in performSearch:', error);
+            this.searchResults = [];
+            this.searchStats = {
+                transactionCount: 0,
+                firstTransactionDate: null,
+                lastTransactionDate: null,
+                incomeTotal: 0,
+                expenseTotal: 0,
+                transactionDates: []
+            };
         }
     }
-    
-    calculateSearchStats() {
-        console.log('Calculating search statistics...');
-        
+
+calculateSearchStats() {
+    try {
         // Initialize default stats
         const defaultStats = {
-            totalAmount: 0,
-            averageAmount: 0,
-            minAmount: 0,
-            maxAmount: 0,
             transactionCount: 0,
             firstTransactionDate: null,
             lastTransactionDate: null,
@@ -310,133 +464,164 @@ class SearchManager {
             expenseTotal: 0,
             transactionDates: []
         };
-        
-        // Reset to default if no results
+
         if (!Array.isArray(this.searchResults) || this.searchResults.length === 0) {
-            console.log('No search results, resetting stats to default');
             this.searchStats = { ...defaultStats };
             return;
         }
-        
-        try {
-            // Filter out invalid transactions
-            const validTransactions = this.searchResults
-                .filter(transaction => {
-                    if (!transaction) return false;
-                });
-            
-            // Calculate statistics
-            const stats = validTransactions.reduce((acc, transaction) => {
-                const amount = parseFloat(transaction.amount) || 0;
-                
-                // Update totals
-                acc.totalAmount += amount;
-                if (amount > 0) {
-                    acc.incomeTotal += amount;
-                } else {
-                    acc.expenseTotal += Math.abs(amount);
-                }
-                
-                // Update min/max
-                if (amount < acc.minAmount) acc.minAmount = amount;
-                if (amount > acc.maxAmount) acc.maxAmount = amount;
-                
-                // Update transaction count
-                acc.transactionCount++;
-                
-                // Update date range
-                const date = new Date(transaction.date);
-                if (!acc.firstTransactionDate || date < new Date(acc.firstTransactionDate)) {
-                    acc.firstTransactionDate = date.toISOString().split('T')[0];
-                }
-                if (!acc.lastTransactionDate || date > new Date(acc.lastTransactionDate)) {
-                    acc.lastTransactionDate = date.toISOString().split('T')[0];
-                }
-                
-                // Add to transaction dates
-                acc.transactionDates.push(date.toISOString().split('T')[0]);
-                
-                return acc;
-            }, { ...defaultStats });
-            
-            // Calculate average
-            stats.averageAmount = stats.transactionCount > 0 ? 
-                stats.totalAmount / stats.transactionCount : 0;
-            
-            // Update search stats
-            this.searchStats = stats;
-            
-        } catch (error) {
-            console.error('Error calculating search statistics:', error);
-            // Reset to default stats on error
-            this.searchStats = { ...defaultStats };
+
+        const validTransactions = this.searchResults.filter(t => t.amount && !isNaN(parseFloat(t.amount)));
+        if (validTransactions.length === 0) {
+            this.searchStats = { ...defaultStats, transactionCount: this.searchResults.length };
+            return;
         }
-    }
-                    const amount = parseFloat(transaction.amount);
-                    return !isNaN(amount);
-                });
-            
-            if (validTransactions.length === 0) {
-                console.log('No valid transactions with amounts found');
-                this.searchStats = { ...defaultStats, transactionCount: this.searchResults.length };
-                return;
-            }
-            
-            // Extract and parse amounts
-            const amounts = validTransactions.map(t => {
+
+        const amounts = validTransactions.map(t => {
+            try {
                 const amount = parseFloat(t.amount);
                 return isNaN(amount) ? 0 : amount;
-            });
-            
-            // Calculate financial stats
-            const totalAmount = amounts.reduce((sum, amount) => sum + amount, 0);
-            const incomeTotal = amounts.filter(amount => amount > 0).reduce((sum, amount) => sum + amount, 0);
-            const expenseTotal = Math.abs(amounts.filter(amount => amount < 0).reduce((sum, amount) => sum + amount, 0));
-            
-            // Process transaction dates
-            const transactionDates = validTransactions
-                .map(t => {
-                    try {
-                        const date = new Date(t.date);
-                        return isNaN(date.getTime()) ? null : date;
-                    } catch (e) {
-                        console.warn('Invalid transaction date:', t.date, e);
-                        return null;
-                    }
-                })
-                .filter(date => date !== null)
-                .sort((a, b) => a - b);
-            
-            // Update stats
-            this.searchStats = {
-                totalAmount,
-                averageAmount: validTransactions.length > 0 ? totalAmount / validTransactions.length : 0,
-                minAmount: Math.min(...amounts),
-                maxAmount: Math.max(...amounts),
-                transactionCount: validTransactions.length,
-                firstTransactionDate: transactionDates.length > 0 ? transactionDates[0] : null,
-                lastTransactionDate: transactionDates.length > 0 ? transactionDates[transactionDates.length - 1] : null,
-                incomeTotal,
-                expenseTotal,
-                transactionDates,
-                // Additional calculated fields
-                isSingleDay: transactionDates.length <= 1 || 
-                    (transactionDates[0] && transactionDates[transactionDates.length - 1] &&
-                     transactionDates[0].toDateString() === transactionDates[transactionDates.length - 1].toDateString()),
-                dayCount: new Set(transactionDates.map(d => d.toDateString())).size,
-                averagePerDay: transactionDates.length > 0 ? totalAmount / new Set(transactionDates.map(d => d.toDateString())).size : 0
-            };
-            
-            console.log('Calculated search stats:', {
-                ...this.searchStats,
-                firstTransactionDate: this.searchStats.firstTransactionDate?.toISOString(),
-                lastTransactionDate: this.searchStats.lastTransactionDate?.toISOString(),
-                transactionDates: this.searchStats.transactionDates.map(d => d.toISOString().split('T')[0])
-            });
-            
-        } catch (error) {
-            console.error('Error calculating search statistics:', error);
-            // Fall back to default stats with the count of all results
+            } catch (e) {
+                console.error('Error parsing amount:', e);
+                return 0;
+            }
+        });
+
+        // Calculate totals and dates
+        const incomeTotal = amounts.filter(a => a >= 0).reduce((acc, curr) => acc + curr, 0);
+        const expenseTotal = Math.abs(amounts.filter(a => a < 0).reduce((acc, curr) => acc + curr, 0));
+        const transactionDates = validTransactions.map(t => new Date(t.date));
+        const firstTransactionDate = new Date(Math.min(...transactionDates));
+        const lastTransactionDate = new Date(Math.max(...transactionDates));
+
+        this.searchStats = {
+            transactionCount: this.searchResults.length,
+            firstTransactionDate: firstTransactionDate.toISOString().split('T')[0],
+            lastTransactionDate: lastTransactionDate.toISOString().split('T')[0],
+            incomeTotal: incomeTotal,
+            expenseTotal: expenseTotal,
+            transactionDates: transactionDates.map(d => d.toISOString().split('T')[0])
+            isSingleDay: transactionDates.length <= 1 || 
+                (transactionDates[0] && transactionDates[transactionDates.length - 1] &&
+                transactionDates[0].toDateString() === transactionDates[transactionDates.length - 1].toDateString()),
+            dayCount: new Set(transactionDates.map(d => d.toDateString())).size,
+            averagePerDay: transactionDates.length > 0 ? totalAmount / new Set(transactionDates.map(d => d.toDateString())).size : 0
+        };
+
+    } catch (error) {
+        console.error('Error calculating search statistics:', error);
+        // Fall back to default stats with the count of all results
+        this.searchStats = {
+            transactionCount: this.searchResults ? this.searchResults.length : 0,
+            firstTransactionDate: null,
+            lastTransactionDate: null,
+            incomeTotal: 0,
+            expenseTotal: 0,
+            transactionDates: []
+        };
+    }
+}
+
+renderSearchResults() {
+console.log('Rendering search results...');
+
+const tbody = document.getElementById('search-results-body');
+if (!tbody) {
+console.error('Search results table body not found');
+return;
+}
+
+// Clear existing content
+tbody.innerHTML = '';
+
+// Reset search button state
+const searchBtn = document.getElementById('search-btn');
+if (searchBtn) {
+searchBtn.disabled = false;
+searchBtn.textContent = 'Search';
+}
+
+// Validate search results
+if (!Array.isArray(this.searchResults)) {
+console.error('searchResults is not an array:', this.searchResults);
+tbody.innerHTML = `
+<tr>
+<td colspan="5" class="text-center text-danger py-4">
+<div class="d-flex flex-column align-items-center">
+<i class="bi bi-exclamation-triangle-fill text-danger mb-2" style="font-size: 1.5rem;"></i>
+<div>Error: Invalid search results format</div>
+<div class="small mt-1">Please try your search again</div>
+</div>
+</td>
+</tr>`;
+return;
+}
+
+// Handle empty results
+if (this.searchResults.length === 0) {
+console.log('No search results to display');
+const searchInput = document.getElementById('transaction-search')?.value.trim() || '';
+
+let emptyStateHtml = '';
+
+if (searchInput) {
+// If there was a search term
+emptyStateHtml = `
+<tr>
+<td colspan="5" class="text-center py-5">
+<div class="d-flex flex-column align-items-center">
+<i class="bi bi-search-x" style="font-size: 2.5rem; opacity: 0.7; margin-bottom: 1rem;"></i>
+<h5 class="mb-2">No matching transactions</h5>
+<p class="text-muted mb-3">We couldn't find any transactions matching "${this.app.escapeHtml(searchInput)}"</p>
+<div class="d-flex gap-2">
+<button class="btn btn-sm btn-outline-primary" onclick="document.getElementById('transaction-search').value = ''; document.getElementById('search-btn').click();">
+<i class="bi bi-arrow-counterclockwise me-1"></i> Clear search
+</button>
+<button class="btn btn-sm btn-primary" onclick="document.getElementById('transaction-search').focus();">
+<i class="bi bi-search me-1"></i> Try a different search
+</button>
+</div>
+</div>
+</td>
+</tr>`;
+} else {
+// If no search term was entered
+emptyStateHtml = `
+<tr>
+<td colspan="5" class="text-center py-5">
+<div class="d-flex flex-column align-items-center">
+<i class="bi bi-search" style="font-size: 2.5rem; opacity: 0.7; margin-bottom: 1rem;"></i>
+<h5 class="mb-2">Search for transactions</h5>
+<p class="text-muted mb-3">Enter a search term to find matching transactions</p>
+<div class="input-group" style="max-width: 400px;">
+<input type="text" id="search-input-focus" class="form-control" placeholder="Search transactions...">
+<button class="btn btn-primary" type="button" onclick="document.getElementById('search-btn').click();">
+<i class="bi bi-search me-1"></i> Search
+</button>
+</div>
+<script>
+// Auto-focus the search input when this is rendered
+document.addEventListener('DOMContentLoaded', () => {
+const input = document.getElementById('search-input-focus');
+if (input) {
+input.focus();
+// Handle Enter key in the search input
+input.addEventListener('keypress', (e) => {
+if (e.key === 'Enter') {
+document.getElementById('transaction-search').value = input.value;
+document.getElementById('search-btn').click();
+}
+});
+}
+});
+</script>
+</div>
+</td>
+</tr>`;
+}
+
+tbody.innerHTML = emptyStateHtml;
+return;
+}
             this.searchStats = { 
                 ...defaultStats, 
                 transactionCount: this.searchResults.length 
@@ -1367,8 +1552,17 @@ class BudgetApp {
             // Initialize the database first
             await this.db.initializeDB();
             this.dbInitialized = true;
+            
+            // Initialize event listeners
+            this.initializeEventListeners();
+            
+            // Render the dashboard view
+            this.renderCurrentView();
+            
+            console.log('App initialized successfully');
         } catch (error) {
             console.error('Error initializing app:', error);
+            this.showError('Failed to initialize application. Please try refreshing the page.');
             throw error;
         }
     }
@@ -1452,7 +1646,7 @@ class BudgetApp {
             
             reader.readAsText(file);
         });
-    };
+    }
 
     async confirmCSVImport() {
         try {
@@ -1521,7 +1715,7 @@ class BudgetApp {
             }
         });
     }
-}
+*/
 
 async processCSVFile(file) {
     if (!file) return Promise.reject(new Error('No file provided'));
@@ -1601,57 +1795,33 @@ async processCSVFile(file) {
         reader.readAsText(file);
     });
 }
-
-async confirmCSVImport() {
-    try {
-        // Get the transactions from the preview
-        const previewModal = document.getElementById('csv-preview-modal');
-        // ... (rest of the code remains the same)
-        if (!previewModal) {
-            this.showNotification('CSV preview modal not found', 'error');
-            return;
-            transactions.forEach(t => {
-                const amount = parseFloat(t.amount);
-                if (amount > 0) {
-                    income += amount;
-                } else {
-                    expenses += Math.abs(amount);
-                }
-            });
-            
-            // Update summary elements
-            const summaryEl = document.getElementById('calendar-summary');
-            if (summaryEl) {
-                summaryEl.innerHTML = `
-                    <div class="calendar-summary-item">
-                        <span class="calendar-summary-label">Income:</span>
-                        <span class="calendar-summary-value">${this.formatCurrency(income)}</span>
-                    </div>
-                    <div class="calendar-summary-item">
-                        <span class="calendar-summary-label">Expenses:</span>
-                        <span class="calendar-summary-value">${this.formatCurrency(expenses)}</span>
-                    </div>
-                    <div class="calendar-summary-item">
-                        <span class="calendar-summary-label">Net:</span>
-                        <span class="calendar-summary-value ${income - expenses >= 0 ? 'positive' : 'negative'}">
-                            ${this.formatCurrency(income - expenses)}
-                        </span>
-                    </div>
-                `;
-            }
-        } catch (error) {
-            console.error('Error updating calendar summary:', error);
+            `;
         }
-    }
 
-    // Select a date
-    selectDate(date) {
-        this.selectedDate = date;
-        this.renderCalendar(date);
-        this.renderTransactionsForDate(date);
+        // Add transactions to database
+        await this.db.addTransactions(transactions);
+        
+        // Update local transactions
+        this.transactions.push(...transactions);
+        
+        // Update UI
+        await this.renderTransactions();
+        this.showNotification(`${transactions.length} transactions imported successfully`, 'success');
+        
+        // Close modal
+        const modal = document.getElementById('csv-preview-modal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    } catch (error) {
+        console.error('Error importing CSV:', error);
+        this.showNotification('Error importing transactions', 'error');
     }
+}
 
-    // Render current view
+    /**
+     * Render the current view based on the currentView property
+     */
     renderCurrentView() {
         const view = this.currentView;
         
@@ -1686,7 +1856,12 @@ async confirmCSVImport() {
         }
     }
 
-    // Render transactions view
+    /**
+     * Render the transactions view with all transactions
+     */
+    /**
+     * Render the transactions view with all transactions
+     */
     async renderTransactions() {
         try {
             const transactionsView = document.getElementById('transactions-view');
@@ -1697,83 +1872,149 @@ async confirmCSVImport() {
 
             // Show loading state
             transactionsView.innerHTML = `
-                <div class="loading">
+                <div class="text-center p-5">
                     <div class="spinner-border text-primary" role="status">
                         <span class="visually-hidden">Loading...</span>
                     </div>
-                    <p>Loading transactions...</p>
+                    <p class="mt-2">Loading transactions...</p>
                 </div>`;
 
             // Get all transactions
-            const transactions = await this.db.getAllItems('transactions');
-            if (!transactions) {
-                console.error('No transactions found in database');
-                transactionsView.innerHTML = `
-                    <div class="no-transactions">
-                        <p>No transactions found.</p>
-                        <button class="btn btn-primary" onclick="window.app.showTransactionModal()">
-                            Add New Transaction
-                        </button>
-                    </div>`;
-                return;
-            }
-
+            const transactions = await this.db.getAllItems('transactions') || [];
+            
             // Sort transactions by date (newest first)
             const sortedTransactions = [...transactions].sort((a, b) => 
                 new Date(b.date) - new Date(a.date)
             );
 
-            // Create table header
+            // Create table
             let html = `
-                <table class="table table-hover">
-                    <thead>
-                        <tr>
-                            <th>Date</th>
-                            <th>Description</th>
-                            <th>Amount</th>
-                            <th>Category</th>
-                            <th>Account</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>`;
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Date</th>
+                                <th>Description</th>
+                                <th class="text-end">Amount</th>
+                                <th>Category</th>
+                                <th>Account</th>
+                                <th class="text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
 
-            // Add transactions to table
-            sortedTransactions.forEach(t => {
-                const amount = parseFloat(t.amount);
-                const amountClass = amount >= 0 ? 'text-success' : 'text-danger';
-                const amountStr = this.formatCurrency(amount);
-                
+            // Add transaction rows
+            if (sortedTransactions.length === 0) {
                 html += `
                     <tr>
-                        <td>${new Date(t.date).toLocaleDateString()}</td>
-                        <td>${t.description}</td>
-                        <td class="text-end ${amountClass}">${amountStr}</td>
-                        <td>${t.category || 'Uncategorized'}</td>
-                        <td>${t.account || 'Unknown'}</td>
-                        <td>
-                            <button class="btn btn-sm btn-primary" 
-                                    onclick="window.app.editTransaction('${t.id}')">
-                                <i class="bi bi-pencil"></i>
-                            </button>
-                            <button class="btn btn-sm btn-danger" 
-                                    onclick="window.app.confirmAndDeleteTransaction('${t.id}', new Date('${t.date}'))">
-                                <i class="bi bi-trash"></i>
+                        <td colspan="6" class="text-center py-4">
+                            <p class="text-muted">No transactions found.</p>
+                            <button class="btn btn-primary" onclick="window.app.showTransactionModal()">
+                                <i class="bi bi-plus-circle"></i> Add Your First Transaction
                             </button>
                         </td>
                     </tr>`;
-            });
+            } else {
+                sortedTransactions.forEach(transaction => {
+                    if (!transaction) return;
+                    
+                    const date = new Date(transaction.date).toLocaleDateString();
+                    const amount = parseFloat(transaction.amount) || 0;
+                    const amountClass = transaction.type === 'expense' ? 'text-danger' : 'text-success';
+                    const amountStr = this.formatCurrency ? this.formatCurrency(amount) : `$${amount.toFixed(2)}`;
+                    
+                    html += `
+                        <tr>
+                            <td>${date}</td>
+                            <td>${this.escapeHtml(transaction.description || '')}</td>
+                            <td class="text-end ${amountClass}">${amount < 0 ? '-' : ''}${amountStr}</td>
+                            <td>${this.escapeHtml(transaction.category || 'Uncategorized')}</td>
+                            <td>${this.escapeHtml(transaction.account || '')}</td>
+                            <td class="text-center">
+                                <button class="btn btn-sm btn-outline-primary me-1" 
+                                    onclick="window.app.editTransaction('${transaction.id}')"
+                                    title="Edit transaction">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" 
+                                    onclick="window.app.confirmAndDeleteTransaction('${transaction.id}')"
+                                    title="Delete transaction">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </td>
+                        </tr>`;
+                });
+            }
 
             // Close table
-            html += `</tbody></table>`;
-
-            // Add filters
             html += `
-                <div class="filters mt-3">
-                    <div class="row">
-                        <div class="col-md-4">
+                        </tbody>
+                    </table>
+                </div>`;
+
+            // Add search and action buttons
+            html += `
+                <div class="d-flex justify-content-between align-items-center mt-3">
+                    <div class="col-md-4">
+                        <div class="input-group">
+                            <span class="input-group-text">
+                                <i class="bi bi-search"></i>
+                            </span>
                             <input type="text" 
-                                   class="form-control" 
+                                class="form-control" 
+                                id="transaction-search" 
+                                placeholder="Search transactions...">
+                        </div>
+                    </div>
+                    <div>
+                        <button class="btn btn-primary" onclick="window.app.showTransactionModal()">
+                            <i class="bi bi-plus-circle"></i> Add Transaction
+                        </button>
+                    </div>
+                </div>`;
+
+            // Update the view
+            transactionsView.innerHTML = html;
+
+            // Initialize search functionality
+            this.initializeSearch();
+
+        } catch (error) {
+            console.error('Error rendering transactions:', error);
+            const errorHtml = `
+                <div class="alert alert-danger">
+                    <p>Error loading transactions: ${error.message}</p>
+                    <button class="btn btn-secondary" onclick="window.app.renderTransactions()">
+                        <i class="bi bi-arrow-clockwise"></i> Try Again
+                    </button>
+                </div>`;
+            
+            const transactionsView = document.getElementById('transactions-view');
+            if (transactionsView) {
+                transactionsView.innerHTML = errorHtml;
+            }
+        }
+    }
+    
+    /**
+     * Initialize search functionality for transactions
+     */
+    initializeSearch() {
+        const searchInput = document.getElementById('transaction-search');
+        const transactionsView = document.getElementById('transactions-view');
+        
+        if (!searchInput || !transactionsView) return;
+        
+        searchInput.addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase().trim();
+            const rows = transactionsView.querySelectorAll('tbody tr');
+            
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                row.style.display = searchTerm === '' || text.includes(searchTerm) ? '' : 'none';
+            });
+        });
+    }
                                    id="transaction-search" 
                                    placeholder="Search transactions...">
                         </div>
@@ -2283,15 +2524,6 @@ async confirmCSVImport() {
                 </div>
             </div>`;
         
-        // Update the calendar element
-        calendarEl.innerHTML = calendarHTML;
-        
-        // Set up event listeners
-        this.setupCalendarEventListeners();
-        
-        // Update the calendar summary
-        this.updateCalendarSummary(date);
-        
         // Update month/year display
         const monthYearEl = document.getElementById('calendar-month-year');
         if (monthYearEl) {
@@ -2307,7 +2539,7 @@ async confirmCSVImport() {
         // Update the DOM
         calendarEl.innerHTML = calendarHTML;
         
-        // Add event listeners
+        // Set up event listeners
         this.setupCalendarEventListeners();
         
         // Update mini calendar
@@ -2387,172 +2619,98 @@ async confirmCSVImport() {
                 </div>`;
         }
         
-        // Add days of current month
-        for (let day = 1; day <= daysInMonth; day++) {
-            const currentDate = new Date(year, month, day);
-            const isToday = today.getDate() === day && 
-                          today.getMonth() === month && 
-                          today.getFullYear() === year;
-            const isSelected = this.selectedDate && 
-                             this.selectedDate.getDate() === day &&
-                             this.selectedDate.getMonth() === month &&
-                             this.selectedDate.getFullYear() === year;
-            
-            const hasTransactions = transactionsByDay[day]?.length > 0;
-            const dayClass = [
-                'mini-calendar-day',
-                isToday ? 'mini-calendar-day--today' : '',
-                isSelected ? 'mini-calendar-day--selected' : '',
-                hasTransactions ? 'has-transactions' : ''
-            ].filter(Boolean).join(' ');
-            
-            const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-            html += `
-                <div class="${dayClass}" data-date="${dateStr}">
-                    <span class="mini-calendar-day-number">${day}</span>
-                    ${hasTransactions ? '<span class="mini-calendar-day-dot"></span>' : ''}
-                </div>`;
-        }
-        
-        // Calculate next month and year
-        let nextMonth = month + 1;
-        let nextYear = year;
-        if (nextMonth > 11) {
-            nextMonth = 0;
-            nextYear++;
-        }
-        
-        // Add empty cells for days from next month to complete the grid
-        const totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
-        const remainingCells = totalCells - (firstDay + daysInMonth);
-        
-        for (let i = 1; i <= remainingCells; i++) {
-            const dateStr = `${nextYear}-${String(nextMonth + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
-            html += `
-                <div class="mini-calendar-day mini-calendar-day--other-month" data-date="${dateStr}">
-                    <span class="mini-calendar-day-number">${i}</span>
-                </div>`;
-        }
-        
-        html += '</div>';
-        miniCalendarEl.innerHTML = html;
-        
-        // Add event listeners
-        miniCalendarEl.querySelectorAll('.mini-calendar-day').forEach(dayEl => {
-            dayEl.addEventListener('click', () => {
-                const dateStr = dayEl.dataset.date;
-                if (dateStr) {
-                    const [y, m, d] = dateStr.split('-').map(Number);
-                    const selectedDate = new Date(y, m - 1, d);
-                    this.selectDate(selectedDate);
-                    this.renderCalendar(selectedDate);
-                }
-            });
-        });
-        
-        document.getElementById('mini-prev-month')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.renderCalendar(new Date(year, month - 1, 1));
-        });
-        
-        document.getElementById('mini-next-month')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.renderCalendar(new Date(year, month + 1, 1));
-        });
-    }
-    
-    /**
-     * Set up event listeners for the calendar
+   /** Set up event listeners for the calendar
+    * 
      */
-    setupCalendarEventListeners() {
-        const calendarEl = document.getElementById('calendar');
-        if (!calendarEl) return;
+
+
+
         
-        // Day click handler
-        calendarEl.querySelectorAll('.calendar__day').forEach(dayEl => {
-            dayEl.addEventListener('click', async () => {
-                const dateStr = dayEl.getAttribute('data-date');
-                if (dateStr) {
-                    const [year, month, day] = dateStr.split('-').map(Number);
-                    try {
-                        await this.selectDate(new Date(year, month - 1, day));
-                        // Update active day styling
-                        calendarEl.querySelectorAll('.calendar__day').forEach(el => {
-                            el.classList.remove('calendar__day--selected');
-                        });
-                        dayEl.classList.add('calendar__day--selected');
-                    } catch (error) {
-                        console.error('Error selecting date:', error);
-                    }
-                }
-            });
-        });
+    // Add days of current month
+    for (let day = 1; day <= daysInMonth; day++) {
+        const currentDate = new Date(year, month, day);
+        const isToday = today.getDate() === day && 
+                      today.getMonth() === month && 
+                      today.getFullYear() === year;
+        const isSelected = this.selectedDate && 
+                         this.selectedDate.getDate() === day &&
+                         this.selectedDate.getMonth() === month &&
+                         this.selectedDate.getFullYear() === year;
+        
+        const hasTransactions = transactionsByDay[day]?.length > 0;
+        const dayClass = [
+            'mini-calendar-day',
+            isToday ? 'mini-calendar-day--today' : '',
+            isSelected ? 'mini-calendar-day--selected' : '',
+            hasTransactions ? 'has-transactions' : ''
+        ].filter(Boolean).join(' ');
+        
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        html += `
+            <div class="${dayClass}" data-date="${dateStr}">
+                <span class="mini-calendar-day-number">${day}</span>
+                ${hasTransactions ? '<span class="mini-calendar-day-dot"></span>' : ''}
+            </div>`;
     }
-    
-   
-
-        // Transaction buttons
-        const transactionButtons = document.querySelectorAll('.transaction-button');
-        transactionButtons.forEach(button => {
-            button.addEventListener('click', (e) => {
-                e.preventDefault();
-                const id = button.dataset.transactionId;
-                if (id) {
-                    this.handleTransactionSubmit(button);
-                }
-            });
-        });
-
-        // CSV import
-        const csvImportBtn = document.getElementById('csv-import-btn');
-        if (csvImportBtn) {
-            csvImportBtn.addEventListener('click', () => {
-                document.getElementById('csv-file')?.click();
-            });
-        }
-
-        // Calendar navigation
-        const prevMonthBtn = document.getElementById('prev-month');
-        const nextMonthBtn = document.getElementById('next-month');
-        if (prevMonthBtn) prevMonthBtn.addEventListener('click', () => this.navigateMonth(-1));
-        if (nextMonthBtn) nextMonthBtn.addEventListener('click', () => this.navigateMonth(1));
-
-        // Search and filter
-        const transactionSearch = document.getElementById('transaction-search');
-        const transactionFilter = document.getElementById('transaction-filter');
-        if (transactionSearch) transactionSearch.addEventListener('input', () => this.filterTransactions());
-        if (transactionFilter) transactionFilter.addEventListener('change', () => this.filterTransactions());
-
-        // CSV dropzone
-        const dropzone = document.getElementById('csv-dropzone');
-        if (dropzone) {
-            dropzone.addEventListener('dragover', (e) => {
-                e.preventDefault();
-                dropzone.classList.add('csv-upload__dropzone--dragover');
-            });
-            dropzone.addEventListener('dragleave', () => {
-                dropzone.classList.remove('csv-upload__dropzone--dragover');
-            });
-            dropzone.addEventListener('drop', (e) => {
-                e.preventDefault();
-                dropzone.classList.remove('csv-upload__dropzone--dragover');
-                const files = e.dataTransfer.files;
-                if (files.length > 0) {
-                    this.processCSVFile(files[0]);
-                }
-            });
-            dropzone.addEventListener('click', () => {
-                document.getElementById('csv-file')?.click();
-            });
-        }
+        
+    // Calculate next month and year
+    let nextMonth = month + 1;
+    let nextYear = year;
+    if (nextMonth > 11) {
+        nextMonth = 0;
+        nextYear++;
     }
-
-// Update navigation state
-updateNavigation(view) {
-    document.querySelectorAll('.nav__link').forEach(link => {
-        link.classList.remove('nav__link--active');
+        
+    // Add empty cells for days from next month to complete the grid
+    const totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
+    const remainingCells = totalCells - (firstDay + daysInMonth);
+        
+    for (let i = 1; i <= remainingCells; i++) {
+        const dateStr = `${nextYear}-${String(nextMonth + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+        html += `
+            <div class="mini-calendar-day mini-calendar-day--other-month" data-date="${dateStr}">
+                <span class="mini-calendar-day-number">${i}</span>
+            </div>`;
+    }
+        
+    html += '</div>';
+    miniCalendarEl.innerHTML = html;
+        
+    // Add event listeners
+    miniCalendarEl.querySelectorAll('.mini-calendar-day').forEach(dayEl => {
+        dayEl.addEventListener('click', () => {
+            const dateStr = dayEl.dataset.date;
+            if (dateStr) {
+                const [y, m, d] = dateStr.split('-').map(Number);
+                const selectedDate = new Date(y, m - 1, d);
+                this.selectDate(selectedDate);
+                this.renderCalendar(selectedDate);
+            }
+        });
+    });
+        
+    document.getElementById('mini-prev-month')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        // Navigate to previous month
+        const currentDate = new Date(this.selectedDate || new Date());
+        currentDate.setMonth(currentDate.getMonth() - 1);
+        this.renderCalendar(currentDate);
     });
     
+    document.getElementById('mini-next-month')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        // Navigate to next month
+        const currentDate = new Date(this.selectedDate || new Date());
+        currentDate.setMonth(currentDate.getMonth() + 1);
+        this.renderCalendar(currentDate);
+    });
+}
+
+/**
+ * Update navigation state
+ * @param {string} view - The view to navigate to
+ */
+updateNavigation(view) {
     const activeNav = document.querySelector(`[data-view="${view}"]`);
     if (activeNav) {
         activeNav.classList.add('nav__link--active');
@@ -2583,70 +2741,6 @@ updateNavigation(view) {
     this.currentView = view;
     this.renderCurrentView();
 }
-
-    async renderTransactions() {
-        try {
-            // Get the transactions view container
-            const transactionsView = document.getElementById('transactions-view');
-            if (!transactionsView) {
-                console.error('Transactions view not found');
-                return;
-            }
-            
-            // Get the transactions table container
-            const transactionsTable = document.getElementById('transactions-table');
-            if (!transactionsTable) {
-                console.error('Transactions table not found');
-                return;
-            }
-            
-            // Show loading state
-            transactionsTable.innerHTML = '<div class="loading">Loading transactions...</div>';
-            console.log('Fetching transactions from database...');
-            
-            try {
-                // Get all transactions from the database
-                const transactions = await this.db.getAllItems('transactions');
-                console.log('Retrieved transactions:', transactions);
-                
-                if (!transactions || transactions.length === 0) {
-                    console.log('No transactions found in the database');
-                    transactionsTable.innerHTML = `
-                        <div class="no-transactions">
-                            <p>No transactions found.</p>
-                            <button class="btn btn--primary" id="add-sample-data">Add Sample Data</button>
-                        </div>
-                    `;
-                    document.getElementById('add-sample-data')?.addEventListener('click', () => this.loadSampleData());
-                    return;
-                }
-            
-                // Sort by date descending (newest first)
-                transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
-                
-                // Render the transactions list
-                transactionsTable.innerHTML = this.renderTransactionList(transactions);
-                
-            } catch (error) {
-                console.error('Error loading transactions:', error);
-                transactionsTable.innerHTML = `
-                    <div class="error">
-                        Error loading transactions: ${error.message}
-                    </div>
-                `;
-            }
-        } catch (error) {
-            console.error('Error in renderTransactions:', error);
-            const transactionsView = document.getElementById('transactions-view');
-            if (transactionsView) {
-                transactionsView.innerHTML = `
-                    <div class="error">
-                        An error occurred while loading transactions. Please try again.
-                    </div>
-                `;
-            }
-        }
-    }
     
     async filterTransactions() {
         try {
@@ -3639,18 +3733,10 @@ updateNavigation(view) {
             
             // Hide confirm button on error
             if (confirmBtn) {
-                confirmBtn.classList.add('hidden');
-            }
-        }
-    }
-    
-    // Confirm and import the CSV data
-    async confirmCSVImport() {
-        if (!this.pendingImport || this.pendingImport.length === 0) {
-            alert('No transactions to import. Please upload a CSV file first.');
-            return;
-        }
         
+        // Clear any transaction ID from the form (in case it was in edit mode)
+        if (form.dataset.transactionId) {
+            delete form.dataset.transactionId;
         try {
             const results = {
                 success: 0,
@@ -3722,8 +3808,7 @@ updateNavigation(view) {
             this.pendingImport = [];
         }
     };
-    }
-    
+
     /**
      * Shows the transaction modal for adding a new transaction
      */
@@ -3934,18 +4019,32 @@ updateNavigation(view) {
     async renderDashboard() {
         try {
             // Get the dashboard container
-            const dashboardEl = document.getElementById('dashboard');
-            if (!dashboardEl) return;
+            const dashboardEl = document.querySelector('#dashboard-view .dashboard-grid');
+            if (!dashboardEl) {
+                console.error('Dashboard element not found');
+                return;
+            }
+            
+            // Show loading state
+            dashboardEl.innerHTML = '<div class="loading">Loading dashboard data...</div>';
             
             // Get transactions for the current month
             const now = new Date();
             const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
             const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
             
-            const transactions = await this.localDB.getTransactions({
-                startDate: firstDay,
-                endDate: lastDay
-            });
+            // Get transactions from the database
+            let transactions = [];
+            try {
+                transactions = await this.db.getTransactions({
+                    startDate: firstDay,
+                    endDate: lastDay
+                }) || [];
+                console.log(`Loaded ${transactions.length} transactions for dashboard`);
+            } catch (error) {
+                console.error('Error loading transactions:', error);
+                throw new Error('Failed to load transactions');
+            }
             
             // Calculate totals
             const totals = transactions.reduce((acc, t) => {
@@ -3958,65 +4057,142 @@ updateNavigation(view) {
                 return acc;
             }, { income: 0, expenses: 0 });
             
+            // Format currency function
+            const formatCurrency = (amount) => {
+                return new Intl.NumberFormat('en-US', {
+                    style: 'currency',
+                    currency: 'USD',
+                    minimumFractionDigits: 2
+                }).format(amount);
+            };
+            
+            // Format date function
+            const formatDate = (dateString) => {
+                if (!dateString) return '';
+                const options = { year: 'numeric', month: 'short', day: 'numeric' };
+                return new Date(dateString).toLocaleDateString(undefined, options);
+            };
+            
             // Update the dashboard HTML
             dashboardEl.innerHTML = `
+                <div class="dashboard-header">
+                    <h2>Dashboard</h2>
+                    <button id="refresh-dashboard" class="btn btn-sm btn-outline-primary">
+                        <i class="bi bi-arrow-clockwise"></i> Refresh
+                    </button>
+                </div>
+                
                 <div class="dashboard-summary">
                     <div class="dashboard-card">
-                        <h3>Income</h3>
-                        <div class="amount income">${this.formatCurrency(totals.income)}</div>
-                    </div>
-                    <div class="dashboard-card">
-                        <h3>Expenses</h3>
-                        <div class="amount expense">${this.formatCurrency(totals.expenses)}</div>
-                    </div>
-                    <div class="dashboard-card">
-                        <h3>Balance</h3>
+                        <h3>Available to Budget</h3>
                         <div class="amount ${totals.income - totals.expenses >= 0 ? 'income' : 'expense'}">
-                            ${this.formatCurrency(totals.income - totals.expenses)}
+                            ${formatCurrency(totals.income - totals.expenses)}
                         </div>
+                        <div class="card-description">Money waiting for assignment</div>
+                    </div>
+                    
+                    <div class="dashboard-card">
+                        <h3>Budgeted This Month</h3>
+                        <div class="amount">${formatCurrency(totals.expenses)}</div>
+                        <div class="card-description">Total assigned to categories</div>
+                    </div>
+                    
+                    <div class="dashboard-card">
+                        <h3>Spent This Month</h3>
+                        <div class="amount expense">${formatCurrency(totals.expenses)}</div>
+                        <div class="card-description">Total expenses</div>
+                    </div>
+                    
+                    <div class="dashboard-card">
+                        <h3>Monthly Income</h3>
+                        <div class="amount income">${formatCurrency(totals.income)}</div>
+                        <div class="card-description">Total income this month</div>
                     </div>
                 </div>
+                
                 <div class="dashboard-charts">
                     <div class="chart-container">
+                        <h3>Spending Trend</h3>
                         <canvas id="monthly-trend-chart"></canvas>
                     </div>
                     <div class="chart-container">
+                        <h3>Category Breakdown</h3>
                         <canvas id="category-breakdown-chart"></canvas>
                     </div>
                 </div>
-                <div class="dashboard-recent">
-                    <h3>Recent Transactions</h3>
+                
+                <div class="recent-transactions">
+                    <div class="section-header">
+                        <h3>Recent Transactions</h3>
+                        <a href="#transactions" class="view-all">View All</a>
+                    </div>
                     <div class="transaction-list">
-                        ${transactions.slice(0, 5).map(t => `
-                            <div class="transaction-item ${t.amount < 0 ? 'expense' : 'income'}">
-                                <div class="transaction-main">
-                                    <div class="transaction-category">${t.category || 'Uncategorized'}</div>
-                                    <div class="transaction-amount">${this.formatCurrency(t.amount)}</div>
+                        ${transactions.length > 0 ? 
+                            transactions.slice(0, 5).map(t => `
+                                <div class="transaction-item ${t.amount < 0 ? 'expense' : 'income'}">
+                                    <div class="transaction-main">
+                                        <div class="transaction-category">${t.category || 'Uncategorized'}</div>
+                                        <div class="transaction-description">${t.description || 'No description'}</div>
+                                        <div class="transaction-amount">${formatCurrency(t.amount)}</div>
+                                    </div>
+                                    <div class="transaction-footer">
+                                        <div class="transaction-date">${formatDate(t.date)}</div>
+                                        <div class="transaction-actions">
+                                            <button class="btn-icon" data-id="${t.id}" data-action="edit">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div class="transaction-date">${this.formatDate(t.date)}</div>
-                            </div>
-                        `).join('')}
+                            `).join('') : 
+                            '<div class="no-transactions">No transactions found. Add your first transaction to get started!</div>'
+                        }
                     </div>
                 </div>`;
             
-            // Initialize charts
-            await this.initializeDashboardCharts(transactions);
+            // Initialize charts if we have data
+            if (transactions.length > 0) {
+                try {
+                    await this.initializeDashboardCharts(transactions);
+                } catch (error) {
+                    console.error('Error initializing charts:', error);
+                }
+            }
+            
+            // Add event listeners
+            this.setupDashboardEventListeners();
             
         } catch (error) {
             console.error('Error rendering dashboard:', error);
-            this.showToast('error', 'Error', 'Failed to load dashboard data');
+            const errorMessage = error.message || 'Failed to load dashboard data';
+            dashboardEl.innerHTML = `
+                <div class="alert alert-danger">
+                    <h3>Error Loading Dashboard</h3>
+                    <p>${errorMessage}</p>
+                    <button class="btn btn-primary mt-2" onclick="window.location.reload()">
+                        Try Again
+                    </button>
+                </div>`;
         }
-    };
-                </div>
-                <div class="recent-transactions">
-                    <h3>Recent Transactions</h3>
-                    ${this.renderTransactionList(transactions.slice(0, 5))}
-                </div>
-            `;
-            
-        } catch (error) {
-            console.error('Error rendering dashboard:', error);
+    }
+    
+    // Set up event listeners for dashboard elements
+    setupDashboardEventListeners() {
+        // Refresh button
+        const refreshBtn = document.getElementById('refresh-dashboard');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => this.renderDashboard());
         }
+        
+        // Edit transaction buttons
+        document.querySelectorAll('[data-action="edit"]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const transactionId = e.currentTarget.getAttribute('data-id');
+                if (transactionId) {
+                    this.editTransaction(transactionId);
+                }
+            });
+        });
     }
     
     // Update the dashboard with fresh data
@@ -4182,10 +4358,14 @@ updateNavigation(view) {
         }
     };
 }
-    }
     
     /**
      * Show a notification to the user
+     * @param {string} message - The message to display
+     * @param {string} type - The type of notification (success, error, info)
+     */
+    /**
+     * Shows a notification to the user
      * @param {string} message - The message to display
      * @param {string} type - The type of notification (success, error, info)
      */
@@ -4231,9 +4411,45 @@ updateNavigation(view) {
                 notification.remove();
             }, 300);
         }, 3000);
-    };
-}
+    }
+    
+    /**
+     * Render the current view based on the currentView property
+     */
+    renderCurrentView() {
+        const view = this.currentView;
+        
+        switch (view) {
+            case 'dashboard':
+                this.renderDashboard();
+                break;
+            case 'budget':
+                this.renderBudget();
+                break;
+            case 'transactions':
+                this.renderTransactions();
+                break;
+            case 'calendar':
+                this.renderCalendar();
+                break;
+            case 'search':
+                this.renderSearch();
+                break;
+            default:
+                this.renderDashboard();
+        }
+    }
 }
 
 // Initialize the app when the DOM is fully loaded
-window.app = new BudgetApp();
+// Export the BudgetApp class for use in other modules
+export { BudgetApp };
+
+// Initialize the app when the DOM is fully loaded
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        window.app = new BudgetApp();
+    });
+} else {
+    window.app = new BudgetApp();
+}

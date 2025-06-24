@@ -1,5 +1,7 @@
-# Firebase configuration
-firebase-config.js
+# Dependencies
+/node_modules
+/.pnp
+.pnp.js
 
 # Environment variables
 .env
@@ -8,16 +10,84 @@ firebase-config.js
 .env.test.local
 .env.production.local
 
-# Dependencies
-/node_modules
-/.pnp
-.pnp.js
-
-# Production
+# Build outputs
 /build
 /dist
+/.cache
+/.sass-cache
+/.tmp
+.temp
+.tmp
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Testing
+/coverage
 
 # Misc
+.cache/
+.parcel-cache/
+*.pem
+*.p12
+*.key
+*.crt
+*.csr
+*.srl
+*.sln
+*.user
+*.userosscache
+*.sln.docstates
+
+# Local development
+.firebase/
+.firebaserc
+firebase-debug.log
+firebase-debug.*.log
+
+# Firebase configuration (if used)
+firebase-config.js
+
+# Local database files
+*.sqlite
+*.sqlite3
+*.db
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local development
+.vercel
+.netlify
+.next
+.nuxt
+.cache
+.svelte-kit
+.vite
 .DS_Store
 .env.local
 .env.development.local

@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Offline - MyBudgetPro</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 20px;
+      text-align: center;
+      background-color: #f5f5f5;
+      color: #333;
+    }
+    .offline-container {
+      margin-top: 50px;
+      padding: 40px;
+      border: 1px solid #e0e0e0;
+      border-radius: 12px;
+      background-color: white;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+    h1 {
+      color: #e74c3c;
+      margin-bottom: 20px;
+    }
+    p {
+      color: #666;
+      line-height: 1.6;
+      margin-bottom: 20px;
+    }
+    .btn {
+      display: inline-block;
+      margin-top: 20px;
+      padding: 12px 30px;
+      background-color: #4CAF50;
+      color: white;
+      text-decoration: none;
+      border-radius: 6px;
+      border: none;
+      font-size: 16px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    .btn:hover {
+      background-color: #45a049;
+    }
+    .offline-icon {
+      font-size: 64px;
+      margin-bottom: 20px;
+      color: #e74c3c;
+    }
+  </style>
+</head>
+<body>
+  <div class="offline-container">
+    <div class="offline-icon">📶</div>
+    <h1>You're Offline</h1>
+    <p>It seems you're not connected to the internet. Some features may not be available while offline.</p>
+    <p>Please check your internet connection and try again.</p>
+    <button class="btn" onclick="window.location.reload()">
+      <span class="btn-text">Retry Connection</span>
+    </button>
+  </div>
+  <script>
+    // Check if we're back online
+    function checkOnline() {
+      if (navigator.onLine) {
+        window.location.href = '/';
+      }
+    }
+    
+    // Update button text based on online status
+    function updateButtonText() {
+      const btnText = document.querySelector('.btn-text');
+      if (btnText) {
+        btnText.textContent = navigator.onLine ? 'Go to Home' : 'Retry Connection';
+      }
+    }
+    
+    // Initial button text update
+    updateButtonText();
+    
+    // Listen for online/offline events
+    window.addEventListener('online', () => {
+      updateButtonText();
+      setTimeout(checkOnline, 1000);
+    });
+    window.addEventListener('offline', updateButtonText);
+  </script>
+</body>
+</html>

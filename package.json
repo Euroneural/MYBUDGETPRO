@@ -1,0 +1,61 @@
+{
+  "name": "budgetpro",
+  "version": "1.0.0",
+  "description": "A personal finance manager to help you track your income, expenses, and budget",
+  "main": "src/app.js",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 8003",
+    "start": "./app-manager.sh start",
+    "stop": "./app-manager.sh stop",
+    "restart": "./app-manager.sh restart",
+    "status": "./app-manager.sh status",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "format": "prettier --write \"**/*.{js,jsx,json,md,html,css}\"",
+    "lint": "eslint src --ext .js",
+    "prepare": "husky install"
+  },
+  "keywords": [
+    "budget",
+    "finance",
+    "money",
+    "expense-tracker",
+    "pwa"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "chart.js": "^4.4.0",
+    "date-fns": "^2.30.0",
+    "idb": "^7.1.1"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.22.1",
+    "@babel/eslint-parser": "^7.21.8",
+    "@babel/preset-env": "^7.22.5",
+    "eslint": "^8.42.0",
+    "eslint-config-prettier": "^8.8.0",
+    "eslint-plugin-import": "^2.27.5",
+    "husky": "^8.0.3",
+    "lint-staged": "^13.2.2",
+    "prettier": "^2.8.8",
+    "vite": "^4.3.9",
+    "vite-plugin-pwa": "^0.16.1",
+    "workbox-window": "^7.0.0"
+  },
+  "browserslist": [
+    "defaults",
+    "not IE 11",
+    "maintained node versions"
+  ],
+  "lint-staged": {
+    "*.{js,jsx,json,md,html,css}": [
+      "prettier --write"
+    ],
+    "*.js": [
+      "eslint --fix"
+    ]
+  }
+}

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Page Not Found | Budget Pro</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      background-color: #f8f9fa;
+      color: #333;
+      text-align: center;
+      padding: 0 20px;
+    }
+    .container {
+      max-width: 500px;
+      padding: 40px;
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    h1 {
+      color: #4a6cf7;
+      margin-top: 0;
+    }
+    p {
+      margin-bottom: 20px;
+      line-height: 1.6;
+    }
+    .emoji {
+      font-size: 48px;
+      margin-bottom: 20px;
+      display: block;
+    }
+    .btn {
+      display: inline-block;
+      background-color: #4a6cf7;
+      color: white;
+      text-decoration: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      font-size: 16px;
+      transition: background-color 0.3s;
+    }
+    .btn:hover {
+      background-color: #3a5bd9;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <span class="emoji">🔍</span>
+    <h1>Page Not Found</h1>
+    <p>We couldn't find the page you're looking for. It might have been moved or deleted.</p>
+    <p>Don't worry, let's get you back on track!</p>
+    <a href="/" class="btn">Go to Homepage</a>
+  </div>
+  <script>
+    // Simple script to handle navigation in a single page app
+    document.addEventListener('DOMContentLoaded', () => {
+      const links = document.querySelectorAll('a[href^="/"]');
+      
+      links.forEach(link => {
+        link.addEventListener('click', (e) => {
+          const href = link.getAttribute('href');
+          if (href !== '/' && !href.startsWith('http') && !href.startsWith('#')) {
+            e.preventDefault();
+            window.location.href = href;
+          }
+        });
+      });
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Clear Cache and Service Workers</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 10px 2px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        #status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #dff0d8;
+            color: #3c763d;
+            border: 1px solid #d6e9c6;
+        }
+        .error {
+            background-color: #f2dede;
+            color: #a94442;
+            border: 1px solid #ebccd1;
+        }
+    </style>
+</head>
+<body>
+    <h1>Clear Cache and Service Workers</h1>
+    
+    <div>
+        <button id="clearCache">Clear Browser Cache</button>
+        <button id="clearSW">Unregister Service Workers</button>
+        <button id="clearAll">Clear Everything</button>
+    </div>
+    
+    <div id="status"></div>
+
+    <script>
+        function setStatus(message, isError = false) {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = message;
+            statusEl.className = isError ? 'error' : 'success';
+        }
+
+        document.getElementById('clearCache').addEventListener('click', () => {
+            try {
+                // Clear all caches
+                if ('caches' in window) {
+                    caches.keys().then(cacheNames => {
+                        return Promise.all(
+                            cacheNames.map(cacheName => {
+                                return caches.delete(cacheName);
+                            })
+                        );
+                    }).then(() => {
+                        setStatus('Browser cache and service worker caches cleared successfully!');
+                    });
+                } else {
+                    setStatus('Cache API not supported in this browser', true);
+                }
+            } catch (error) {
+                setStatus('Error clearing cache: ' + error.message, true);
+            }
+        });
+
+        document.getElementById('clearSW').addEventListener('click', () => {
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.getRegistrations().then(registrations => {
+                    if (registrations.length === 0) {
+                        setStatus('No service workers registered');
+                        return;
+                    }
+                    
+                    const unregisterPromises = registrations.map(registration => {
+                        return registration.unregister()
+                            .then(success => {
+                                if (success) {
+                                    return `Unregistered service worker: ${registration.scope}`;
+                                } else {
+                                    return `Failed to unregister service worker: ${registration.scope}`;
+                                }
+                            });
+                    });
+                    
+                    Promise.all(unregisterPromises).then(messages => {
+                        setStatus(messages.join('\n'));
+                    });
+                }).catch(error => {
+                    setStatus('Error unregistering service workers: ' + error.message, true);
+                });
+            } else {
+                setStatus('Service workers not supported in this browser', true);
+            }
+        });
+
+        document.getElementById('clearAll').addEventListener('click', () => {
+            // Clear service workers first
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.getRegistrations().then(registrations => {
+                    const unregisterPromises = registrations.map(registration => 
+                        registration.unregister()
+                    );
+                    
+                    // Clear caches
+                    if ('caches' in window) {
+                        unregisterPromises.push(
+                            caches.keys().then(cacheNames => 
+                                Promise.all(cacheNames.map(cacheName => caches.delete(cacheName))))
+                        );
+                    }
+                    
+                    return Promise.all(unregisterPromises);
+                }).then(() => {
+                    // Clear browser's application cache
+                    if (window.applicationCache) {
+                        try {
+                            window.applicationCache.update();
+                            window.applicationCache.swapCache();
+                        } catch (e) {
+                            console.warn('Error clearing application cache:', e);
+                        }
+                    }
+                    
+                    // Clear localStorage and sessionStorage
+                    localStorage.clear();
+                    sessionStorage.clear();
+                    
+                    setStatus('All caches, service workers, and local storage have been cleared successfully!');
+                    
+                    // Suggest a hard refresh
+                    setTimeout(() => {
+                        if (confirm('Would you like to reload the page now?')) {
+                            window.location.reload(true);
+                        }
+                    }, 1000);
+                }).catch(error => {
+                    setStatus('Error during cleanup: ' + error.message, true);
+                });
+            } else {
+                setStatus('Service workers not supported in this browser', true);
+            }
+        });
+    </script>
+</body>
+</html>

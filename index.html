@@ -8,12 +8,63 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Local Database -->
     <!-- App (loaded as ES module) -->
-    <script type="module" src="./app.js"></script>
-    <script>
+    <script type="module">
+        console.log('Starting app initialization...');
+        
+        // Import the app
+        try {
+            import('./app.js')
+                .then(module => {
+                    console.log('App module loaded successfully');
+                    // Initialize the app when the DOM is fully loaded
+                    document.addEventListener('DOMContentLoaded', () => {
+                        console.log('DOM fully loaded, initializing app...');
+                        try {
+                            // Create a global reference to the app
+                            window.app = new module.BudgetApp();
+                            console.log('App initialized successfully');
+                        } catch (error) {
+                            console.error('Error initializing app:', error);
+                            document.body.innerHTML = `
+                                <div style="padding: 20px; color: #721c24; background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px; margin: 20px;">
+                                    <h2>Error Initializing Application</h2>
+                                    <p>${error.message}</p>
+                                    <p>Please check the console for more details.</p>
+                                </div>
+                            `;
+                        }
+                    });
+                })
+                .catch(error => {
+                    console.error('Failed to load app module:', error);
+                    document.body.innerHTML = `
+                        <div style="padding: 20px; color: #721c24; background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px; margin: 20px;">
+                            <h2>Failed to Load Application</h2>
+                            <p>${error.message}</p>
+                            <p>Please check the console for more details.</p>
+                        </div>
+                    `;
+                });
+        } catch (error) {
+            console.error('Error in script initialization:', error);
+            document.body.innerHTML = `
+                <div style="padding: 20px; color: #721c24; background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px; margin: 20px;">
+                    <h2>Critical Error</h2>
+                    <p>${error.message}</p>
+                    <p>Please check the console for more details.</p>
+                </div>
+            `;
+        }
+        
         // Add any global variables or polyfills here if needed
         if (!window.Promise) {
+            console.log('Loading Promise polyfill...');
             // Load a Promise polyfill if needed
-            document.write('<script src="https://cdn.jsdelivr.net/npm/promise-polyfill@8.2.3/dist/polyfill.min.js"><\/script>');
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/promise-polyfill@8.2.3/dist/polyfill.min.js';
+            script.onload = () => console.log('Promise polyfill loaded');
+            script.onerror = (e) => console.error('Failed to load Promise polyfill:', e);
+            document.head.appendChild(script);
         }
     </script>
 </head>
