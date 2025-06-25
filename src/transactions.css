@@ -1,0 +1,138 @@
+/* Transactions View */
+.transactions-container {
+    position: relative;
+    min-height: 300px;
+    max-height: 70vh;
+    overflow-y: auto;
+    border-radius: var(--border-radius);
+    background: var(--card-bg);
+}
+
+.transactions-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+.transactions-table th,
+.transactions-table td {
+    padding: 1rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.transactions-table th {
+    position: sticky;
+    top: 0;
+    background: var(--card-bg);
+    font-weight: 600;
+    z-index: 10;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.transactions-table tbody tr {
+    transition: background-color 0.2s ease;
+}
+
+.transactions-table tbody tr:hover {
+    background-color: rgba(var(--primary-rgb), 0.05);
+}
+
+/* Search and Filter Styles */
+.transaction-controls {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.search-container {
+    position: relative;
+    flex: 1;
+    max-width: 400px;
+}
+
+.search-icon {
+    position: absolute;
+    left: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    pointer-events: none;
+}
+
+.search-input {
+    padding-left: 2.5rem !important;
+    padding-right: 2.5rem !important;
+    width: 100%;
+}
+
+#clear-search {
+    position: absolute;
+    right: 0.5rem;
+    top: 50%;
+    transform: translateY(-50%);
+    padding: 0.25rem;
+    color: var(--text-muted);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.2s ease;
+}
+
+#clear-search:hover {
+    opacity: 1;
+    color: var(--danger);
+}
+
+/* Empty State */
+#transactions-empty {
+    display: none;
+    padding: 3rem 1rem;
+    text-align: center;
+}
+
+#transactions-empty i {
+    font-size: 3rem;
+    opacity: 0.5;
+    margin-bottom: 1rem;
+}
+
+/* Loading State */
+#transactions-loading {
+    display: none;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 20;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+    .transaction-controls {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.75rem;
+    }
+    
+    .search-container {
+        max-width: 100%;
+    }
+    
+    .transactions-table {
+        display: block;
+        overflow-x: auto;
+    }
+    
+    .transactions-table th,
+    .transactions-table td {
+        white-space: nowrap;
+    }
+}

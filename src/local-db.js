@@ -99,6 +99,21 @@ class LocalDB {
             request.onerror = (event) => reject(event.target.error);
         });
     }
+    
+    // Clear all transactions from the database
+    async clearAllTransactions() {
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction(['transactions'], 'readwrite');
+            const store = transaction.objectStore('transactions');
+            const request = store.clear();
+            
+            request.onsuccess = () => resolve(true);
+            request.onerror = (event) => {
+                console.error('Error clearing transactions:', event.target.error);
+                reject(event.target.error);
+            };
+        });
+    }
 
     // Transaction-specific methods
     async getTransactions(filters = {}) {
