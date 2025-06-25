@@ -805,30 +805,60 @@ class BudgetApp {
         }
     }
     
-    // Method to update the dashboard
+    // Method to update the dashboard with transaction data
     async updateDashboard() {
         try {
+            // Get all transactions
             const transactions = await localDB.getTransactions();
             
-            // Calculate total income and expenses
-            const totals = transactions.reduce((acc, t) => {
-                const amount = parseFloat(t.amount) || 0;
-                if (amount >= 0) {
-                    acc.income += amount;
-                } else {
-                    acc.expenses += Math.abs(amount);
-                }
-                return acc;
-            }, { income: 0, expenses: 0 });
+            // Filter transactions for the current month
+            const now = new Date();
+            const currentMonth = now.getMonth();
+            const currentYear = now.getFullYear();
             
-            // Update dashboard UI
-            const incomeEl = document.getElementById('total-income');
-            const expensesEl = document.getElementById('total-expenses');
-            const balanceEl = document.getElementById('balance');
+            const monthlyTransactions = transactions.filter(t => {
+                const transDate = new Date(t.date);
+                return transDate.getMonth() === currentMonth && 
+                       transDate.getFullYear() === currentYear;
+            });
             
-            if (incomeEl) incomeEl.textContent = totals.income.toFixed(2);
-            if (expensesEl) expensesEl.textContent = totals.expenses.toFixed(2);
-            if (balanceEl) balanceEl.textContent = (totals.income - totals.expenses).toFixed(2);
+            // Calculate totals
+            const income = monthlyTransactions
+                .filter(t => t.type === 'income' || t.amount > 0)
+                .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+                
+            const expenses = monthlyTransactions
+                .filter(t => t.type === 'expense' || t.amount < 0)
+                .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+                
+            // Get budget data (if available)
+            let budgeted = 0;
+            try {
+                const budgets = await localDB.getAllItems('budgets');
+                const currentBudget = budgets.find(b => {
+                    const budgetDate = new Date(b.month);
+                    return budgetDate.getMonth() === currentMonth && 
+                           budgetDate.getFullYear() === currentYear;
+                });
+                budgeted = currentBudget?.amount || 0;
+            } catch (e) {
+                console.warn('Could not load budget data:', e);
+            }
+            
+            // Calculate available to budget
+            const availableToBudget = income - budgeted;
+            
+            // Update the UI with correct element IDs from HTML
+            this.updateDashboardMetric('available-budget', availableToBudget);
+            this.updateDashboardMetric('total-budgeted', budgeted);
+            this.updateDashboardMetric('total-spent', expenses);
+            this.updateDashboardMetric('total-income', income);
+            
+            // Update recent transactions
+            this.updateRecentTransactions(transactions.slice(0, 5));
+            
+            // Update budget overview chart
+            this.updateBudgetOverview(monthlyTransactions);
             
         } catch (error) {
             console.error('Error updating dashboard:', error);
@@ -836,28 +866,170 @@ class BudgetApp {
         }
     }
     
-    // Method to update the calendar view
-    async updateCalendar() {
-        try {
-            const transactions = await localDB.getTransactions();
+    // Helper to update dashboard metric elements
+    updateDashboardMetric(elementId, value) {
+        const element = document.getElementById(elementId);
+        if (element) {
+            // Format as currency
+            const formattedValue = new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD',
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(value);
             
-            // Group transactions by date
-            const transactionsByDate = transactions.reduce((acc, t) => {
-                const date = t.date.split('T')[0]; // Just the date part
-                if (!acc[date]) {
-                    acc[date] = [];
-                }
-                acc[date].push(t);
-                return acc;
-            }, {});
-            
-            // Update calendar UI (implement your calendar update logic here)
-            console.log('Updating calendar with transactions:', transactionsByDate);
-            
-        } catch (error) {
-            console.error('Error updating calendar:', error);
-            this.showToast('Error updating calendar', 'error');
+            // Update the element's text content
+            element.textContent = formattedValue;
         }
+    }
+    
+    // Update recent transactions list
+    updateRecentTransactions(transactions) {
+        const container = document.getElementById('recent-transactions');
+        if (!container) return;
+        
+        if (transactions.length === 0) {
+            container.innerHTML = '<div class="text-muted">No recent transactions</div>';
+            return;
+        }
+        
+        const list = document.createElement('div');
+        list.className = 'list-group list-group-flush';
+        
+        transactions.forEach(transaction => {
+            const isIncome = transaction.type === 'income' || transaction.amount > 0;
+            const amountClass = isIncome ? 'text-success' : 'text-danger';
+            const amountSign = isIncome ? '+' : '-';
+            
+            const item = document.createElement('div');
+            item.className = 'list-group-item d-flex justify-content-between align-items-center';
+            item.innerHTML = `
+                <div>
+                    <h6 class="mb-1">${transaction.description || 'No description'}</h6>
+                    <small class="text-muted">${transaction.category || 'Uncategorized'}</small>
+                </div>
+                <span class="${amountClass}">${amountSign}$${Math.abs(transaction.amount).toFixed(2)}</span>
+            `;
+            
+            list.appendChild(item);
+        });
+        
+        container.innerHTML = '';
+        container.appendChild(list);
+    }
+    
+    // Update budget chart with Chart.js
+    updateBudgetChart(canvas, categories) {
+        const ctx = canvas.getContext('2d');
+        
+        // Destroy existing chart if it exists
+        if (canvas.chart) {
+            canvas.chart.destroy();
+        }
+        
+        // Create new chart
+        canvas.chart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: categories.map(([category]) => category),
+                datasets: [{
+                    data: categories.map(([_, amount]) => amount),
+                    backgroundColor: [
+                        '#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b',
+                        '#5a5c69', '#858796', '#3a3b45', '#1cc88a', '#36b9cc'
+                    ],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                cutout: '70%',
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: {
+                            boxWidth: 12,
+                            padding: 20
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const label = context.label || '';
+                                const value = context.raw || 0;
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const percentage = Math.round((value / total) * 100);
+                                return `${label}: $${value.toFixed(2)} (${percentage}%)`;
+                            }
+                        }
+                    }
+                },
+                responsive: true,
+                maintainAspectRatio: false
+            }
+        });
+    }
+    
+    // Update budget overview chart
+    updateBudgetOverview(transactions) {
+        // Group transactions by category
+        const categories = {};
+        
+        transactions.forEach(transaction => {
+            if (transaction.type === 'expense' || transaction.amount < 0) {
+                const category = transaction.category || 'Uncategorized';
+                categories[category] = (categories[category] || 0) + Math.abs(transaction.amount);
+            }
+        });
+        
+        // Sort by amount (descending)
+        const sortedCategories = Object.entries(categories)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 5); // Top 5 categories
+        
+        // Update the chart or list
+        const container = document.getElementById('budget-overview-chart');
+        if (!container) {
+            console.warn('Budget overview chart container not found');
+            return;
+        }
+        
+        // If we have a canvas, update the chart
+        if (container.tagName === 'CANVAS') {
+            this.updateBudgetChart(container, sortedCategories);
+            return;
+        }
+        
+        if (sortedCategories.length === 0) {
+            container.innerHTML = '<div class="text-muted">No expense data available</div>';
+            return;
+        }
+        
+        const list = document.createElement('div');
+        list.className = 'list-group list-group-flush';
+        
+        sortedCategories.forEach(([category, amount]) => {
+            const item = document.createElement('div');
+            item.className = 'list-group-item d-flex justify-content-between align-items-center';
+            item.innerHTML = `
+                <div>${category}</div>
+                <div>
+                    <span class="fw-medium">$${amount.toFixed(2)}</span>
+                    <div class="progress mt-1" style="height: 4px; width: 100px;">
+                        <div class="progress-bar bg-primary" role="progressbar" 
+                             style="width: ${Math.min(100, (amount / 1000) * 100)}%" 
+                             aria-valuenow="${amount}" 
+                             aria-valuemin="0" 
+                             aria-valuemax="1000">
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            list.appendChild(item);
+        });
+        
+        container.innerHTML = '';
+        container.appendChild(list);
     }
     
     showToast(message, type = 'info') {
