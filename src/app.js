@@ -726,7 +726,10 @@ class BudgetApp {
         }
     }
     
-    // Predict recurring transactions
+    // Store prediction history for learning
+    predictionHistory = {};
+    
+    // Predict recurring transactions with improved accuracy
     predictRecurringTransactions(transactions, startDate, endDate) {
         console.log('predictRecurringTransactions called with:', { 
             transactionCount: transactions.length,
@@ -740,7 +743,18 @@ class BudgetApp {
         oneYearAgo.setFullYear(now.getFullYear() - 1);
         
         // Get date-fns functions from global object
-        const { isSameDay, differenceInDays, addDays, format } = window.dateFns || {};
+        const { isSameDay, differenceInDays, addDays, format, isAfter, isBefore } = window.dateFns || {};
+        
+        // Load prediction history from localStorage if available
+        try {
+            const savedHistory = localStorage.getItem('predictionHistory');
+            if (savedHistory) {
+                this.predictionHistory = JSON.parse(savedHistory);
+            }
+        } catch (e) {
+            console.warn('Error loading prediction history:', e);
+            this.predictionHistory = {};
+        }
         
         // Debug: Log the first few transactions
         console.log('Sample transactions:', transactions.slice(0, 3).map(t => ({
@@ -752,6 +766,9 @@ class BudgetApp {
         
         // Group transactions by description and amount to find patterns
         const transactionGroups = {};
+        
+        // First, apply any learned patterns from previous predictions
+        this.applyLearnedPatterns(transactions);
         
         // First, normalize and group transactions
         transactions.forEach(transaction => {
@@ -1047,35 +1064,123 @@ class BudgetApp {
     // Handle calendar event click
     handleCalendarEventClick(info) {
         const event = info.event;
-        const props = event.extendedProps;
+        const isPredicted = event.extendedProps?.isPredicted;
         
-        // For predicted transactions, show prediction details
-        if (props.type === 'predicted') {
-            const confidence = props.confidence || 0;
-            const lastDate = new Date(props.pattern.lastDate);
-            const nextDate = event.start;
-            
-            const daysSinceLast = Math.round((nextDate - lastDate) / (1000 * 60 * 60 * 24));
-            
-            const message = `
-                <div class="prediction-details">
-                    <p><strong>Predicted ${props.isExpense ? 'Expense' : 'Income'}:</strong> $${props.amount.toFixed(2)}</p>
-                    <p><strong>Description:</strong> ${props.description}</p>
-                    <p><strong>Confidence:</strong> ${confidence}%</p>
-                    <p><strong>Pattern:</strong> Every ~${props.pattern.interval} days (${props.pattern.occurrences} occurrences)</p>
-                    <p><strong>Last Occurrence:</strong> ${lastDate.toLocaleDateString()}</p>
-                    <p><strong>Days Since Last:</strong> ${daysSinceLast}</p>
-                </div>
-            `;
-            
-            // You might want to use a modal or tooltip to show this information
-            this.showToast(message, 'info', 10000);
+        if (isPredicted) {
+            const response = prompt(
+                `Edit predicted transaction:\n\n` +
+                `Description: ${event.title.replace(/\(\d+%\)/g, '').trim()}\n` +
+                `Amount: ${event.extendedProps.amount}\n` +
+                `Prediction Confidence: ${Math.round(event.extendedProps.confidence * 100)}%\n\n` +
+                'Options:\n' +
+                '1. Keep as is\n' +
+                '2. Add as new transaction\n' +
+                '3. Adjust amount and add\n' +
+                '4. Ignore this prediction\n\n' +
+                'Enter your choice (1-4):', '1'
+            );
+
+            switch(response) {
+                case '2':
+                    this.addPredictedTransaction(event);
+                    break;
+                case '3':
+                    const newAmount = prompt('Enter new amount:', Math.abs(event.extendedProps.amount));
+                    if (newAmount && !isNaN(newAmount)) {
+                        const updatedEvent = {...event};
+                        updatedEvent.extendedProps.amount = parseFloat(newAmount);
+                        if (updatedEvent.title.includes('$')) {
+                            updatedEvent.title = updatedEvent.title.replace(/\$\d+(\.\d{2})?/, `$${parseFloat(newAmount).toFixed(2)}`);
+                        }
+                        this.addPredictedTransaction(updatedEvent);
+                        this.improvePrediction(updatedEvent, 'adjusted');
+                    }
+                    break;
+                case '4':
+                    this.improvePrediction(event, 'ignored');
+                    break;
+                default:
+                    // Keep as is
+                    break;
+            }
         } else {
-            // For actual transactions, show transaction details
-            this.viewTransactionDetails({
-                id: event.id.replace('t_', '').split('_')[0],
-                ...props
-            });
+            // Show transaction details for existing transactions
+            const transactionId = event.extendedProps?.transactionId;
+            if (transactionId) {
+                this.viewTransactionDetails(transactionId);
+            }
+        }
+    }
+    
+    // Improve prediction based on user feedback
+    improvePrediction(event, action) {
+        try {
+            const { description, amount, originalDates = [] } = event.extendedProps;
+            const key = `${description}_${amount.toFixed(2)}`;
+            
+            if (!this.predictionHistory[key]) {
+                this.predictionHistory[key] = {
+                    pattern: {},
+                    adjustments: [],
+                    totalPredictions: 0,
+                    accepted: 0,
+                    adjusted: 0,
+                    ignored: 0,
+                    lastUpdated: new Date().toISOString()
+                };
+            }
+            
+            const prediction = this.predictionHistory[key];
+            
+            // Update statistics based on user action
+            prediction.totalPredictions++;
+            if (action === 'accepted') prediction.accepted++;
+            if (action === 'adjusted') prediction.adjusted++;
+            if (action === 'ignored') prediction.ignored++;
+            prediction.lastUpdated = new Date().toISOString();
+            
+            // Store the adjustment details if this was an adjustment
+            if (action === 'adjusted') {
+                prediction.adjustments.push({
+                    originalAmount: amount,
+                    adjustedAmount: parseFloat(prompt('Enter adjusted amount:')),
+                    date: new Date().toISOString()
+                });
+            }
+            
+            // Save the updated prediction history
+            localStorage.setItem('predictionHistory', JSON.stringify(this.predictionHistory));
+            
+            console.log(`Prediction ${action}:`, { key, prediction });
+            
+        } catch (e) {
+            console.error('Error improving prediction:', e);
+        }
+    }
+    
+    // Add predicted transaction to the database
+    async addPredictedTransaction(event) {
+        try {
+            const transaction = {
+                description: event.title.replace(/\(\d+%\)/g, '').trim(),
+                amount: event.extendedProps.amount,
+                date: event.start,
+                type: event.extendedProps.type || 'expense',
+                category: event.extendedProps.category || 'Uncategorized',
+                isPredicted: true,
+                originalPrediction: event.extendedProps.originalDates || []
+            };
+            
+            await localDB.addItem('transactions', transaction);
+            this.showToast('Transaction added', 'success');
+            this.refreshCurrentView();
+            
+            // Update prediction model with this positive example
+            this.improvePrediction(event, 'accepted');
+            
+        } catch (error) {
+            console.error('Error adding predicted transaction:', error);
+            this.showToast('Error adding transaction', 'error');
         }
     }
     
@@ -1351,11 +1456,8 @@ class BudgetApp {
                 // Add click handler for row to view details
                 row.style.cursor = 'pointer';
                 row.addEventListener('click', () => {
-                    if (transaction.id) this.viewTransactionDetails(transaction.id);
+                    if (transaction.id) this.viewTransactionDetails(transaction);
                 });
-                
-                // Add row to the table
-                transactionsList.appendChild(row);
                 
                 // Make row clickable to view details
                 row.style.cursor = 'pointer';
