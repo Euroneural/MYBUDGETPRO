@@ -2760,17 +2760,23 @@ class BudgetApp {
             
             // Apply search filter if provided
             if (searchTerm) {
-                const searchLower = searchTerm.toLowerCase().trim();
-                transactions = transactions.filter(t => {
-                    // Search in merchant, description, and amount
-                    return (
-                        (t.merchant && t.merchant.toLowerCase().includes(searchLower)) ||
-                        (t.description && t.description.toLowerCase().includes(searchLower)) ||
-                        (t.category && t.category.toLowerCase().includes(searchLower)) ||
-                        (t.amount && t.amount.toString().includes(searchTerm)) ||
-                        (t.searchText && t.searchText.includes(searchLower))
-                    );
-                });
+                const searchTerms = searchTerm.toLowerCase().trim().split('|').map(term => term.trim()).filter(term => term);
+                
+                if (searchTerms.length > 0) {
+                    transactions = transactions.filter(t => {
+                        // Check if any of the search terms match
+                        return searchTerms.some(term => {
+                            // Search in merchant, description, category, amount, and searchText
+                            return (
+                                (t.merchant && t.merchant.toLowerCase().includes(term)) ||
+                                (t.description && t.description.toLowerCase().includes(term)) ||
+                                (t.category && t.category.toLowerCase().includes(term)) ||
+                                (t.amount && t.amount.toString().includes(term)) ||
+                                (t.searchText && t.searchText.includes(term))
+                            );
+                        });
+                    });
+                }
             }
             
             // Apply type filter if provided
@@ -2984,16 +2990,18 @@ class BudgetApp {
                         }
                     }
                     
-                    // After all chunks are processed, update trend and seasonality
+                    // After all chunks are processed, update all analytics
                     transactionAnalytics.analyzeTrends(transactions);
                     transactionAnalytics.analyzeSeasonality(transactions);
                     transactionAnalytics.generateForecast(transactions);
+                    transactionAnalytics.renderPriceTrendChart(transactions);
                 }, 100);
             } else {
                 // If we only have one chunk, update all analytics
                 transactionAnalytics.analyzeTrends(firstChunk);
                 transactionAnalytics.analyzeSeasonality(firstChunk);
                 transactionAnalytics.generateForecast(firstChunk);
+                transactionAnalytics.renderPriceTrendChart(firstChunk);
             }
         } catch (error) {
             console.error('Error processing analytics chunks:', error);

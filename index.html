@@ -9,8 +9,9 @@
     <link href="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css" rel="stylesheet" />
     <!-- FullCalendar JS -->
     <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js"></script>
-    <!-- Chart.js -->
+    <!-- Chart.js with date-fns adapter -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <!-- Date-fns for date manipulation (ESM) -->
     <script type="module">
         import { 
@@ -187,17 +188,70 @@
             <div id="budget-view" class="view">
                 <div class="view__header">
                     <h2>Budget Categories</h2>
-                    <button class="btn btn--primary" id="add-category-btn">Add Category</button>
-                </div>
-
-                <div class="budget-summary">
-                    <div class="budget-summary__item">
-                        <span class="budget-summary__label">Available to Budget:</span>
-                        <span class="budget-summary__value" id="budget-available">$0.00</span>
+                    <div>
+                        <button class="btn btn--secondary me-2" id="set-budget-btn">
+                            <i class="bi bi-piggy-bank me-1"></i>Set Monthly Budget
+                        </button>
+                        <button class="btn btn--primary" id="add-category-btn">
+                            <i class="bi bi-plus-lg me-1"></i>Add Category
+                        </button>
                     </div>
                 </div>
 
-                <div class="budget-categories" id="budget-categories"></div>
+                <div class="budget-summary">
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-4">
+                            <div class="card h-100">
+                                <div class="card-body">
+                                    <h6 class="card-subtitle mb-2 text-muted">Monthly Budget</h6>
+                                    <h3 class="card-title" id="monthly-budget-amount">$0.00</h3>
+                                    <p class="card-text small text-muted mb-0">For <span id="current-month">June 2025</span></p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card h-100">
+                                <div class="card-body">
+                                    <h6 class="card-subtitle mb-2 text-muted">Spent This Month</h6>
+                                    <h3 class="card-title text-danger" id="monthly-spent">$0.00</h3>
+                                    <p class="card-text small text-muted mb-0"><span id="budget-progress">0%</span> of budget used</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card h-100">
+                                <div class="card-body">
+                                    <h6 class="card-subtitle mb-2 text-muted">Remaining</h6>
+                                    <h3 class="card-title text-success" id="budget-remaining">$0.00</h3>
+                                    <p class="card-text small text-muted mb-0"><span id="days-remaining">5</span> days left in month</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">Category Budgets</h5>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Category</th>
+                                    <th>Budget</th>
+                                    <th>Spent</th>
+                                    <th>Remaining</th>
+                                    <th>Progress</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="budget-categories">
+                                <!-- Categories will be populated by JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
 
             <!-- Transactions View -->
@@ -255,6 +309,25 @@
                                             </div>
                                         </div>
                                     </div>
+                                    <div class="col-12 mb-3">
+                                        <div class="card">
+                                            <div class="card-body">
+                                                <div class="d-flex justify-content-between align-items-start">
+                                                    <h5 class="card-title">Price Trend Over Time</h5>
+                                                    <button type="button" class="btn btn-sm btn-link text-muted p-0" data-bs-toggle="tooltip" data-bs-placement="top" 
+                                                            title="Shows individual transaction amounts over time. Hover over points to see details.">
+                                                        <i class="fas fa-info-circle"></i>
+                                                    </button>
+                                                </div>
+                                                <div id="price-trend-chart-container" class="chart-container" style="position: relative; height: 400px;">
+                                                    <canvas id="price-trend-chart"></canvas>
+                                                </div>
+                                                <div class="mt-2 text-muted small">
+                                                    <i class="fas fa-info-circle"></i> Hover over points to see transaction details
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
                                     <div class="col-md-8">
                                         <div class="card h-100">
                                             <div class="card-body">
@@ -299,13 +372,14 @@
                                                 </div>
                                                 <div id="search-forecast">
                                                     <p id="forecast-text">Enter a search term to see forecast analysis</p>
-                                                    <div id="forecast-chart-container" class="mt-2">
+                                                    <div id="search-forecast-chart-container">
                                                         <canvas id="transactions-forecast-chart"></canvas>
                                                     </div>
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
+
                                     <div class="col-md-6">
                                         <div class="card h-100">
                                             <div class="card-body">
@@ -513,20 +587,25 @@
                             </div>
                         </div>
                         <div class="search-insights">
-                            <div class="insight-cards">
-                                <div class="card">
-                                    <div class="card__body">
-                                        <h4>Spending Trend</h4>
-                                        <div class="chart-container">
-                                            <canvas id="search-trend-chart"></canvas>
-                                        </div>
+                            <div id="analytics-content" style="display: none;">
+                                <div class="row mt-3">
+                                    <div class="col-md-6">
+                                        <h6>Spending Trend</h6>
+                                        <canvas id="search-trend-chart" height="200"></canvas>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <h6>Category Breakdown</h6>
+                                        <canvas id="search-category-chart" height="200"></canvas>
                                     </div>
                                 </div>
-                                <div class="card">
-                                    <div class="card__body">
-                                        <h4>Category Breakdown</h4>
-                                        <div class="chart-container">
-                                            <canvas id="search-category-chart"></canvas>
+                                <div class="row mt-4">
+                                    <div class="col-12">
+                                        <h6>Price Trend Over Time</h6>
+                                        <div class="chart-container" style="position: relative; height:300px;">
+                                            <canvas id="price-trend-chart"></canvas>
+                                        </div>
+                                        <div class="mt-2 text-muted small">
+                                            <i class="fas fa-info-circle"></i> Shows the exact price of search results over time
                                         </div>
                                     </div>
                                 </div>
@@ -621,29 +700,63 @@
         </div>
     </div>
 
+    <!-- Add Category Modal -->
     <div class="modal" id="add-category-modal">
         <div class="modal__content">
             <div class="modal__header">
-                <h3>Add Budget Category</h3>
+                <h3><i class="bi bi-tag me-2"></i>Add Budget Category</h3>
                 <button class="modal__close" id="close-category-modal">&times;</button>
             </div>
             <div class="modal__body">
                 <form id="category-form">
-                    <div class="form-group">
-                        <label class="form-label">Category Name</label>
+                    <div class="mb-3">
+                        <label for="category-name" class="form-label">Category Name</label>
                         <input type="text" class="form-control" id="category-name" required>
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">Budgeted Amount</label>
-                        <input type="number" step="0.01" class="form-control" id="category-budget" required>
+                    <div class="mb-3">
+                        <label for="category-budget" class="form-label">Monthly Budget</label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input type="number" class="form-control" id="category-budget" min="0" step="0.01" value="0" required>
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">Color</label>
-                        <input type="color" class="form-control" id="category-color" value="#3498db">
+                    <div class="mb-4">
+                        <label for="category-color" class="form-label">Color</label>
+                        <input type="color" class="form-control form-control-color w-100" id="category-color" value="#3498db" title="Choose a color">
                     </div>
-                    <div class="modal__actions">
-                        <button type="button" class="btn btn--secondary" id="cancel-category">Cancel</button>
-                        <button type="submit" class="btn btn--primary">Add Category</button>
+                    <div class="d-flex justify-content-end gap-2">
+                        <button type="button" class="btn btn-outline-secondary" id="cancel-category">Cancel</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-plus-lg me-1"></i>Add Category
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Set Budget Modal -->
+    <div class="modal" id="set-budget-modal">
+        <div class="modal__content">
+            <div class="modal__header">
+                <h3><i class="bi bi-piggy-bank me-2"></i>Set Monthly Budget</h3>
+                <button class="modal__close" id="close-budget-modal">&times;</button>
+            </div>
+            <div class="modal__body">
+                <form id="budget-form">
+                    <div class="mb-4">
+                        <label for="monthly-budget" class="form-label">Monthly Budget Amount</label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input type="number" class="form-control form-control-lg" id="monthly-budget" min="0" step="0.01" required>
+                        </div>
+                        <div class="form-text">This will be your total budget for <span id="budget-month">June 2025</span></div>
+                    </div>
+                    <div class="d-flex justify-content-end gap-2">
+                        <button type="button" class="btn btn-outline-secondary" id="cancel-budget">Cancel</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-save me-1"></i>Save Budget
+                        </button>
                     </div>
                 </form>
             </div>

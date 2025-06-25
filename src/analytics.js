@@ -6,6 +6,7 @@ class TransactionAnalytics {
         this.forecastChart = null;
         this.distributionChart = null;
         this.boxplotChart = null;
+        this.priceTrendChart = null;
     }
 
     // Initialize analytics
@@ -582,6 +583,182 @@ class TransactionAnalytics {
         }
     }
     
+    // Render price trend chart showing individual transaction amounts over time
+    renderPriceTrendChart(transactions) {
+        try {
+            // Get the container and canvas
+            const container = document.getElementById('price-trend-chart-container');
+            if (!container) {
+                console.error('Price trend chart container not found');
+                return;
+            }
+
+            // Clear any existing canvas
+            container.innerHTML = '<canvas id="price-trend-chart"></canvas>';
+            const canvas = document.getElementById('price-trend-chart');
+            
+            // Sort transactions by date
+            const sortedTransactions = [...transactions].sort((a, b) => 
+                new Date(a.date) - new Date(b.date)
+            );
+            
+            // Prepare data points with date and amount
+            const dataPoints = sortedTransactions.map(t => {
+                // Ensure date is in a format that can be parsed by date-fns
+                const date = new Date(t.date);
+                // Ensure the date is valid
+                if (isNaN(date.getTime())) {
+                    console.warn('Invalid date in transaction:', t);
+                    return null;
+                }
+                return {
+                    x: date.getTime(), // Convert to timestamp for better compatibility
+                    y: Math.abs(parseFloat(t.amount) || 0),
+                    transaction: t
+                };
+            }).filter(Boolean); // Remove any null entries from invalid dates
+            
+            // Create dataset with all points
+            const dataset = {
+                label: 'Transaction Amount',
+                data: dataPoints,
+                borderColor: 'rgba(75, 192, 192, 0.8)',
+                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                borderWidth: 1,
+                pointRadius: 4,
+                pointHoverRadius: 6,
+                pointHoverBackgroundColor: 'rgba(75, 192, 192, 1)',
+                pointHoverBorderColor: '#fff',
+                pointHoverBorderWidth: 2
+            };
+            
+            // Create chart config
+            const config = {
+                type: 'scatter',
+                data: {
+                    datasets: [dataset]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: {
+                        duration: 0 // Disable animations for better performance
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'day',
+                                tooltipFormat: 'MMM d, yyyy',
+                                displayFormats: {
+                                    day: 'MMM d',
+                                    week: 'MMM d',
+                                    month: 'MMM yyyy',
+                                    year: 'yyyy'
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: 'Date',
+                                color: '#666',
+                                font: {
+                                    weight: 'bold'
+                                }
+                            },
+                            grid: {
+                                display: true,
+                                color: 'rgba(0, 0, 0, 0.05)'
+                            },
+                            ticks: {
+                                autoSkip: true,
+                                maxRotation: 45,
+                                minRotation: 45
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Amount ($)',
+                                color: '#666',
+                                font: {
+                                    weight: 'bold'
+                                }
+                            },
+                            grid: {
+                                display: true,
+                                color: 'rgba(0, 0, 0, 0.05)'
+                            },
+                            ticks: {
+                                callback: (value) => `$${value.toFixed(2)}`,
+                                maxTicksLimit: 10
+                            }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const point = context.raw;
+                                    const date = new Date(point.x);
+                                    const dateStr = date.toLocaleDateString();
+                                    const amount = point.y.toFixed(2);
+                                    const merchant = point.transaction.merchant || 'No merchant';
+                                    const category = point.transaction.category || 'Uncategorized';
+                                    return [
+                                        `${merchant}`,
+                                        `$${amount} • ${category}`,
+                                        dateStr
+                                    ];
+                                }
+                            }
+                        },
+                        legend: {
+                            display: false
+                        }
+                    },
+                    interaction: {
+                        mode: 'nearest',
+                        axis: 'x',
+                        intersect: false
+                    }
+                }
+            };
+            
+            // Destroy existing chart if it exists
+            if (this.priceTrendChart) {
+                try {
+                    this.priceTrendChart.destroy();
+                } catch (e) {
+                    console.error('Error destroying previous chart:', e);
+                }
+            }
+            
+            // Create new chart instance
+            const ctx = canvas.getContext('2d');
+            this.priceTrendChart = new Chart(ctx, config);
+            
+            // Force a resize to ensure proper rendering
+            setTimeout(() => {
+                if (this.priceTrendChart) {
+                    this.priceTrendChart.resize();
+                }
+            }, 50);
+            
+        } catch (error) {
+            console.error('Error in renderPriceTrendChart:', error);
+            // Clean up on error
+            if (this.priceTrendChart) {
+                try {
+                    this.priceTrendChart.destroy();
+                } catch (e) {
+                    console.error('Error cleaning up chart after error:', e);
+                }
+                this.priceTrendChart = null;
+            }
+        }
+    }
+
     // Render distribution chart with optimized performance
     renderDistributionChart(transactions, stats, isUpdate = false) {
         if (!transactions || transactions.length === 0 || !stats) return;
