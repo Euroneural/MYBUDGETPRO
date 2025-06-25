@@ -586,70 +586,206 @@ class TransactionAnalytics {
     // Render price trend chart showing individual transaction amounts over time
     renderPriceTrendChart(transactions) {
         try {
-            // Get the container and canvas
+            if (!transactions || transactions.length === 0) {
+                console.warn('No transactions provided for price trend chart');
+                return;
+            }
+
+            // Get the container and clear any existing content
             const container = document.getElementById('price-trend-chart-container');
             if (!container) {
                 console.error('Price trend chart container not found');
                 return;
             }
 
-            // Clear any existing canvas
-            container.innerHTML = '<canvas id="price-trend-chart"></canvas>';
-            const canvas = document.getElementById('price-trend-chart');
-            
+            // Clear any existing chart
+            if (this.priceTrendChart) {
+                this.priceTrendChart.destroy();
+            }
+
+            // Create container for chart and info
+            container.innerHTML = `
+                <div id="selection-info" class="alert alert-info" style="display: none; margin-bottom: 15px;">
+                    <strong>Selected Range:</strong> 
+                    <span id="price-difference-text"></span>
+                </div>
+                <div class="chart-container" style="position: relative; height: 400px; width: 100%;">
+                    <canvas id="price-trend-chart"></canvas>
+                </div>
+            `;
+
             // Sort transactions by date
             const sortedTransactions = [...transactions].sort((a, b) => 
                 new Date(a.date) - new Date(b.date)
             );
+
+            // Prepare data points
+            const dataPoints = sortedTransactions.map(t => ({
+                x: new Date(t.date),
+                y: Math.abs(parseFloat(t.amount) || 0),
+                rawAmount: parseFloat(t.amount) || 0,
+                merchant: t.merchant_name || 'Unknown',
+                category: t.category || 'Uncategorized',
+                date: t.date
+            }));
+
+            // Get canvas and context
+            const canvas = document.getElementById('price-trend-chart');
+            if (!canvas) return;
             
-            // Prepare data points with date and amount
-            const dataPoints = sortedTransactions.map(t => {
-                // Ensure date is in a format that can be parsed by date-fns
-                const date = new Date(t.date);
-                // Ensure the date is valid
-                if (isNaN(date.getTime())) {
-                    console.warn('Invalid date in transaction:', t);
-                    return null;
-                }
-                return {
-                    x: date.getTime(), // Convert to timestamp for better compatibility
-                    y: Math.abs(parseFloat(t.amount) || 0),
-                    transaction: t
-                };
-            }).filter(Boolean); // Remove any null entries from invalid dates
+            const ctx = canvas.getContext('2d');
             
-            // Create dataset with all points
-            const dataset = {
-                label: 'Transaction Amount',
-                data: dataPoints,
-                borderColor: 'rgba(75, 192, 192, 0.8)',
-                backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                borderWidth: 1,
-                pointRadius: 4,
-                pointHoverRadius: 6,
-                pointHoverBackgroundColor: 'rgba(75, 192, 192, 1)',
-                pointHoverBorderColor: '#fff',
-                pointHoverBorderWidth: 2
+            // Selection state
+            const selectionRect = {
+                isVisible: false,
+                isSelecting: false,
+                startX: 0,
+                startY: 0,
+                x: 0,
+                y: 0,
+                width: 0,
+                height: 0
             };
-            
-            // Create chart config
+
+            // Event handlers
+            const handleMouseDown = (e) => {
+                const rect = canvas.getBoundingClientRect();
+                selectionRect.isSelecting = true;
+                selectionRect.startX = e.clientX - rect.left;
+                selectionRect.startY = e.clientY - rect.top;
+                selectionRect.x = selectionRect.startX;
+                selectionRect.y = selectionRect.startY;
+                selectionRect.width = 0;
+                selectionRect.height = 0;
+                selectionRect.isVisible = true;
+                if (this.priceTrendChart) {
+                    this.priceTrendChart.update();
+                }
+            };
+
+            // Function to handle mouse move event
+            const handleMouseMove = (e) => {
+                if (!selectionRect.isSelecting) return;
+                
+                const rect = canvas.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+                
+                selectionRect.width = mouseX - selectionRect.startX;
+                selectionRect.height = mouseY - selectionRect.startY;
+                selectionRect.x = selectionRect.startX;
+                selectionRect.y = selectionRect.startY;
+                
+                if (this.priceTrendChart) {
+                    this.priceTrendChart.update();
+                }
+            };
+
+            // Function to handle mouse up event
+            const handleMouseUp = () => {
+                if (selectionRect.isSelecting) {
+                    selectionRect.isSelecting = false;
+                    processSelection();
+                }
+            };
+
+            // Function to process selected points
+            const processSelection = () => {
+                if (!selectionRect.isVisible) return;
+                
+                const selectedPoints = [];
+                
+                // Convert selection rectangle to data coordinates
+                const xScale = chartRef.scales.x;
+                const yScale = chartRef.scales.y;
+                
+                const minX = Math.min(selectionRect.startX, selectionRect.startX + selectionRect.width);
+                const maxX = Math.max(selectionRect.startX, selectionRect.startX + selectionRect.width);
+                const minY = Math.min(selectionRect.startY, selectionRect.startY + selectionRect.height);
+                const maxY = Math.max(selectionRect.startY, selectionRect.startY + selectionRect.height);
+                
+                const minDate = xScale.getValueForPixel(minX);
+                const maxDate = xScale.getValueForPixel(maxX);
+                const minAmount = yScale.getValueForPixel(maxY); // Note: y-axis is inverted
+                const maxAmount = yScale.getValueForPixel(minY);
+                
+                // Find points within selection
+                const dataset = chartRef.data.datasets[0];
+                dataset.data.forEach((point) => {
+                    const x = point.x.getTime();
+                    const y = point.y;
+                    
+                    if (x >= minDate && x <= maxDate && y >= minAmount && y <= maxAmount) {
+                        selectedPoints.push(point);
+                    }
+                });
+                
+                // If exactly two points are selected, show price difference
+                if (selectedPoints.length === 2) {
+                    const point1 = selectedPoints[0];
+                    const point2 = selectedPoints[1];
+                    const amount1 = point1.rawAmount;
+                    const amount2 = point2.rawAmount;
+                    const dateStr1 = point1.x.toLocaleDateString();
+                    const dateStr2 = point2.x.toLocaleDateString();
+                    
+                    const diff = amount2 - amount1;
+                    const percentChange = (diff / Math.abs(amount1)) * 100;
+                    
+                    const selectionInfo = document.getElementById('selection-info');
+                    if (selectionInfo) {
+                        const absDiff = Math.abs(diff).toFixed(2);
+                        
+                        selectionInfo.innerHTML = `
+                            <div class="price-diff-summary">
+                                <div>${dateStr1} → ${dateStr2}</div>
+                                <div class="price-diff-amount ${diff >= 0 ? 'positive' : 'negative'}">
+                                    ${diff >= 0 ? '+' : '-'}$${absDiff} (${diff >= 0 ? '+' : ''}${percentChange.toFixed(2)}%)
+                                </div>
+                            </div>
+                        `;
+                        selectionInfo.style.display = 'block';
+                    }
+                } else if (selectedPoints.length > 0) {
+                    // Update UI to show selection count
+                    const selectionInfo = document.getElementById('selection-info');
+                    if (selectionInfo) {
+                        selectionInfo.textContent = `Selected ${selectedPoints.length} points`;
+                        selectionInfo.style.display = 'block';
+                    }
+                } else {
+                    // No points selected, hide the selection info
+                    const selectionInfo = document.getElementById('selection-info');
+                    if (selectionInfo) {
+                        selectionInfo.style.display = 'none';
+                    }
+                }
+            };
+
+            // Chart configuration
             const config = {
                 type: 'scatter',
                 data: {
-                    datasets: [dataset]
+                    datasets: [{
+                        label: 'Transaction Amount',
+                        data: dataPoints,
+                        backgroundColor: 'rgba(75, 192, 192, 0.6)',
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1,
+                        pointRadius: 5,
+                        pointHoverRadius: 7,
+                        pointHitRadius: 10
+                    }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    animation: {
-                        duration: 0 // Disable animations for better performance
-                    },
                     scales: {
                         x: {
                             type: 'time',
                             time: {
                                 unit: 'day',
-                                tooltipFormat: 'MMM d, yyyy',
+                                tooltipFormat: 'PP',
                                 displayFormats: {
                                     day: 'MMM d',
                                     week: 'MMM d',
@@ -659,39 +795,19 @@ class TransactionAnalytics {
                             },
                             title: {
                                 display: true,
-                                text: 'Date',
-                                color: '#666',
-                                font: {
-                                    weight: 'bold'
-                                }
-                            },
-                            grid: {
-                                display: true,
-                                color: 'rgba(0, 0, 0, 0.05)'
-                            },
-                            ticks: {
-                                autoSkip: true,
-                                maxRotation: 45,
-                                minRotation: 45
+                                text: 'Date'
                             }
                         },
                         y: {
                             beginAtZero: true,
                             title: {
                                 display: true,
-                                text: 'Amount ($)',
-                                color: '#666',
-                                font: {
-                                    weight: 'bold'
-                                }
-                            },
-                            grid: {
-                                display: true,
-                                color: 'rgba(0, 0, 0, 0.05)'
+                                text: 'Amount ($)'
                             },
                             ticks: {
-                                callback: (value) => `$${value.toFixed(2)}`,
-                                maxTicksLimit: 10
+                                callback: function(value) {
+                                    return '$' + value.toLocaleString();
+                                }
                             }
                         }
                     },
@@ -699,12 +815,12 @@ class TransactionAnalytics {
                         tooltip: {
                             callbacks: {
                                 label: function(context) {
-                                    const point = context.raw;
-                                    const date = new Date(point.x);
+                                    const data = context.raw;
+                                    const date = new Date(data.x);
                                     const dateStr = date.toLocaleDateString();
-                                    const amount = point.y.toFixed(2);
-                                    const merchant = point.transaction.merchant || 'No merchant';
-                                    const category = point.transaction.category || 'Uncategorized';
+                                    const amount = Math.abs(data.rawAmount).toFixed(2);
+                                    const merchant = data.merchant || 'Unknown';
+                                    const category = data.category || 'Uncategorized';
                                     return [
                                         `${merchant}`,
                                         `$${amount} • ${category}`,
@@ -713,47 +829,438 @@ class TransactionAnalytics {
                                 }
                             }
                         },
-                        legend: {
-                            display: false
+                        legend: { display: false },
+                        zoom: {
+                            pan: { enabled: true, mode: 'xy' },
+                            zoom: {
+                                wheel: { enabled: true },
+                                pinch: { enabled: true },
+                                mode: 'xy',
+                                onZoomComplete: ({ chart }) => {
+                                    // This prevents resetting zoom level when updating the chart
+                                    chart.update('none');
+                                }
+                            },
+                            limits: {
+                                x: { min: 'original', max: 'original' },
+                                y: { min: 'original', max: 'original' }
+                            }
                         }
                     },
-                    interaction: {
-                        mode: 'nearest',
-                        axis: 'x',
-                        intersect: false
+                    onClick: (e) => {
+                        // Handle point selection on click
+                        const points = chartRef.getElementsAtEventForMode(e, 'nearest', { intersect: true }, false);
+                        if (points.length > 0) {
+                            const point = points[0];
+                            const data = chartRef.data.datasets[point.datasetIndex].data[point.index];
+                            // Toggle selection state
+                            data.selected = !data.selected;
+                            chartRef.update();
+                        }
                     }
+                },
+                plugins: [{
+                    id: 'selection',
+                    beforeDraw: function(chart) {
+                        if (selectionRect.isVisible) {
+                            const ctx = chart.ctx;
+                            ctx.save();
+                            ctx.strokeStyle = 'rgba(75, 192, 192, 0.8)';
+                            ctx.fillStyle = 'rgba(75, 192, 192, 0.1)';
+                            ctx.lineWidth = 1;
+                            ctx.beginPath();
+                            ctx.rect(
+                                selectionRect.x,
+                                selectionRect.y,
+                                selectionRect.width,
+                                selectionRect.height
+                            );
+                            ctx.fill();
+                            ctx.stroke();
+                            ctx.restore();
+                        }
+                    }
+                }]
+            };
+
+            // Create the chart
+            const chartCtx = canvas.getContext('2d');
+            this.priceTrendChart = new Chart(chartCtx, config);
+            
+            // Store the canvas reference
+            this.chartCanvas = canvas;
+            
+            // Initialize selection state
+            const selectionRect = {
+                x: 0,
+                y: 0,
+                width: 0,
+                height: 0,
+                isVisible: false,
+                startX: 0,
+                startY: 0,
+                isSelecting: false
+            };
+            
+            // Add event listeners
+            canvas.addEventListener('mousedown', handleMouseDown);
+            
+            // Add selection handling
+            let isSelecting = false;
+            
+            // Function to handle mouse down event
+            const handleMouseDown = (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                
+                // Start selection
+                isSelecting = true;
+                selectionRect.startX = x;
+                selectionRect.startY = y;
+                selectionRect.x = x;
+                selectionRect.y = y;
+                selectionRect.width = 0;
+                selectionRect.height = 0;
+                selectionRect.isVisible = true;
+                
+                // Update chart to show selection
+                chart.update('none');
+            };
+            
+            // Function to handle mouse move event
+            const handleMouseMove = (e) => {
+                if (!isSelecting) return;
+                
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                
+                // Update selection rectangle
+                selectionRect.width = x - selectionRect.startX;
+                selectionRect.height = y - selectionRect.startY;
+                
+                // Handle negative width/height for dragging in any direction
+                selectionRect.x = Math.min(selectionRect.startX, x);
+                selectionRect.y = Math.min(selectionRect.startY, y);
+                selectionRect.width = Math.abs(selectionRect.width);
+                selectionRect.height = Math.abs(selectionRect.height);
+                
+                // Update chart to show selection
+                chart.update('none');
+            };
+            
+            // Function to handle mouse up event
+            const handleMouseUp = () => {
+                if (!isSelecting) return;
+                
+                // Process selection when mouse is released
+                processSelection();
+                
+                // Reset selection state
+                isSelecting = false;
+                selectionRect.isVisible = false;
+                
+                // Update chart to remove selection rectangle
+                chart.update('none');
+            };
+            
+            // Function to process selected points
+            const processSelection = () => {
+                const selectedPoints = [];
+                const chartArea = chart.chartArea;
+                
+                // Get points within the selection rectangle
+                dataPoints.forEach(point => {
+                    const pointX = chart.scales.x.getPixelForValue(point.x);
+                    const pointY = chart.scales.y.getPixelForValue(point.y);
+                    
+                    if (pointX >= selectionRect.x && 
+                        pointX <= selectionRect.x + selectionRect.width &&
+                        pointY >= selectionRect.y && 
+                        pointY <= selectionRect.y + selectionRect.height) {
+                        selectedPoints.push(point);
+                    }
+                });
+                
+                // Update selection state
+                dataPoints.forEach(point => {
+                    point.selected = selectedPoints.includes(point);
+                });
+                
+                // Update chart to show selected points
+                chart.update('none');
+                
+                // Show price difference if exactly 2 points are selected
+                if (selectedPoints.length === 2) {
+                
+                // Format dates
+                const formatDate = (timestamp) => {
+                    const date = new Date(timestamp);
+                    return date.toLocaleDateString('en-US', { 
+                        year: 'numeric', 
+                        month: 'short', 
+                        day: 'numeric' 
+                    });
+                };
+                
+                // Update UI
+                priceDifferenceText.innerHTML = `
+                    ${formatDate(startPoint.x)} ($${startPoint.y.toFixed(2)}) to 
+                    ${formatDate(endPoint.x)} ($${endPoint.y.toFixed(2)}) | 
+                    Difference: $${Math.abs(difference).toFixed(2)} 
+                    (${percentChange >= 0 ? '+' : ''}${percentChange.toFixed(2)}%)
+                `;
+                priceDifferenceDisplay.style.display = 'block';
+            };
+            
+            // Add event listeners
+            canvas.addEventListener('mousedown', handleMouseDown);
+            canvas.addEventListener('mousemove', handleMouseMove);
+            canvas.addEventListener('mouseup', handleMouseUp);
+            canvas.addEventListener('mouseout', () => {
+                if (isSelecting) {
+                    isSelecting = false;
+                    selectionRect.isVisible = false;
+                    chart.update('none');
+                }
+            });
+            
+            // Clean up function
+            return () => {
+                canvas.removeEventListener('mousedown', handleMouseDown);
+                canvas.removeEventListener('mousemove', handleMouseMove);
+                canvas.removeEventListener('mouseup', handleMouseUp);
+                canvas.removeEventListener('mouseout', handleMouseDown);
+            };
+            
+            // Get chart area for hit detection
+            const getChartArea = (chart) => ({
+                left: chart.chartArea.left,
+                right: chart.chartArea.right,
+                top: chart.chartArea.top,
+                bottom: chart.chartArea.bottom,
+                width: chart.chartArea.width,
+                height: chart.chartArea.height
+            });
+            
+            // Process selected points in the chart
+            const processSelection = () => {
+                if (!selectionRect.isVisible) return;
+                
+                const selectedPoints = [];
+                const chartArea = this.priceTrendChart.chartArea;
+                const xScale = this.priceTrendChart.scales.x;
+                const yScale = this.priceTrendChart.scales.y;
+                
+                // Convert selection rectangle to data coordinates
+                const minX = Math.min(selectionRect.x, selectionRect.x + selectionRect.width);
+                const maxX = Math.max(selectionRect.x, selectionRect.x + selectionRect.width);
+                const minY = Math.min(selectionRect.y, selectionRect.y + selectionRect.height);
+                const maxY = Math.max(selectionRect.y, selectionRect.y + selectionRect.height);
+                
+                // Find points within the selected area
+                dataPoints.forEach(point => {
+                    const pointX = xScale.getPixelForValue(point.x);
+                    const pointY = yScale.getPixelForValue(point.y);
+                    
+                    if (pointX >= minX && pointX <= maxX && 
+                        pointY >= minY && pointY <= maxY) {
+                        selectedPoints.push(point);
+                    }
+                });
+                
+                if (selectedPoints.length > 0) {
+                    // Find min and max points in the selection
+                    selectedPoints.sort((a, b) => a.y - b.y);
+                    const minPoint = selectedPoints[0];
+                    const maxPoint = selectedPoints[selectedPoints.length - 1];
+                    
+                    // Calculate price difference
+                    const priceDiff = maxPoint.y - minPoint.y;
+                    const priceDiffPct = (priceDiff / minPoint.y) * 100;
+                    
+                    // Format the date range
+                    const formatDate = (date) => new Date(date).toLocaleDateString('en-US', { 
+                        year: 'numeric', 
+                        month: 'short', 
+                        day: 'numeric' 
+                    });
+                    
+                    // Update point styles
+                    if (this.priceTrendChart) {
+                        this.priceTrendChart.data.datasets[0].pointBackgroundColor = 
+                            dataPoints.map(point => {
+                                if (point === minPoint) return 'rgba(255, 99, 132, 1)';
+                                if (point === maxPoint) return 'rgba(54, 162, 235, 1)';
+                                return 'rgba(75, 192, 192, 0.2)';
+                            });
+                        
+                        this.priceTrendChart.update();
+                    }
+                } else if (this.priceTrendChart) {
+                    // Reset point styles if no selection
+                    this.priceTrendChart.data.datasets[0].pointBackgroundColor = 'rgba(75, 192, 192, 0.2)';
+                    this.priceTrendChart.update();
                 }
             };
             
-            // Destroy existing chart if it exists
-            if (this.priceTrendChart) {
-                try {
-                    this.priceTrendChart.destroy();
-                } catch (e) {
-                    console.error('Error destroying previous chart:', e);
+            // Add event listeners
+            canvas.addEventListener('mousedown', handleMouseDown);
+            canvas.addEventListener('mousemove', handleMouseMove);
+            canvas.addEventListener('mouseup', handleMouseUp);
+            canvas.addEventListener('mouseout', handleMouseUp);
+            
+            // Clean up function for removing event listeners
+            const cleanup = () => {
+                if (canvas) {
+                    canvas.removeEventListener('mousedown', handleMouseDown);
+                    canvas.removeEventListener('mousemove', handleMouseMove);
+                    canvas.removeEventListener('mouseup', handleMouseUp);
+                    canvas.removeEventListener('mouseout', handleMouseUp);
                 }
+            };
+            
+            // Store cleanup function for later use
+            this.cleanupPriceTrendChart = cleanup;
+            
+            // Return cleanup function for manual cleanup if needed
+            return cleanup;
+            
+            // Initialize chart with plugins and event listeners
+            const chartConfig = {
+                type: 'scatter',
+                data: {
+                    datasets: [{
+                        label: 'Transaction Amounts',
+                        data: dataPoints,
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1,
+                        pointRadius: 5,
+                        pointHoverRadius: 7
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'day',
+                                tooltipFormat: 'PP',
+                                displayFormats: {
+                                    day: 'MMM d, yyyy'
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: 'Date'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Amount ($)'
+                            }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => {
+                                    const data = context.raw;
+                                    return [
+                                        `Merchant: ${data.merchant || 'N/A'}`,
+                                        `Amount: $${data.y.toFixed(2)}`,
+                                        `Category: ${data.category || 'Uncategorized'}`,
+                                        `Date: ${new Date(data.x).toLocaleDateString()}`
+                                    ];
+                                }
+                            }
+                        },
+                        zoom: {
+                            zoom: {
+                                wheel: {
+                                    enabled: true
+                                },
+                                pinch: {
+                                    enabled: true
+                                },
+                                mode: 'xy',
+                                onZoomComplete: ({ chart }) => {
+                                    // Update chart after zoom
+                                    chart.update('none');
+                                }
+                            },
+                            pan: {
+                                enabled: true,
+                                mode: 'xy',
+                                onPanComplete: ({ chart }) => {
+                                    // Update chart after pan
+                                    chart.update('none');
+                                }
+                            }
+                        }
+                    },
+                    onClick: (e) => {
+                        // Handle click events if needed
+                    }
+                },
+                plugins: [{
+                    id: 'selection-rectangle',
+                    beforeDraw: (chart) => {
+                        if (!selectionRect.isVisible) return;
+                        
+                        const ctx = chart.ctx;
+                        const { x, y, width, height } = selectionRect;
+                        
+                        ctx.save();
+                        ctx.beginPath();
+                        ctx.rect(x, y, width, height);
+                        ctx.fillStyle = 'rgba(54, 162, 235, 0.1)';
+                        ctx.fill();
+                        ctx.lineWidth = 1;
+                        ctx.strokeStyle = 'rgba(54, 162, 235, 0.8)';
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+                }]
+            };
+            
+            // Create the chart instance
+            this.priceTrendChart = new Chart(canvas, chartConfig);
+            
+            // Initialize selection info display
+            const selectionInfo = document.createElement('div');
+            selectionInfo.id = 'selection-info';
+            selectionInfo.style.display = 'none';
+            selectionInfo.style.marginTop = '10px';
+            selectionInfo.style.padding = '10px';
+            selectionInfo.style.backgroundColor = '#f8f9fa';
+            selectionInfo.style.borderRadius = '4px';
+            
+            const priceDiffText = document.createElement('div');
+            priceDiffText.id = 'price-difference-text';
+            selectionInfo.appendChild(priceDiffText);
+            
+            const chartContainer = document.getElementById('price-trend-chart-container');
+            if (chartContainer) {
+                chartContainer.appendChild(selectionInfo);
             }
             
-            // Create new chart instance
-            const ctx = canvas.getContext('2d');
-            this.priceTrendChart = new Chart(ctx, config);
-            
-            // Force a resize to ensure proper rendering
-            setTimeout(() => {
+            // Handle window resize
+            window.addEventListener('resize', () => {
                 if (this.priceTrendChart) {
                     this.priceTrendChart.resize();
                 }
-            }, 50);
-            
+            });
+        
         } catch (error) {
             console.error('Error in renderPriceTrendChart:', error);
-            // Clean up on error
             if (this.priceTrendChart) {
-                try {
-                    this.priceTrendChart.destroy();
-                } catch (e) {
-                    console.error('Error cleaning up chart after error:', e);
-                }
+                try { this.priceTrendChart.destroy(); } catch (e) {}
                 this.priceTrendChart = null;
             }
         }
@@ -974,19 +1481,21 @@ class TransactionAnalytics {
         };
         
         this.boxplotChart = new Chart(ctx, config);
-        }
-        
-        // Format currency
-        formatCurrency(amount) {
-            if (amount === undefined || amount === null) return '$0.00';
-            return new Intl.NumberFormat('en-US', {
-                style: 'currency',
-                currency: 'USD',
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-            }).format(amount);
-        }
+    }
+    
+    // Format currency
+    formatCurrency(amount) {
+        if (amount === undefined || amount === null) return '$0.00';
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }).format(amount);
+    }
 }
 
 // Export singleton instance
-export const transactionAnalytics = new TransactionAnalytics();
+const transactionAnalytics = new TransactionAnalytics();
+
+export { transactionAnalytics };
