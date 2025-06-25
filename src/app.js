@@ -520,22 +520,36 @@ class BudgetApp {
                 const category = columnMap.category >= 0 ? row[columnMap.category] : (row[4] || '');
                 const type = columnMap.type >= 0 ? row[columnMap.type] : '';
                 
-                // Parse amount
+                // Parse amount - preserve original sign from CSV
                 const amount = this.parseAmount(amountStr);
-                const isIncome = type ? type.toString().toLowerCase().includes('income') : amount >= 0;
+                const isDeposit = description && (
+                    description.toString().toLowerCase().includes('deposit') ||
+                    description.toString().toLowerCase().includes('credit') ||
+                    description.toString().toLowerCase().includes('achcredit') ||
+                    description.toString().toLowerCase().includes('direct dep')
+                );
+                
+                // Determine if this is income based on type hint or if it's a deposit
+                const isIncome = type ? type.toString().toLowerCase().includes('income') : (amount > 0 || isDeposit);
                 
                 const transaction = {
                     date: this.parseDate(date),
                     merchant: merchant.toString().trim() || 'Unknown',
                     description: description.toString().trim() || 'No description',
-                    amount: isIncome ? Math.abs(amount) : -Math.abs(amount),
+                    // Preserve the original amount sign from CSV
+                    amount: amount,
                     category: category.toString().trim() || 'Uncategorized',
                     type: isIncome ? 'income' : 'expense',
                     createdAt: new Date().toISOString(),
                     searchText: `${merchant} ${description}`.toLowerCase()
                 };
                 
-                console.log('Processed transaction:', transaction);
+                console.log('Processed transaction:', {
+                    ...transaction,
+                    isIncome,
+                    isDeposit,
+                    originalAmount: amountStr
+                });
                 
                 // Skip if we don't have a valid amount
                 if (isNaN(transaction.amount)) {
@@ -1413,9 +1427,32 @@ class BudgetApp {
                 
                 // Parse transaction data
                 const amount = parseFloat(transaction.amount) || 0;
-                const isIncome = transaction.type === 'income' || amount >= 0;
+                
+                // Check for deposit indicators in description
+                const isDeposit = transaction.description && (
+                    transaction.description.toLowerCase().includes('achcredit') ||
+                    transaction.description.toLowerCase().includes('deposit') ||
+                    transaction.description.toLowerCase().includes('direct dep') ||
+                    transaction.description.toLowerCase().includes('credit')
+                );
+                
+                // Determine if transaction is income based on type, amount sign, and deposit indicators
+                const isIncome = (transaction.type === 'income' && amount > 0) || 
+                               (transaction.type !== 'expense' && (amount > 0 || isDeposit));
+                
+                // Use the actual amount sign for display
                 const displayAmount = Math.abs(amount);
-                const amountClass = isIncome ? 'text-success' : 'text-danger';
+                const amountSign = amount >= 0 ? '+' : '-';
+                const amountClass = amount >= 0 ? 'text-success' : 'text-danger';
+                
+                console.log('Transaction:', { 
+                    description: transaction.description, 
+                    amount: amount,
+                    displayAmount: displayAmount,
+                    type: transaction.type, 
+                    isIncome: isIncome,
+                    isDeposit: isDeposit
+                });
                 
                 // Format date
                 let formattedDate = 'Invalid Date';
@@ -1447,7 +1484,7 @@ class BudgetApp {
                         </span>
                     </td>
                     <td class="text-end ${amountClass} fw-medium">
-                        ${isIncome ? '+' : '-'}$${displayAmount.toFixed(2)}
+                        ${amountSign}$${displayAmount.toFixed(2)}
                     </td>
                     <td class="text-end">
                         <button class="btn btn-sm btn-outline-primary me-1" data-id="${transaction.id || ''}" title="Edit">
@@ -1478,13 +1515,14 @@ class BudgetApp {
                 
                 // Add click handler for row to view details
                 row.style.cursor = 'pointer';
+                // Make row clickable to view details
+                row.style.cursor = 'pointer';
                 row.addEventListener('click', () => {
                     if (transaction.id) this.viewTransactionDetails(transaction);
                 });
                 
-                // Make row clickable to view details
-                row.style.cursor = 'pointer';
-                row.addEventListener('click', () => this.viewTransactionDetails(transaction));
+                // Add the row to the transactions list
+                transactionsList.appendChild(row);
                 
             });
             
@@ -1569,24 +1607,30 @@ class BudgetApp {
             console.log('Monthly transactions:', monthlyTransactions);
             
             // Calculate totals
-            const incomeTransactions = monthlyTransactions
-                .filter(t => t.type === 'income' || (typeof t.amount === 'number' ? t.amount > 0 : parseFloat(t.amount) > 0));
+            // Income: positive amounts or type 'income'
+            const incomeTransactions = monthlyTransactions.filter(t => {
+                const amount = typeof t.amount === 'number' ? t.amount : parseFloat(t.amount) || 0;
+                return t.type === 'income' || amount > 0;
+            });
                 
             console.log('Income transactions:', incomeTransactions);
                 
             const income = incomeTransactions.reduce((sum, t) => {
-                const amount = typeof t.amount === 'number' ? t.amount : parseFloat(t.amount) || 0;
-                return sum + Math.abs(amount);
+                const amount = Math.abs(typeof t.amount === 'number' ? t.amount : parseFloat(t.amount) || 0);
+                return sum + amount;
             }, 0);
                 
             console.log('Calculated income:', income);
                 
-            const expenseTransactions = monthlyTransactions.filter(t => 
-                t.type === 'expense' || (typeof t.amount === 'number' ? t.amount < 0 : parseFloat(t.amount) < 0));
+            // Expenses: negative amounts or type 'expense'
+            const expenseTransactions = monthlyTransactions.filter(t => {
+                const amount = typeof t.amount === 'number' ? t.amount : parseFloat(t.amount) || 0;
+                return t.type === 'expense' || amount < 0;
+            });
                 
             const expenses = expenseTransactions.reduce((sum, t) => {
-                const amount = typeof t.amount === 'number' ? t.amount : parseFloat(t.amount) || 0;
-                return sum + Math.abs(amount);
+                const amount = Math.abs(typeof t.amount === 'number' ? t.amount : parseFloat(t.amount) || 0);
+                return sum + amount;
             }, 0);
             
             console.log('Expense transactions:', expenseTransactions);
