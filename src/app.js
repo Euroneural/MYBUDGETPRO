@@ -672,6 +672,12 @@ class BudgetApp {
     async getCalendarEvents(fetchInfo, successCallback, failureCallback) {
         try {
             const transactions = await localDB.getTransactions();
+            console.log('Total transactions in database:', transactions.length);
+            
+            // Debug: Log income transactions
+            const incomeTransactions = transactions.filter(t => t.amount > 0 || t.type === 'income');
+            console.log('Income transactions:', incomeTransactions);
+            
             const events = [];
             const now = new Date();
             
@@ -722,16 +728,154 @@ class BudgetApp {
     
     // Predict recurring transactions
     predictRecurringTransactions(transactions, startDate, endDate) {
+        console.log('predictRecurringTransactions called with:', { 
+            transactionCount: transactions.length,
+            startDate,
+            endDate 
+        });
+        
         const predictedEvents = [];
         const now = new Date();
         const oneYearAgo = new Date(now);
         oneYearAgo.setFullYear(now.getFullYear() - 1);
         
         // Get date-fns functions from global object
-        const { isSameDay, differenceInDays } = window.dateFns || {};
+        const { isSameDay, differenceInDays, addDays, format } = window.dateFns || {};
+        
+        // Debug: Log the first few transactions
+        console.log('Sample transactions:', transactions.slice(0, 3).map(t => ({
+            description: t.description,
+            amount: t.amount,
+            date: t.date,
+            type: t.type
+        })));
         
         // Group transactions by description and amount to find patterns
         const transactionGroups = {};
+        
+        // First, normalize and group transactions
+        transactions.forEach(transaction => {
+            try {
+                // Skip transactions without a valid date
+                if (!transaction.date) return;
+                
+                const transDate = new Date(transaction.date);
+                if (isNaN(transDate.getTime())) return;
+                
+                // Create a normalized description (lowercase, trim, remove special chars)
+                const normalizedDesc = transaction.description
+                    .toLowerCase()
+                    .trim()
+                    .replace(/[^\w\s]/g, '');
+                
+                // Create a group key with description and amount (rounded to avoid minor differences)
+                const amount = typeof transaction.amount === 'number' 
+                    ? Math.round(transaction.amount * 100) / 100 
+                    : Math.round(parseFloat(transaction.amount) * 100) / 100;
+                    
+                if (isNaN(amount)) return;
+                
+                const groupKey = `${normalizedDesc}_${amount.toFixed(2)}`;
+                
+                if (!transactionGroups[groupKey]) {
+                    transactionGroups[groupKey] = [];
+                }
+                
+                transactionGroups[groupKey].push({
+                    date: transDate,
+                    amount: amount,
+                    description: transaction.description,
+                    type: transaction.type || (amount >= 0 ? 'income' : 'expense')
+                });
+            } catch (e) {
+                console.warn('Error processing transaction for recurring detection:', transaction, e);
+            }
+        });
+        
+        console.log('Transaction groups:', Object.keys(transactionGroups).length, 'groups found');
+        
+        // Analyze each group for recurring patterns
+        Object.entries(transactionGroups).forEach(([groupKey, groupTransactions]) => {
+            try {
+                if (groupTransactions.length < 2) return; // Need at least 2 transactions to detect a pattern
+                
+                // Sort transactions by date
+                groupTransactions.sort((a, b) => a.date - b.date);
+                
+                // Calculate intervals between transactions
+                const intervals = [];
+                for (let i = 1; i < groupTransactions.length; i++) {
+                    const prevDate = groupTransactions[i - 1].date;
+                    const currDate = groupTransactions[i].date;
+                    const interval = differenceInDays(currDate, prevDate);
+                    intervals.push(interval);
+                }
+                
+                // Calculate average interval (in days)
+                const avgInterval = intervals.reduce((sum, val) => sum + val, 0) / intervals.length;
+                
+                // Calculate standard deviation to check consistency
+                const squaredDiffs = intervals.map(interval => Math.pow(interval - avgInterval, 2));
+                const variance = squaredDiffs.reduce((sum, val) => sum + val, 0) / intervals.length;
+                const stdDev = Math.sqrt(variance);
+                
+                // Calculate confidence (0-1) based on standard deviation and number of occurrences
+                let confidence = 0.7; // Base confidence
+                
+                // Increase confidence with more occurrences
+                confidence = Math.min(0.95, confidence + (groupTransactions.length * 0.05));
+                
+                // Decrease confidence with higher standard deviation
+                confidence = Math.max(0.1, confidence - (stdDev / 30));
+                
+                // If we have a consistent pattern, predict future occurrences
+                if (confidence > 0.5 && avgInterval > 0) {
+                    const lastTransaction = groupTransactions[groupTransactions.length - 1];
+                    let nextDate = new Date(lastTransaction.date);
+                    
+                    // Predict next 3 occurrences or until we reach the end date
+                    for (let i = 0; i < 3; i++) {
+                        nextDate = addDays(nextDate, Math.round(avgInterval));
+                        
+                        // Skip if the predicted date is in the past or before the start date
+                        if (nextDate < now || nextDate < new Date(startDate)) continue;
+                        
+                        // Stop if we've gone past the end date
+                        if (nextDate > new Date(endDate)) break;
+                        
+                        // Add predicted event
+                        predictedEvents.push({
+                            title: `${lastTransaction.description} (${(confidence * 100).toFixed(0)}% likely)`,
+                            start: nextDate.toISOString(),
+                            allDay: true,
+                            color: confidence > 0.8 ? '#FFA500' : '#FFD700', // Orange for high confidence, gold for medium
+                            extendedProps: {
+                                isPredicted: true,
+                                confidence: confidence,
+                                amount: lastTransaction.amount,
+                                description: lastTransaction.description,
+                                type: lastTransaction.type,
+                                originalDates: groupTransactions.map(t => t.date.toISOString().split('T')[0])
+                            }
+                        });
+                    }
+                }
+                
+                console.log(`Group ${groupKey}:`, {
+                    count: groupTransactions.length,
+                    avgInterval,
+                    stdDev,
+                    confidence: (confidence * 100).toFixed(1) + '%',
+                    lastDate: groupTransactions[groupTransactions.length - 1].date.toISOString()
+                });
+                
+            } catch (e) {
+                console.error('Error analyzing transaction group:', groupKey, e);
+            }
+        });
+        
+        console.log('Predicted events:', predictedEvents);
+        return predictedEvents;
         
         // Only consider transactions from the past year for prediction
         const recentTransactions = transactions.filter(t => {
@@ -1272,12 +1416,12 @@ class BudgetApp {
         }
     }
     
-    // Method to update the dashboard with transaction data
+    // Update dashboard with summary data
     async updateDashboard() {
+        console.log('Updating dashboard...');
         try {
             // Get all transactions
             const transactions = await localDB.getTransactions();
-            
             console.log('All transactions:', transactions);
             
             // Filter transactions for the current month
@@ -1301,18 +1445,28 @@ class BudgetApp {
             
             // Calculate totals
             const incomeTransactions = monthlyTransactions
-                .filter(t => t.type === 'income' || t.amount > 0);
-                
-            const income = incomeTransactions
-                .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount) || 0), 0);
+                .filter(t => t.type === 'income' || (typeof t.amount === 'number' ? t.amount > 0 : parseFloat(t.amount) > 0));
                 
             console.log('Income transactions:', incomeTransactions);
+                
+            const income = incomeTransactions.reduce((sum, t) => {
+                const amount = typeof t.amount === 'number' ? t.amount : parseFloat(t.amount) || 0;
+                return sum + Math.abs(amount);
+            }, 0);
+                
             console.log('Calculated income:', income);
                 
-            const expenses = monthlyTransactions
-                .filter(t => t.type === 'expense' || t.amount < 0)
-                .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount) || 0), 0);
+            const expenseTransactions = monthlyTransactions.filter(t => 
+                t.type === 'expense' || (typeof t.amount === 'number' ? t.amount < 0 : parseFloat(t.amount) < 0));
                 
+            const expenses = expenseTransactions.reduce((sum, t) => {
+                const amount = typeof t.amount === 'number' ? t.amount : parseFloat(t.amount) || 0;
+                return sum + Math.abs(amount);
+            }, 0);
+            
+            console.log('Expense transactions:', expenseTransactions);
+            console.log('Calculated expenses:', expenses);
+                    
             // Get budget data (if available)
             let budgeted = 0;
             try {
