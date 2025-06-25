@@ -647,120 +647,7 @@ class TransactionAnalytics {
                 height: 0
             };
 
-            // Event handlers
-            const handleMouseDown = (e) => {
-                const rect = canvas.getBoundingClientRect();
-                selectionRect.isSelecting = true;
-                selectionRect.startX = e.clientX - rect.left;
-                selectionRect.startY = e.clientY - rect.top;
-                selectionRect.x = selectionRect.startX;
-                selectionRect.y = selectionRect.startY;
-                selectionRect.width = 0;
-                selectionRect.height = 0;
-                selectionRect.isVisible = true;
-                if (this.priceTrendChart) {
-                    this.priceTrendChart.update();
-                }
-            };
-
-            // Function to handle mouse move event
-            const handleMouseMove = (e) => {
-                if (!selectionRect.isSelecting) return;
-                
-                const rect = canvas.getBoundingClientRect();
-                const mouseX = e.clientX - rect.left;
-                const mouseY = e.clientY - rect.top;
-                
-                selectionRect.width = mouseX - selectionRect.startX;
-                selectionRect.height = mouseY - selectionRect.startY;
-                selectionRect.x = selectionRect.startX;
-                selectionRect.y = selectionRect.startY;
-                
-                if (this.priceTrendChart) {
-                    this.priceTrendChart.update();
-                }
-            };
-
-            // Function to handle mouse up event
-            const handleMouseUp = () => {
-                if (selectionRect.isSelecting) {
-                    selectionRect.isSelecting = false;
-                    processSelection();
-                }
-            };
-
-            // Function to process selected points
-            const processSelection = () => {
-                if (!selectionRect.isVisible) return;
-                
-                const selectedPoints = [];
-                
-                // Convert selection rectangle to data coordinates
-                const xScale = chartRef.scales.x;
-                const yScale = chartRef.scales.y;
-                
-                const minX = Math.min(selectionRect.startX, selectionRect.startX + selectionRect.width);
-                const maxX = Math.max(selectionRect.startX, selectionRect.startX + selectionRect.width);
-                const minY = Math.min(selectionRect.startY, selectionRect.startY + selectionRect.height);
-                const maxY = Math.max(selectionRect.startY, selectionRect.startY + selectionRect.height);
-                
-                const minDate = xScale.getValueForPixel(minX);
-                const maxDate = xScale.getValueForPixel(maxX);
-                const minAmount = yScale.getValueForPixel(maxY); // Note: y-axis is inverted
-                const maxAmount = yScale.getValueForPixel(minY);
-                
-                // Find points within selection
-                const dataset = chartRef.data.datasets[0];
-                dataset.data.forEach((point) => {
-                    const x = point.x.getTime();
-                    const y = point.y;
-                    
-                    if (x >= minDate && x <= maxDate && y >= minAmount && y <= maxAmount) {
-                        selectedPoints.push(point);
-                    }
-                });
-                
-                // If exactly two points are selected, show price difference
-                if (selectedPoints.length === 2) {
-                    const point1 = selectedPoints[0];
-                    const point2 = selectedPoints[1];
-                    const amount1 = point1.rawAmount;
-                    const amount2 = point2.rawAmount;
-                    const dateStr1 = point1.x.toLocaleDateString();
-                    const dateStr2 = point2.x.toLocaleDateString();
-                    
-                    const diff = amount2 - amount1;
-                    const percentChange = (diff / Math.abs(amount1)) * 100;
-                    
-                    const selectionInfo = document.getElementById('selection-info');
-                    if (selectionInfo) {
-                        const absDiff = Math.abs(diff).toFixed(2);
-                        
-                        selectionInfo.innerHTML = `
-                            <div class="price-diff-summary">
-                                <div>${dateStr1} → ${dateStr2}</div>
-                                <div class="price-diff-amount ${diff >= 0 ? 'positive' : 'negative'}">
-                                    ${diff >= 0 ? '+' : '-'}$${absDiff} (${diff >= 0 ? '+' : ''}${percentChange.toFixed(2)}%)
-                                </div>
-                            </div>
-                        `;
-                        selectionInfo.style.display = 'block';
-                    }
-                } else if (selectedPoints.length > 0) {
-                    // Update UI to show selection count
-                    const selectionInfo = document.getElementById('selection-info');
-                    if (selectionInfo) {
-                        selectionInfo.textContent = `Selected ${selectedPoints.length} points`;
-                        selectionInfo.style.display = 'block';
-                    }
-                } else {
-                    // No points selected, hide the selection info
-                    const selectionInfo = document.getElementById('selection-info');
-                    if (selectionInfo) {
-                        selectionInfo.style.display = 'none';
-                    }
-                }
-            };
+            // Event handlers will be defined once after chart creation
 
             // Chart configuration
             const config = {
@@ -890,32 +777,14 @@ class TransactionAnalytics {
             // Store the canvas reference
             this.chartCanvas = canvas;
             
-            // Initialize selection state
-            const selectionRect = {
-                x: 0,
-                y: 0,
-                width: 0,
-                height: 0,
-                isVisible: false,
-                startX: 0,
-                startY: 0,
-                isSelecting: false
-            };
-            
+            // Initialize selection state (moved to the beginning of the method)
             // Add event listeners
-            canvas.addEventListener('mousedown', handleMouseDown);
-            
-            // Add selection handling
-            let isSelecting = false;
-            
-            // Function to handle mouse down event
             const handleMouseDown = (e) => {
                 const rect = canvas.getBoundingClientRect();
                 const x = e.clientX - rect.left;
                 const y = e.clientY - rect.top;
                 
                 // Start selection
-                isSelecting = true;
                 selectionRect.startX = x;
                 selectionRect.startY = y;
                 selectionRect.x = x;
@@ -923,14 +792,16 @@ class TransactionAnalytics {
                 selectionRect.width = 0;
                 selectionRect.height = 0;
                 selectionRect.isVisible = true;
+                selectionRect.isSelecting = true;
                 
                 // Update chart to show selection
-                chart.update('none');
+                if (this.priceTrendChart) {
+                    this.priceTrendChart.update('none');
+                }
             };
             
-            // Function to handle mouse move event
             const handleMouseMove = (e) => {
-                if (!isSelecting) return;
+                if (!selectionRect.isSelecting) return;
                 
                 const rect = canvas.getBoundingClientRect();
                 const x = e.clientX - rect.left;
@@ -947,71 +818,69 @@ class TransactionAnalytics {
                 selectionRect.height = Math.abs(selectionRect.height);
                 
                 // Update chart to show selection
-                chart.update('none');
+                if (this.priceTrendChart) {
+                    this.priceTrendChart.update('none');
+                }
             };
             
-            // Function to handle mouse up event
             const handleMouseUp = () => {
-                if (!isSelecting) return;
+                if (!selectionRect.isSelecting) return;
                 
                 // Process selection when mouse is released
                 processSelection();
                 
                 // Reset selection state
-                isSelecting = false;
-                selectionRect.isVisible = false;
+                selectionRect.isSelecting = false;
                 
-                // Update chart to remove selection rectangle
-                chart.update('none');
-            };
-            
-            // Function to process selected points
-            const processSelection = () => {
-                const selectedPoints = [];
-                const chartArea = chart.chartArea;
+                // Get selected points
+                const selectedPoints = dataPoints.filter(p => p.selected);
                 
-                // Get points within the selection rectangle
-                dataPoints.forEach(point => {
-                    const pointX = chart.scales.x.getPixelForValue(point.x);
-                    const pointY = chart.scales.y.getPixelForValue(point.y);
+                if (selectedPoints.length === 2) {
+                    const point1 = selectedPoints[0];
+                    const point2 = selectedPoints[1];
+                    const amount1 = point1.rawAmount;
+                    const amount2 = point2.rawAmount;
+                    const date1 = new Date(point1.x);
+                    const date2 = new Date(point2.x);
                     
-                    if (pointX >= selectionRect.x && 
-                        pointX <= selectionRect.x + selectionRect.width &&
-                        pointY >= selectionRect.y && 
-                        pointY <= selectionRect.y + selectionRect.height) {
-                        selectedPoints.push(point);
+                    const diff = amount2 - amount1;
+                    const percentChange = (diff / Math.abs(amount1)) * 100;
+                    
+                    const selectionInfo = document.getElementById('selection-info');
+                    if (selectionInfo) {
+                        const absDiff = Math.abs(diff).toFixed(2);
+                        const dateStr1 = date1.toLocaleDateString();
+                        const dateStr2 = date2.toLocaleDateString();
+                        
+                        selectionInfo.innerHTML = `
+                            <div class="price-diff-summary">
+                                <div>${dateStr1} → ${dateStr2}</div>
+                                <div class="price-diff-amount ${diff >= 0 ? 'positive' : 'negative'}">
+                                    ${diff >= 0 ? '+' : '-'}$${absDiff} (${diff >= 0 ? '+' : ''}${percentChange.toFixed(2)}%)
+                                </div>
+                            </div>
+                        `;
+                        selectionInfo.style.display = 'block';
                     }
-                });
-                
-                // Update selection state
-                dataPoints.forEach(point => {
-                    point.selected = selectedPoints.includes(point);
-                });
+                } else if (selectedPoints.length > 0) {
+                    // Update UI to show selection count
+                    const selectionInfo = document.getElementById('selection-info');
+                    if (selectionInfo) {
+                        selectionInfo.textContent = `Selected ${selectedPoints.length} points`;
+                        selectionInfo.style.display = 'block';
+                    }
+                } else {
+                    // No points selected, hide the selection info
+                    const selectionInfo = document.getElementById('selection-info');
+                    if (selectionInfo) {
+                        selectionInfo.style.display = 'none';
+                    }
+                }
                 
                 // Update chart to show selected points
-                chart.update('none');
-                
-                // Show price difference if exactly 2 points are selected
-                if (selectedPoints.length === 2) {
-                
-                // Format dates
-                const formatDate = (timestamp) => {
-                    const date = new Date(timestamp);
-                    return date.toLocaleDateString('en-US', { 
-                        year: 'numeric', 
-                        month: 'short', 
-                        day: 'numeric' 
-                    });
-                };
-                
-                // Update UI
-                priceDifferenceText.innerHTML = `
-                    ${formatDate(startPoint.x)} ($${startPoint.y.toFixed(2)}) to 
-                    ${formatDate(endPoint.x)} ($${endPoint.y.toFixed(2)}) | 
-                    Difference: $${Math.abs(difference).toFixed(2)} 
-                    (${percentChange >= 0 ? '+' : ''}${percentChange.toFixed(2)}%)
-                `;
-                priceDifferenceDisplay.style.display = 'block';
+                if (this.priceTrendChart) {
+                    this.priceTrendChart.update('none');
+                }
             };
             
             // Add event listeners
@@ -1103,13 +972,9 @@ class TransactionAnalytics {
                     this.priceTrendChart.data.datasets[0].pointBackgroundColor = 'rgba(75, 192, 192, 0.2)';
                     this.priceTrendChart.update();
                 }
+                
+                return selectedPoints;
             };
-            
-            // Add event listeners
-            canvas.addEventListener('mousedown', handleMouseDown);
-            canvas.addEventListener('mousemove', handleMouseMove);
-            canvas.addEventListener('mouseup', handleMouseUp);
-            canvas.addEventListener('mouseout', handleMouseUp);
             
             // Clean up function for removing event listeners
             const cleanup = () => {
@@ -1123,9 +988,6 @@ class TransactionAnalytics {
             
             // Store cleanup function for later use
             this.cleanupPriceTrendChart = cleanup;
-            
-            // Return cleanup function for manual cleanup if needed
-            return cleanup;
             
             // Initialize chart with plugins and event listeners
             const chartConfig = {
@@ -1256,7 +1118,6 @@ class TransactionAnalytics {
                     this.priceTrendChart.resize();
                 }
             });
-        
         } catch (error) {
             console.error('Error in renderPriceTrendChart:', error);
             if (this.priceTrendChart) {
