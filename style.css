@@ -1243,8 +1243,187 @@ select.form-control {
   padding: 0;
 }
 
-/* Transactions List */
-.transactions-list {
+/* Calendar View */
+.calendar-container {
+    display: flex;
+    gap: var(--space-16);
+    margin-top: var(--space-16);
+}
+
+.calendar-main {
+    flex: 1;
+    background: var(--color-surface);
+    border-radius: var(--border-radius-md);
+    padding: var(--space-16);
+    box-shadow: var(--shadow-sm);
+}
+
+.calendar-sidebar {
+    width: 300px;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-16);
+}
+
+/* FullCalendar overrides */
+.fc {
+    --fc-border-color: var(--color-border);
+    --fc-now-indicator-color: var(--color-error);
+    --fc-today-bg-color: var(--color-secondary);
+    --fc-page-bg-color: var(--color-surface);
+    --fc-neutral-bg-color: var(--color-background);
+    --fc-list-event-hover-bg-color: var(--color-secondary);
+    --fc-button-bg-color: var(--color-primary);
+    --fc-button-border-color: var(--color-primary);
+    --fc-button-hover-bg-color: var(--color-primary-hover);
+    --fc-button-hover-border-color: var(--color-primary-hover);
+    --fc-button-active-bg-color: var(--color-primary-active);
+    --fc-button-active-border-color: var(--color-primary-active);
+    --fc-button-text-color: var(--color-btn-primary-text);
+    --fc-event-bg-color: var(--color-primary);
+    --fc-event-border-color: var(--color-primary);
+    --fc-event-text-color: var(--color-btn-primary-text);
+}
+
+.fc .fc-button {
+    padding: 0.4em 0.65em;
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    border-radius: var(--border-radius-sm);
+    text-transform: capitalize;
+}
+
+.fc .fc-toolbar-title {
+    font-size: var(--font-size-lg);
+    font-weight: 600;
+    color: var(--color-text);
+}
+
+.fc .fc-col-header-cell-cushion {
+    color: var(--color-text);
+    font-weight: 500;
+    text-decoration: none;
+}
+
+.fc .fc-daygrid-day-number {
+    color: var(--color-text);
+    padding: 4px;
+    text-decoration: none;
+}
+
+.fc .fc-day-today {
+    background-color: var(--color-secondary) !important;
+}
+
+/* Event tooltip */
+.event-tooltip {
+    position: fixed;
+    z-index: 1000;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius-sm);
+    padding: var(--space-8) var(--space-12);
+    box-shadow: var(--shadow-md);
+    max-width: 300px;
+    display: none;
+    pointer-events: none;
+}
+
+/* Calendar Summary */
+.summary-totals {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
+    margin-bottom: var(--space-16);
+}
+
+.summary-total {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-8) 0;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.summary-total:last-child {
+    border-bottom: none;
+}
+
+.summary-label {
+    font-weight: 500;
+}
+
+.summary-amount {
+    font-weight: 600;
+}
+
+.summary-categories {
+    margin-top: var(--space-16);
+}
+
+.summary-categories h4 {
+    margin-bottom: var(--space-8);
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+}
+
+.category-summary {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-8) 0;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.category-summary:last-child {
+    border-bottom: none;
+}
+
+.category-name {
+    font-weight: 500;
+}
+
+.category-amounts {
+    display: flex;
+    gap: var(--space-8);
+    font-size: var(--font-size-sm);
+}
+
+/* Prediction details */
+.prediction-details {
+    padding: var(--space-8);
+}
+
+.prediction-details p {
+    margin: 0 0 var(--space-8) 0;
+}
+
+.prediction-details p:last-child {
+    margin-bottom: 0;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .calendar-container {
+        flex-direction: column;
+    }
+    
+    .calendar-sidebar {
+        width: 100%;
+    }
+    
+    .fc-toolbar {
+        flex-direction: column;
+        gap: var(--space-8);
+    }
+    
+    .fc-toolbar-title {
+        margin: var(--space-8) 0;
+    }
+}
+
+/* Transaction List */
+.transaction-list {
   margin-top: var(--space-16);
 }
 

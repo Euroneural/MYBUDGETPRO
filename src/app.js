@@ -611,6 +611,469 @@ class BudgetApp {
             // Add other views as needed
         }
     }
+    
+    // Initialize calendar
+    async initCalendar() {
+        if (this.calendar) return; // Already initialized
+        
+        const calendarEl = document.getElementById('calendar');
+        if (!calendarEl) return;
+        
+        // Initialize FullCalendar
+        this.calendar = new FullCalendar.Calendar(calendarEl, {
+            initialView: 'dayGridMonth',
+            headerToolbar: {
+                left: 'prev,next today',
+                center: 'title',
+                right: 'dayGridMonth,timeGridWeek,timeGridDay'
+            },
+            dayMaxEvents: true,
+            events: this.getCalendarEvents.bind(this),
+            eventClick: this.handleCalendarEventClick.bind(this),
+            dateClick: this.handleDateClick.bind(this),
+            eventDidMount: this.handleEventDidMount.bind(this)
+        });
+        
+        this.calendar.render();
+        
+        // Initialize mini calendar
+        this.initMiniCalendar();
+    }
+    
+    // Initialize mini calendar
+    initMiniCalendar() {
+        const miniCalendarEl = document.getElementById('mini-calendar');
+        if (!miniCalendarEl || this.miniCalendar) return;
+        
+        this.miniCalendar = new FullCalendar.Calendar(miniCalendarEl, {
+            initialView: 'dayGridMonth',
+            headerToolbar: {
+                left: 'prev',
+                center: 'title',
+                right: 'next'
+            },
+            height: 'auto',
+            dateClick: (info) => {
+                this.calendar.gotoDate(info.date);
+            },
+            datesSet: () => {
+                // Sync mini calendar with main calendar
+                if (this.calendar) {
+                    const date = this.miniCalendar.getDate();
+                    this.calendar.gotoDate(date);
+                }
+            }
+        });
+        
+        this.miniCalendar.render();
+    }
+    
+    // Get events for the calendar
+    async getCalendarEvents(fetchInfo, successCallback, failureCallback) {
+        try {
+            const transactions = await localDB.getTransactions();
+            const events = [];
+            const now = new Date();
+            
+            // Process actual transactions
+            transactions.forEach(transaction => {
+                try {
+                    const date = new Date(transaction.date);
+                    const isExpense = transaction.amount < 0 || transaction.type === 'expense';
+                    const amount = Math.abs(parseFloat(transaction.amount) || 0);
+                    
+                    events.push({
+                        id: `t_${transaction.id || Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                        title: `${isExpense ? '-' : '+'}$${amount.toFixed(2)} ${transaction.description || ''}`.trim(),
+                        start: date,
+                        allDay: true,
+                        backgroundColor: isExpense ? '#f8d7da' : '#d1e7dd',
+                        borderColor: isExpense ? '#f5c2c7' : '#a3cfbb',
+                        textColor: isExpense ? '#842029' : '#0f5132',
+                        extendedProps: {
+                            type: 'transaction',
+                            isExpense,
+                            amount,
+                            originalAmount: transaction.amount,
+                            description: transaction.description || '',
+                            category: transaction.category || 'Uncategorized',
+                            originalDate: date
+                        }
+                    });
+                } catch (e) {
+                    console.warn('Error processing transaction for calendar:', transaction, e);
+                }
+            });
+            
+            // Add predicted recurring transactions
+            const predictedTransactions = this.predictRecurringTransactions(transactions, fetchInfo.start, fetchInfo.end);
+            events.push(...predictedTransactions);
+            
+            successCallback(events);
+            
+            // Update summary
+            this.updateCalendarSummary(transactions, fetchInfo.start, fetchInfo.end);
+            
+        } catch (error) {
+            console.error('Error loading calendar events:', error);
+            failureCallback(error);
+        }
+    }
+    
+    // Predict recurring transactions
+    predictRecurringTransactions(transactions, startDate, endDate) {
+        const predictedEvents = [];
+        const now = new Date();
+        const oneYearAgo = new Date(now);
+        oneYearAgo.setFullYear(now.getFullYear() - 1);
+        
+        // Group transactions by description and amount to find patterns
+        const transactionGroups = {};
+        
+        // Only consider transactions from the past year for prediction
+        const recentTransactions = transactions.filter(t => {
+            try {
+                const date = new Date(t.date);
+                return date >= oneYearAgo;
+            } catch (e) {
+                return false;
+            }
+        });
+        
+        // Group similar transactions
+        recentTransactions.forEach(transaction => {
+            try {
+                const key = `${transaction.description || ''}_${Math.abs(transaction.amount).toFixed(2)}`;
+                if (!transactionGroups[key]) {
+                    transactionGroups[key] = [];
+                }
+                transactionGroups[key].push({
+                    date: new Date(transaction.date),
+                    amount: parseFloat(transaction.amount) || 0,
+                    ...transaction
+                });
+            } catch (e) {
+                console.warn('Error processing transaction for prediction:', transaction, e);
+            }
+        });
+        
+        // Analyze each group for patterns
+        Object.values(transactionGroups).forEach(group => {
+            if (group.length < 2) return; // Need at least 2 transactions to detect a pattern
+            
+            // Sort by date
+            group.sort((a, b) => a.date - b.date);
+            
+            // Calculate average interval between transactions (in days)
+            const intervals = [];
+            for (let i = 1; i < group.length; i++) {
+                const diff = (group[i].date - group[i-1].date) / (1000 * 60 * 60 * 24);
+                intervals.push(diff);
+            }
+            
+            const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+            const isExpense = group[0].amount < 0;
+            const amount = Math.abs(group[0].amount);
+            
+            // Only proceed if we have a somewhat regular pattern
+            const variance = Math.max(...intervals) - Math.min(...intervals);
+            if (variance > 10) return; // Too much variance to be considered recurring
+            
+            // Predict next occurrence
+            const lastDate = new Date(Math.max(...group.map(t => t.date)));
+            let nextDate = new Date(lastDate);
+            
+            while (nextDate < endDate) {
+                nextDate = new Date(nextDate);
+                nextDate.setDate(nextDate.getDate() + Math.round(avgInterval));
+                
+                if (nextDate >= startDate && nextDate <= endDate) {
+                    // Calculate confidence based on number of occurrences and variance
+                    const confidence = Math.min(100, Math.round(
+                        (1 - (variance / (avgInterval * 0.5))) * 
+                        Math.min(1, group.length / 3) * 100
+                    ));
+                    
+                    predictedEvents.push({
+                        id: `predicted_${group[0].id || ''}_${nextDate.getTime()}`,
+                        title: `[${confidence}%] ${isExpense ? '-' : '+'}$${amount.toFixed(2)} ${group[0].description || 'Recurring'}`.trim(),
+                        start: nextDate,
+                        allDay: true,
+                        backgroundColor: isExpense ? '#fff3cd' : '#cfe2ff',
+                        borderColor: isExpense ? '#ffecb5' : '#9ec5fe',
+                        textColor: isExpense ? '#664d03' : '#084298',
+                        extendedProps: {
+                            type: 'predicted',
+                            isExpense,
+                            amount,
+                            description: group[0].description || 'Recurring Transaction',
+                            category: group[0].category || 'Uncategorized',
+                            confidence,
+                            pattern: {
+                                interval: Math.round(avgInterval),
+                                occurrences: group.length,
+                                lastDate: lastDate.toISOString().split('T')[0]
+                            }
+                        }
+                    });
+                }
+            }
+        });
+        
+        return predictedEvents;
+    }
+    
+    // Handle date click on calendar
+    async handleDateClick(info) {
+        const date = info.date;
+        const dateStr = date.toISOString().split('T')[0];
+        
+        // Update selected date display
+        const selectedDateEl = document.getElementById('selected-date');
+        if (selectedDateEl) {
+            selectedDateEl.textContent = date.toLocaleDateString('en-US', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+        }
+        
+        // Load transactions for selected date
+        await this.loadTransactionsForDate(date);
+    }
+    
+    // Load transactions for a specific date
+    async loadTransactionsForDate(date) {
+        try {
+            const transactions = await localDB.getTransactions();
+            const dateStr = date.toISOString().split('T')[0];
+            
+            // Filter transactions for the selected date
+            const dayTransactions = transactions.filter(t => {
+                try {
+                    const transDate = new Date(t.date).toISOString().split('T')[0];
+                    return transDate === dateStr;
+                } catch (e) {
+                    return false;
+                }
+            });
+            
+            // Update transactions list
+            const container = document.getElementById('selected-date-transactions');
+            if (!container) return;
+            
+            if (dayTransactions.length === 0) {
+                container.innerHTML = '<p class="text-muted">No transactions for this date</p>';
+                return;
+            }
+            
+            let html = '<div class="transaction-list">';
+            
+            dayTransactions.forEach(transaction => {
+                const isExpense = transaction.amount < 0 || transaction.type === 'expense';
+                const amount = Math.abs(parseFloat(transaction.amount) || 0);
+                
+                html += `
+                    <div class="transaction-item ${isExpense ? 'expense' : 'income'}">
+                        <div class="transaction-details">
+                            <div class="transaction-description">${transaction.description || 'No description'}</div>
+                            <div class="transaction-category">${transaction.category || 'Uncategorized'}</div>
+                        </div>
+                        <div class="transaction-amount ${isExpense ? 'text-danger' : 'text-success'}">
+                            ${isExpense ? '-' : '+'}$${amount.toFixed(2)}
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += '</div>';
+            container.innerHTML = html;
+            
+        } catch (error) {
+            console.error('Error loading transactions for date:', error);
+            this.showToast('Error loading transactions', 'error');
+        }
+    }
+    
+    // Handle calendar event click
+    handleCalendarEventClick(info) {
+        const event = info.event;
+        const props = event.extendedProps;
+        
+        // For predicted transactions, show prediction details
+        if (props.type === 'predicted') {
+            const confidence = props.confidence || 0;
+            const lastDate = new Date(props.pattern.lastDate);
+            const nextDate = event.start;
+            
+            const daysSinceLast = Math.round((nextDate - lastDate) / (1000 * 60 * 60 * 24));
+            
+            const message = `
+                <div class="prediction-details">
+                    <p><strong>Predicted ${props.isExpense ? 'Expense' : 'Income'}:</strong> $${props.amount.toFixed(2)}</p>
+                    <p><strong>Description:</strong> ${props.description}</p>
+                    <p><strong>Confidence:</strong> ${confidence}%</p>
+                    <p><strong>Pattern:</strong> Every ~${props.pattern.interval} days (${props.pattern.occurrences} occurrences)</p>
+                    <p><strong>Last Occurrence:</strong> ${lastDate.toLocaleDateString()}</p>
+                    <p><strong>Days Since Last:</strong> ${daysSinceLast}</p>
+                </div>
+            `;
+            
+            // You might want to use a modal or tooltip to show this information
+            this.showToast(message, 'info', 10000);
+        } else {
+            // For actual transactions, show transaction details
+            this.viewTransactionDetails({
+                id: event.id.replace('t_', '').split('_')[0],
+                ...props
+            });
+        }
+    }
+    
+    // Customize event rendering
+    handleEventDidMount(info) {
+        // Add tooltip for events
+        if (info.event.extendedProps.type === 'predicted') {
+            const tooltip = document.createElement('div');
+            tooltip.className = 'event-tooltip';
+            tooltip.innerHTML = `
+                <strong>${info.event.title}</strong><br>
+                <small>Predicted with ${info.event.extendedProps.confidence}% confidence</small>
+            `;
+            info.el.appendChild(tooltip);
+            
+            // Position the tooltip
+            info.el.addEventListener('mouseenter', () => {
+                tooltip.style.display = 'block';
+                const rect = info.el.getBoundingClientRect();
+                tooltip.style.left = `${rect.left}px`;
+                tooltip.style.top = `${rect.bottom + 5}px`;
+            });
+            
+            info.el.addEventListener('mouseleave', () => {
+                tooltip.style.display = 'none';
+            });
+        }
+    }
+    
+    // Update calendar summary
+    async updateCalendarSummary(transactions, startDate, endDate) {
+        try {
+            const summaryEl = document.getElementById('calendar-summary');
+            if (!summaryEl) return;
+            
+            // Filter transactions for the current view
+            const filteredTransactions = transactions.filter(t => {
+                try {
+                    const date = new Date(t.date);
+                    return date >= startDate && date <= endDate;
+                } catch (e) {
+                    return false;
+                }
+            });
+            
+            // Calculate totals
+            const income = filteredTransactions
+                .filter(t => t.amount > 0 || t.type === 'income')
+                .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount) || 0), 0);
+                
+            const expenses = filteredTransactions
+                .filter(t => t.amount < 0 || t.type === 'expense')
+                .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount) || 0), 0);
+                
+            const net = income - expenses;
+            
+            // Group by category
+            const categories = {};
+            filteredTransactions.forEach(t => {
+                const category = t.category || 'Uncategorized';
+                const amount = Math.abs(parseFloat(t.amount) || 0);
+                const isExpense = t.amount < 0 || t.type === 'expense';
+                
+                if (!categories[category]) {
+                    categories[category] = { income: 0, expenses: 0 };
+                }
+                
+                if (isExpense) {
+                    categories[category].expenses += amount;
+                } else {
+                    categories[category].income += amount;
+                }
+            });
+            
+            // Generate HTML
+            let html = `
+                <div class="summary-totals">
+                    <div class="summary-total">
+                        <span class="summary-label">Income:</span>
+                        <span class="summary-amount text-success">$${income.toFixed(2)}</span>
+                    </div>
+                    <div class="summary-total">
+                        <span class="summary-label">Expenses:</span>
+                        <span class="summary-amount text-danger">$${expenses.toFixed(2)}</span>
+                    </div>
+                    <div class="summary-total">
+                        <span class="summary-label">Net:</span>
+                        <span class="summary-amount ${net >= 0 ? 'text-success' : 'text-danger'}">
+                            ${net >= 0 ? '+' : '-'}$${Math.abs(net).toFixed(2)}
+                        </span>
+                    </div>
+                </div>
+                <div class="summary-categories">
+                    <h4>By Category</h4>
+            `;
+            
+            // Add category breakdown
+            Object.entries(categories).forEach(([category, amounts]) => {
+                const net = amounts.income - amounts.expenses;
+                html += `
+                    <div class="category-summary">
+                        <div class="category-name">${category}</div>
+                        <div class="category-amounts">
+                            <span class="text-success">+$${amounts.income.toFixed(2)}</span> / 
+                            <span class="text-danger">-$${amounts.expenses.toFixed(2)}</span>
+                            <span class="${net >= 0 ? 'text-success' : 'text-danger'}">
+                                (${net >= 0 ? '+' : ''}${net.toFixed(2)})
+                            </span>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += '</div>';
+            summaryEl.innerHTML = html;
+            
+        } catch (error) {
+            console.error('Error updating calendar summary:', error);
+        }
+    }
+    
+    // Update calendar view with transactions
+    async updateCalendar() {
+        try {
+            await this.initCalendar();
+            
+            // Refresh the calendar to load events
+            if (this.calendar) {
+                this.calendar.refetchEvents();
+                
+                // Update for current view
+                const view = this.calendar.view;
+                if (view) {
+                    this.updateCalendarSummary(
+                        await localDB.getTransactions(),
+                        view.activeStart,
+                        view.activeEnd
+                    );
+                }
+            }
+            
+        } catch (error) {
+            console.error('Error updating calendar:', error);
+            this.showToast('Error updating calendar', 'error');
+        }
+    }
 
     // Method to load and display transactions with search and filter
     async loadTransactions(searchTerm = '', filterType = '') {
@@ -811,25 +1274,40 @@ class BudgetApp {
             // Get all transactions
             const transactions = await localDB.getTransactions();
             
+            console.log('All transactions:', transactions);
+            
             // Filter transactions for the current month
             const now = new Date();
             const currentMonth = now.getMonth();
             const currentYear = now.getFullYear();
             
             const monthlyTransactions = transactions.filter(t => {
-                const transDate = new Date(t.date);
-                return transDate.getMonth() === currentMonth && 
-                       transDate.getFullYear() === currentYear;
+                try {
+                    const transDate = new Date(t.date);
+                    const isCurrentMonth = transDate.getMonth() === currentMonth;
+                    const isCurrentYear = transDate.getFullYear() === currentYear;
+                    return isCurrentMonth && isCurrentYear;
+                } catch (e) {
+                    console.warn('Error processing transaction date:', t, e);
+                    return false;
+                }
             });
             
+            console.log('Monthly transactions:', monthlyTransactions);
+            
             // Calculate totals
-            const income = monthlyTransactions
-                .filter(t => t.type === 'income' || t.amount > 0)
-                .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+            const incomeTransactions = monthlyTransactions
+                .filter(t => t.type === 'income' || t.amount > 0);
+                
+            const income = incomeTransactions
+                .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount) || 0), 0);
+                
+            console.log('Income transactions:', incomeTransactions);
+            console.log('Calculated income:', income);
                 
             const expenses = monthlyTransactions
                 .filter(t => t.type === 'expense' || t.amount < 0)
-                .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+                .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount) || 0), 0);
                 
             // Get budget data (if available)
             let budgeted = 0;
