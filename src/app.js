@@ -13,31 +13,428 @@ class BudgetApp {
         this.init();
     }
     
-    async init() {
+    // Load initial data when the app starts
+    async loadInitialData() {
         try {
-            console.log('Initializing database...');
-            await localDB.init();
-            
-            // Check if we need to add sample data
+            // Check if we have any transactions
             const transactions = await localDB.getAllItems('transactions');
-            console.log(`Found ${transactions.length} existing transactions`);
             
+            // If no transactions, add sample data
             if (transactions.length === 0) {
-                console.log('No transactions found, adding sample data...');
                 await this.addSampleData();
             }
             
-            // Initialize tooltips and analytics toggle
+            // Load categories if they exist
+            let categories = await localDB.getAllItems('categories');
+            
+            // If no categories, initialize with default categories
+            if (categories.length === 0) {
+                const defaultCategories = [
+                    { name: 'Food & Dining', budget: 400, color: '#FF6B6B' },
+                    { name: 'Shopping', budget: 200, color: '#4ECDC4' },
+                    { name: 'Transportation', budget: 150, color: '#45B7D1' },
+                    { name: 'Bills & Utilities', budget: 300, color: '#96CEB4' },
+                    { name: 'Entertainment', budget: 100, color: '#FFEEAD' },
+                    { name: 'Income', budget: 0, color: '#D4EDDA' }
+                ];
+                
+                await Promise.all(
+                    defaultCategories.map(cat => 
+                        localDB.addItem('categories', {
+                            ...cat,
+                            createdAt: new Date().toISOString()
+                        })
+                    )
+                );
+            }
+            
+            // Initialize budget if not set
+            try {
+                const budgets = await localDB.getAllItems('budgets');
+                if (!budgets || budgets.length === 0) {
+                    const currentDate = new Date();
+                    const monthKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
+                    
+                    await localDB.addItem('budgets', {
+                        monthlyBudget: 2000, // Default monthly budget
+                        month: monthKey,
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString()
+                    });
+                }
+            } catch (error) {
+                console.error('Error initializing budget:', error);
+                // Continue without failing the entire initialization
+            }
+            
+            return true;
+        } catch (error) {
+            console.error('Error loading initial data:', error);
+            throw error;
+        }
+    }
+    
+    // Add sample data for new users
+    async addSampleData() {
+        try {
+            // Add sample transactions
+            const sampleTransactions = [
+                {
+                    description: 'Grocery Store',
+                    amount: -85.32,
+                    date: new Date().toISOString(),
+                    category: 'Food & Dining',
+                    type: 'expense'
+                },
+                {
+                    description: 'Monthly Salary',
+                    amount: 3000,
+                    date: new Date().toISOString(),
+                    category: 'Income',
+                    type: 'income'
+                },
+                {
+                    description: 'Electric Bill',
+                    amount: -120.50,
+                    date: new Date().toISOString(),
+                    category: 'Bills & Utilities',
+                    type: 'expense'
+                }
+            ];
+            
+            await Promise.all(
+                sampleTransactions.map(tx => 
+                    localDB.addItem('transactions', {
+                        ...tx,
+                        createdAt: new Date().toISOString()
+                    })
+                )
+            );
+            
+            return true;
+        } catch (error) {
+            console.error('Error adding sample data:', error);
+            throw error;
+        }
+    }
+    
+    // Format currency
+    formatCurrency(amount) {
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+            minimumFractionDigits: 2
+        }).format(amount);
+    }
+
+    // Get current month key (YYYY-MM)
+    getCurrentMonthKey() {
+        const now = new Date();
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    }
+
+    // Get current month name and year
+    getCurrentMonthName() {
+        return new Date().toLocaleString('default', { month: 'long', year: 'numeric' });
+    }
+
+    // Update budget summary
+    async updateBudgetSummary() {
+        try {
+            const currentMonth = this.getCurrentMonthKey();
+            const [budgets, categories, allTransactions] = await Promise.all([
+                localDB.getAllItems('budgets'),
+                localDB.getAllItems('categories'),
+                localDB.getAllItems('transactions')
+            ]);
+            
+            // Filter transactions for the current month
+            const transactions = allTransactions.filter(transaction => {
+                const transactionDate = new Date(transaction.date);
+                const transactionMonth = `${transactionDate.getFullYear()}-${String(transactionDate.getMonth() + 1).padStart(2, '0')}`;
+                return transactionMonth === currentMonth;
+            });
+
+            const currentBudget = budgets.find(b => b.month === currentMonth) || { monthlyBudget: 0 };
+            const monthlyBudget = parseFloat(currentBudget.monthlyBudget) || 0;
+            
+            // Calculate total spent this month
+            const totalSpent = transactions
+                .filter(t => t.type === 'expense' || t.amount < 0)
+                .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount) || 0), 0);
+            
+            const remaining = Math.max(0, monthlyBudget - totalSpent);
+            const progress = monthlyBudget > 0 ? (totalSpent / monthlyBudget) * 100 : 0;
+            
+            // Update UI
+            document.getElementById('monthly-budget-amount').textContent = this.formatCurrency(monthlyBudget);
+            document.getElementById('monthly-spent').textContent = this.formatCurrency(totalSpent);
+            document.getElementById('budget-remaining').textContent = this.formatCurrency(remaining);
+            document.getElementById('budget-progress').textContent = `${Math.round(progress)}%`;
+            document.getElementById('current-month').textContent = this.getCurrentMonthName();
+            
+            // Update progress bar color based on usage
+            const progressBar = document.querySelector('.progress-bar');
+            if (progressBar) {
+                progressBar.style.width = `${Math.min(100, progress)}%`;
+                if (progress > 90) {
+                    progressBar.classList.add('bg-danger');
+                    progressBar.classList.remove('bg-warning', 'bg-success');
+                } else if (progress > 70) {
+                    progressBar.classList.add('bg-warning');
+                    progressBar.classList.remove('bg-danger', 'bg-success');
+                } else {
+                    progressBar.classList.add('bg-success');
+                    progressBar.classList.remove('bg-warning', 'bg-danger');
+                }
+            }
+            
+            // Update days remaining
+            const now = new Date();
+            const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+            document.getElementById('days-remaining').textContent = lastDay - now.getDate();
+            
+            // Update category budgets
+            await this.updateCategoryBudgets(categories, transactions);
+            
+        } catch (error) {
+            console.error('Error updating budget summary:', error);
+        }
+    }
+
+    // Update category budgets in the UI
+    async updateCategoryBudgets(categories, transactions) {
+        const tbody = document.getElementById('budget-categories');
+        if (!tbody) return;
+        
+        // Group transactions by category
+        const categorySpending = {};
+        transactions.forEach(tx => {
+            const category = tx.category || 'Uncategorized';
+            const amount = Math.abs(parseFloat(tx.amount) || 0);
+            
+            if (!categorySpending[category]) {
+                categorySpending[category] = 0;
+            }
+            
+            if (tx.type === 'expense' || tx.amount < 0) {
+                categorySpending[category] += amount;
+            } else if (tx.type === 'income') {
+                categorySpending[category] -= amount; // Income reduces the spending
+            }
+        });
+        
+        // Generate rows for each category
+        const rows = categories.map(category => {
+            const spent = categorySpending[category.name] || 0;
+            const remaining = Math.max(0, (category.budget || 0) - spent);
+            const progress = category.budget > 0 ? (spent / category.budget) * 100 : 0;
+            
+            return `
+                <tr>
+                    <td>
+                        <span class="badge" style="background-color: ${category.color || '#6c757d'}">
+                            ${category.name}
+                        </span>
+                    </td>
+                    <td>${this.formatCurrency(category.budget || 0)}</td>
+                    <td class="text-danger">${this.formatCurrency(spent)}</td>
+                    <td class="text-success">${this.formatCurrency(remaining)}</td>
+                    <td>
+                        <div class="progress" style="height: 8px;">
+                            <div class="progress-bar" 
+                                 role="progressbar" 
+                                 style="width: ${Math.min(100, progress)}%;" 
+                                 aria-valuenow="${Math.round(progress)}" 
+                                 aria-valuemin="0" 
+                                 aria-valuemax="100">
+                            </div>
+                        </div>
+                        <small class="text-muted">${Math.round(progress)}%</small>
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-primary edit-category" data-id="${category.id}">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger delete-category" data-id="${category.id}">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `;
+        });
+        
+        tbody.innerHTML = rows.join('');
+        
+        // Add event listeners for edit/delete buttons
+        this.initializeCategoryActions();
+    }
+    
+    // Initialize category action buttons
+    initializeCategoryActions() {
+        // Edit category
+        document.querySelectorAll('.edit-category').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const categoryId = parseInt(e.currentTarget.dataset.id);
+                this.editCategory(categoryId);
+            });
+        });
+        
+        // Delete category
+        document.querySelectorAll('.delete-category').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const categoryId = parseInt(e.currentTarget.dataset.id);
+                if (confirm('Are you sure you want to delete this category? This will not delete any transactions.')) {
+                    this.deleteCategory(categoryId);
+                }
+            });
+        });
+    }
+    
+    // Edit category
+    async editCategory(categoryId) {
+        try {
+            const category = await localDB.getItem('categories', categoryId);
+            if (!category) return;
+            
+            document.getElementById('category-name').value = category.name;
+            document.getElementById('category-budget').value = category.budget || 0;
+            document.getElementById('category-color').value = category.color || '#3498db';
+            
+            // Update form to edit mode
+            const form = document.getElementById('category-form');
+            form.dataset.editId = categoryId;
+            form.querySelector('button[type="submit"]').textContent = 'Update Category';
+            
+            // Show the modal
+            document.getElementById('add-category-modal').style.display = 'block';
+            
+        } catch (error) {
+            console.error('Error editing category:', error);
+            this.showToast('Error editing category', 'error');
+        }
+    }
+    
+    // Delete category
+    async deleteCategory(categoryId) {
+        try {
+            await localDB.deleteItem('categories', categoryId);
+            this.showToast('Category deleted', 'success');
+            this.updateBudgetSummary();
+        } catch (error) {
+            console.error('Error deleting category:', error);
+            this.showToast('Error deleting category', 'error');
+        }
+    }
+
+    async init() {
+        try {
+            // Initialize database
+            await localDB.init();
+            
+            // Initialize category mappings
+            this.initializeCategoryMappings();
+            
+            // Load initial data
+            await this.loadInitialData();
+            
+            // Auto-categorize any uncategorized transactions
+            await this.autoCategorizeTransactions();
+            
+            // Initialize event listeners
+            this.initializeEventListeners();
+            
+            // Update budget summary
+            await this.updateBudgetSummary();
+            
+            // Show dashboard by default
+            this.switchView('dashboard');
+            
+            // Initialize tooltips
             this.initializeTooltips();
+            
+            // Initialize analytics toggle
             this.initializeAnalyticsToggle();
             
-            this.refreshCurrentView();
         } catch (error) {
             console.error('Error initializing app:', error);
             this.showToast('Error initializing application', 'error');
         }
     }
 
+    // Initialize category mappings from localStorage
+    initializeCategoryMappings() {
+        this.categoryMappings = JSON.parse(localStorage.getItem('categoryMappings') || '{}');
+    }
+    
+    // Save category mappings to localStorage
+    saveCategoryMappings() {
+        localStorage.setItem('categoryMappings', JSON.stringify(this.categoryMappings));
+    }
+    
+    // Map a description to a category
+    mapDescriptionToCategory(description, category) {
+        if (!description) return category;
+        
+        // First check exact matches
+        const normalizedDesc = description.toLowerCase().trim();
+        if (this.categoryMappings[normalizedDesc]) {
+            return this.categoryMappings[normalizedDesc];
+        }
+        
+        // Then check partial matches
+        for (const [key, value] of Object.entries(this.categoryMappings)) {
+            if (normalizedDesc.includes(key) || key.includes(normalizedDesc)) {
+                return value;
+            }
+        }
+        
+        return category;
+    }
+    
+    // Update all transactions with new category mapping
+    async updateTransactionsWithNewCategory(oldCategory, newCategory) {
+        try {
+            const transactions = await localDB.getTransactions();
+            const updates = [];
+            
+            for (const transaction of transactions) {
+                if (transaction.description && this.mapDescriptionToCategory(transaction.description, '') === oldCategory) {
+                    transaction.category = newCategory;
+                    updates.push(localDB.updateItem('transactions', transaction.id, transaction));
+                }
+            }
+            
+            await Promise.all(updates);
+            this.refreshCurrentView();
+        } catch (error) {
+            console.error('Error updating transactions with new category:', error);
+        }
+    }
+    
+    // Auto-categorize transactions
+    async autoCategorizeTransactions() {
+        try {
+            const transactions = await localDB.getTransactions();
+            const updates = [];
+            
+            for (const transaction of transactions) {
+                if (transaction.description && !transaction.category) {
+                    const category = this.mapDescriptionToCategory(transaction.description, 'Uncategorized');
+                    if (category !== 'Uncategorized') {
+                        transaction.category = category;
+                        updates.push(localDB.updateItem('transactions', transaction.id, transaction));
+                    }
+                }
+            }
+            
+            await Promise.all(updates);
+            this.refreshCurrentView();
+        } catch (error) {
+            console.error('Error auto-categorizing transactions:', error);
+        }
+    }
+    
     initializeEventListeners() {
         // Navigation links
         const navLinks = document.querySelectorAll('.nav__link');
@@ -46,8 +443,196 @@ class BudgetApp {
                 e.preventDefault();
                 const view = link.getAttribute('data-view');
                 this.switchView(view);
+                
+                // Update budget view when switching to it
+                if (view === 'budget') {
+                    this.updateBudgetSummary();
+                }
             });
         });
+        
+        // Set Budget Modal
+        const setBudgetBtn = document.getElementById('set-budget-btn');
+        const budgetModal = document.getElementById('set-budget-modal');
+        const closeBudgetModal = document.getElementById('close-budget-modal');
+        const cancelBudgetBtn = document.getElementById('cancel-budget');
+        const budgetForm = document.getElementById('budget-form');
+        
+        // Category Modal
+        const addCategoryBtn = document.getElementById('add-category-btn');
+        const categoryModal = document.getElementById('add-category-modal');
+        const closeCategoryModal = document.getElementById('close-category-modal');
+        const cancelCategoryBtn = document.getElementById('cancel-category');
+        const categoryForm = document.getElementById('category-form');
+        
+        // Set Budget Button
+        if (setBudgetBtn) {
+            setBudgetBtn.addEventListener('click', async () => {
+                try {
+                    const currentMonth = this.getCurrentMonthKey();
+                    const budgets = await localDB.getAllItems('budgets');
+                    const currentBudget = budgets.find(b => b.month === currentMonth);
+                    
+                    if (currentBudget) {
+                        document.getElementById('monthly-budget').value = currentBudget.monthlyBudget;
+                    } else {
+                        document.getElementById('monthly-budget').value = '';
+                    }
+                    
+                    if (budgetModal) budgetModal.style.display = 'block';
+                } catch (error) {
+                    console.error('Error opening budget modal:', error);
+                    this.showToast('Error loading budget data', 'error');
+                }
+            });
+        }
+        
+        // Close Budget Modal
+        if (closeBudgetModal) {
+            closeBudgetModal.addEventListener('click', () => {
+                if (budgetModal) budgetModal.style.display = 'none';
+            });
+        }
+        
+        // Cancel Budget Button
+        if (cancelBudgetBtn) {
+            cancelBudgetBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (budgetModal) budgetModal.style.display = 'none';
+            });
+        }
+        
+        // Budget Form Submission
+        if (budgetForm) {
+            budgetForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                
+                const monthlyBudget = parseFloat(document.getElementById('monthly-budget').value);
+                
+                if (isNaN(monthlyBudget) || monthlyBudget < 0) {
+                    this.showToast('Please enter a valid budget amount', 'error');
+                    return;
+                }
+                
+                try {
+                    const currentMonth = this.getCurrentMonthKey();
+                    const budgets = await localDB.getAllItems('budgets');
+                    let budget = budgets.find(b => b.month === currentMonth);
+                    
+                    if (budget) {
+                        // Update existing budget
+                        budget.monthlyBudget = monthlyBudget;
+                        budget.updatedAt = new Date().toISOString();
+                        await localDB.updateItem('budgets', budget.id, budget);
+                    } else {
+                        // Create new budget
+                        await localDB.addItem('budgets', {
+                            month: currentMonth,
+                            monthlyBudget,
+                            createdAt: new Date().toISOString(),
+                            updatedAt: new Date().toISOString()
+                        });
+                    }
+                    
+                    // Update UI
+                    await this.updateBudgetSummary();
+                    
+                    // Close modal and reset form
+                    if (budgetModal) budgetModal.style.display = 'none';
+                    budgetForm.reset();
+                    
+                    this.showToast('Budget saved successfully', 'success');
+                } catch (error) {
+                    console.error('Error saving budget:', error);
+                    this.showToast('Error saving budget', 'error');
+                }
+            });
+        }
+        
+        // Add Category Button
+        if (addCategoryBtn) {
+            addCategoryBtn.addEventListener('click', () => {
+                // Reset form
+                const form = document.getElementById('category-form');
+                form.reset();
+                form.dataset.editId = '';
+                form.querySelector('button[type="submit"]').textContent = 'Add Category';
+                
+                // Show modal
+                if (categoryModal) categoryModal.style.display = 'block';
+            });
+        }
+        
+        // Close Category Modal
+        if (closeCategoryModal) {
+            closeCategoryModal.addEventListener('click', () => {
+                if (categoryModal) categoryModal.style.display = 'none';
+            });
+        }
+        
+        // Cancel Category Button
+        if (cancelCategoryBtn) {
+            cancelCategoryBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (categoryModal) categoryModal.style.display = 'none';
+            });
+        }
+        
+        // Category Form Submission
+        if (categoryForm) {
+            categoryForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                
+                const name = document.getElementById('category-name').value.trim();
+                const budget = parseFloat(document.getElementById('category-budget').value) || 0;
+                const color = document.getElementById('category-color').value;
+                const isEdit = categoryForm.dataset.editId !== '';
+                
+                if (!name) {
+                    this.showToast('Please enter a category name', 'error');
+                    return;
+                }
+                
+                try {
+                    if (isEdit) {
+                        // Update existing category
+                        const categoryId = parseInt(categoryForm.dataset.editId);
+                        const category = await localDB.getItem('categories', categoryId);
+                        
+                        if (category) {
+                            category.name = name;
+                            category.budget = budget;
+                            category.color = color;
+                            category.updatedAt = new Date().toISOString();
+                            
+                            await localDB.updateItem('categories', categoryId, category);
+                            this.showToast('Category updated successfully', 'success');
+                        }
+                    } else {
+                        // Create new category
+                        await localDB.addItem('categories', {
+                            name,
+                            budget,
+                            color,
+                            createdAt: new Date().toISOString(),
+                            updatedAt: new Date().toISOString()
+                        });
+                        this.showToast('Category added successfully', 'success');
+                    }
+                    
+                    // Update UI
+                    await this.updateBudgetSummary();
+                    
+                    // Close modal and reset form
+                    if (categoryModal) categoryModal.style.display = 'none';
+                    categoryForm.reset();
+                    
+                } catch (error) {
+                    console.error('Error saving category:', error);
+                    this.showToast('Error saving category', 'error');
+                }
+            });
+        }
 
         // Add Transaction buttons
         const addTransactionBtns = [
@@ -230,30 +815,14 @@ class BudgetApp {
         }
     }
 
-    switchView(viewName) {
-        console.log(`Switching to view: ${viewName}`);
-        
-        // Hide all views and reset any active states
-        const views = document.querySelectorAll('.view');
-        views.forEach(view => {
-            view.classList.remove('view--active');
-        });
-        
-        // Update active nav link
-        const navLinks = document.querySelectorAll('.nav__link');
-        navLinks.forEach(link => {
-            const linkView = link.getAttribute('data-view');
-            if (linkView === viewName) {
-                link.classList.add('nav__link--active');
-            } else {
-                link.classList.remove('nav__link--active');
-            }
-        });
+    async switchView(view) {
+        // Hide all views
+        document.querySelectorAll('.view').forEach(v => v.classList.remove('view--active'));
         
         // Show the selected view
-        const targetView = document.getElementById(`${viewName}-view`);
-        if (!targetView) {
-            console.warn(`View '${viewName}' not found`);
+        const viewElement = document.getElementById(`${view}-view`);
+        if (!viewElement) {
+            console.warn(`View '${view}' not found`);
             // Fallback to dashboard if view not found
             const dashboardView = document.getElementById('dashboard-view');
             if (dashboardView) {
@@ -262,12 +831,11 @@ class BudgetApp {
             return;
         }
         
-        // Add active class to the target view
-        targetView.classList.add('view--active');
-        this.currentView = viewName;
+        viewElement.classList.add('view--active');
+        this.currentView = view;
         
-        // Special handling for Search & Insights view
-        if (viewName === 'search') {
+        // Special handling for different views
+        if (view === 'search') {
             // Initialize search with default values
             this.updateSearchResults(
                 '', // searchTerm
@@ -276,7 +844,7 @@ class BudgetApp {
                 false, // exactMatch
                 false // includeNotes
             );
-        } else if (viewName === 'transactions') {
+        } else if (view === 'transactions') {
             // Initialize transactions view with current search/filter values
             const searchInput = document.getElementById('transaction-search');
             const filterSelect = document.getElementById('transaction-filter');
@@ -284,9 +852,12 @@ class BudgetApp {
                 searchInput?.value || '',
                 filterSelect?.value || ''
             );
+        } else if (view === 'budget') {
+            // Update budget view when switching to it
+            await this.updateBudgetSummary();
         } else {
             // For other views, just refresh them
-            this.refreshView(viewName);
+            this.refreshView(view);
         }
     }
 
@@ -967,42 +1538,52 @@ class BudgetApp {
     }
     
     // Helper method to refresh the current view
-    refreshCurrentView() {
-        if (this.currentView === 'transactions') {
-            const searchInput = document.getElementById('transaction-search');
-            const filterSelect = document.getElementById('transaction-filter');
-            
-            const searchTerm = searchInput ? searchInput.value : '';
-            const filterType = filterSelect ? filterSelect.value : '';
-            
-            this.loadTransactions(searchTerm, filterType);
-        } else if (this.currentView === 'search') {
-            const searchInput = document.getElementById('transaction-search');
-            this.updateSearchResults(
-                searchInput?.value || '',
-                document.getElementById('transaction-filter')?.value || '',
-                document.getElementById('time-range')?.value || 'all',
-                document.getElementById('exact-match')?.checked || false,
-                document.getElementById('include-notes')?.checked || false
-            );
-        } else {
-            this.refreshView(this.currentView);
+    async refreshCurrentView() {
+        switch (this.currentView) {
+            case 'transactions':
+                const searchInput = document.getElementById('transaction-search');
+                const filterSelect = document.getElementById('transaction-filter');
+                const searchTerm = searchInput ? searchInput.value : '';
+                const filterType = filterSelect ? filterSelect.value : '';
+                this.loadTransactions(searchTerm, filterType);
+                break;
+                
+            case 'search':
+                const searchInputSearch = document.getElementById('transaction-search');
+                this.updateSearchResults(
+                    searchInputSearch?.value || '',
+                    document.getElementById('transaction-filter')?.value || '',
+                    document.getElementById('time-range')?.value || 'all',
+                    document.getElementById('exact-match')?.checked || false,
+                    document.getElementById('include-notes')?.checked || false
+                );
+                break;
+                
+            case 'dashboard':
+                this.updateDashboard();
+                break;
+                
+            case 'calendar':
+                this.updateCalendar();
+                break;
+                
+            case 'budget':
+                await this.updateBudgetSummary();
+                break;
+                
+            // Add more cases as needed for other views
         }
     }
-
+    
     // Method to refresh a specific view
     async refreshView(viewName) {
-        switch (viewName) {
-            case 'transactions':
-                await this.loadTransactions();
-                break;
-            case 'dashboard':
-                await this.updateDashboard();
-                break;
-            case 'calendar':
-                await this.updateCalendar();
-                break;
-            // Add other views as needed
+        const currentView = this.currentView;
+        this.currentView = viewName; // Temporarily set the current view
+        
+        try {
+            await this.refreshCurrentView();
+        } finally {
+            this.currentView = currentView; // Restore the original view
         }
     }
     
@@ -1641,9 +2222,7 @@ class BudgetApp {
                 originalPrediction: event.extendedProps.originalDates || []
             };
             
-            await localDB.addItem('transactions', transaction);
-            this.showToast('Transaction added', 'success');
-            this.refreshCurrentView();
+            await this.addTransaction(transaction);
             
             // Update prediction model with this positive example
             this.improvePrediction(event, 'accepted');
@@ -1651,6 +2230,104 @@ class BudgetApp {
         } catch (error) {
             console.error('Error adding predicted transaction:', error);
             this.showToast('Error adding transaction', 'error');
+        }
+    }
+    
+    async addTransaction(transaction) {
+        try {
+            // Auto-categorize based on description
+            if (transaction.description && !transaction.category) {
+                transaction.category = this.mapDescriptionToCategory(transaction.description, 'Uncategorized');
+                
+                // If we have a mapping, save it for future transactions
+                if (transaction.category !== 'Uncategorized') {
+                    const normalizedDesc = transaction.description.toLowerCase().trim();
+                    if (!this.categoryMappings[normalizedDesc]) {
+                        this.categoryMappings[normalizedDesc] = transaction.category;
+                        this.saveCategoryMappings();
+                    }
+                }
+            }
+            
+            // Add the transaction to the database
+            const addedTransaction = await localDB.addItem('transactions', {
+                ...transaction,
+                date: transaction.date || new Date().toISOString(),
+                createdAt: new Date().toISOString()
+            });
+            
+            // If this is a category change, update similar transactions
+            if (transaction.category && transaction.description) {
+                // Update the mapping
+                const normalizedDesc = transaction.description.toLowerCase().trim();
+                this.categoryMappings[normalizedDesc] = transaction.category;
+                this.saveCategoryMappings();
+                
+                // Update similar transactions
+                await this.updateTransactionsWithNewCategory(
+                    '', // Empty string will match uncategorized transactions with same description
+                    transaction.category
+                );
+            }
+            
+            // Refresh the current view
+            this.refreshCurrentView();
+            
+            // Show success message
+            this.showToast('Transaction added successfully', 'success');
+            
+            return addedTransaction;
+        } catch (error) {
+            console.error('Error adding transaction:', error);
+            this.showToast('Error adding transaction', 'error');
+            return false;
+        }
+    }
+    
+    async editTransaction(id, updates) {
+        try {
+            // Get the original transaction to check for category changes
+            const originalTransaction = await localDB.getItem('transactions', id);
+            
+            // Update the transaction in the database
+            const updatedTransaction = await localDB.updateItem('transactions', id, {
+                ...updates,
+                updatedAt: new Date().toISOString()
+            });
+            
+            // If category or description changed, update mappings and similar transactions
+            if ((updates.category || updates.description) && originalTransaction) {
+                const newDescription = updates.description || originalTransaction.description;
+                const newCategory = updates.category || originalTransaction.category;
+                
+                if (newDescription) {
+                    const normalizedDesc = newDescription.toLowerCase().trim();
+                    
+                    // Update the mapping
+                    this.categoryMappings[normalizedDesc] = newCategory;
+                    this.saveCategoryMappings();
+                    
+                    // Update similar transactions if category changed
+                    if (updates.category) {
+                        await this.updateTransactionsWithNewCategory(
+                            originalTransaction.category || '',
+                            newCategory
+                        );
+                    }
+                }
+            }
+            
+            // Refresh the current view
+            this.refreshCurrentView();
+            
+            // Show success message
+            this.showToast('Transaction updated successfully', 'success');
+            
+            return updatedTransaction;
+        } catch (error) {
+            console.error('Error updating transaction:', error);
+            this.showToast('Error updating transaction', 'error');
+            return false;
         }
     }
     
@@ -1769,13 +2446,153 @@ class BudgetApp {
                 categories[category][type] += amount;
             });
             
+            // Calculate daily, weekly, and monthly metrics
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            
+            // Daily metrics
+            const dailyTransactions = transactions.filter(t => {
+                try {
+                    const date = new Date(t.date);
+                    date.setHours(0, 0, 0, 0);
+                    return date.getTime() === today.getTime();
+                } catch (e) {
+                    return false;
+                }
+            });
+            
+            const dailyExpenses = dailyTransactions
+                .filter(t => t.amount < 0 || t.type === 'expense')
+                .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount) || 0), 0);
+            
+            const dailyRemaining = Math.max(0, dailyBudget - dailyExpenses);
+            const dailyUsed = dailyBudget > 0 ? (dailyExpenses / dailyBudget) * 100 : 0;
+            
+            // Weekly metrics (current week)
+            const weekStart = new Date(today);
+            weekStart.setDate(today.getDate() - today.getDay()); // Start of week (Sunday)
+            const weekEnd = new Date(weekStart);
+            weekEnd.setDate(weekStart.getDate() + 6); // End of week (Saturday)
+            
+            const weeklyTransactions = transactions.filter(t => {
+                try {
+                    const date = new Date(t.date);
+                    return date >= weekStart && date <= weekEnd;
+                } catch (e) {
+                    return false;
+                }
+            });
+            
+            const weeklyExpenses = weeklyTransactions
+                .filter(t => t.amount < 0 || t.type === 'expense')
+                .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount) || 0), 0);
+                
+            const weeklyBudget = (monthlyBudget / daysInMonth) * 7; // Weekly budget based on monthly
+            const weeklyRemaining = Math.max(0, weeklyBudget - weeklyExpenses);
+            const weeklyUsed = weeklyBudget > 0 ? (weeklyExpenses / weeklyBudget) * 100 : 0;
+            
+            // Monthly metrics (current month)
+            const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+            const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+            
+            const monthlyTransactions = transactions.filter(t => {
+                try {
+                    const date = new Date(t.date);
+                    return date >= monthStart && date <= monthEnd;
+                } catch (e) {
+                    return false;
+                }
+            });
+            
+            const monthlyExpenses = monthlyTransactions
+                .filter(t => t.amount < 0 || t.type === 'expense')
+                .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount) || 0), 0);
+                
+            const monthlyRemaining = Math.max(0, monthlyBudget - monthlyExpenses);
+            const monthlyUsed = monthlyBudget > 0 ? (monthlyExpenses / monthlyBudget) * 100 : 0;
+            
             // Generate HTML
             let html = `
                 <div class="summary-period mb-3">
-                    <h4>${isMonthlyView ? 'Monthly' : 'Weekly'} Summary</h4>
+                    <h4>Budget Summary</h4>
                     <div class="budget-info small text-muted">
-                        ${isMonthlyView ? 'Monthly' : daysInPeriod + '-day'} Budget: $${periodBudget.toFixed(2)} 
-                        ($${dailyBudget.toFixed(2)}/day)
+                        <div>${isMonthlyView ? 'Viewing' : 'Selected'} Period: $${periodBudget.toFixed(2)} 
+                        ($${dailyBudget.toFixed(2)}/day)</div>
+                    </div>
+                </div>
+                
+                <!-- Daily Budget -->
+                <div class="budget-card mb-3 p-2 border rounded">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="fw-medium">Today's Budget</div>
+                        <div class="text-${dailyRemaining >= 0 ? 'success' : 'danger'}">
+                            $${dailyRemaining.toFixed(2)} left
+                        </div>
+                    </div>
+                    <div class="budget-progress mt-1">
+                        <div class="progress" style="height: 6px;">
+                            <div class="progress-bar bg-${dailyUsed < 80 ? 'success' : dailyUsed < 100 ? 'warning' : 'danger'}" 
+                                role="progressbar" 
+                                style="width: ${Math.min(100, dailyUsed)}%" 
+                                aria-valuenow="${dailyUsed}" 
+                                aria-valuemin="0" 
+                                aria-valuemax="100">
+                            </div>
+                        </div>
+                        <div class="d-flex justify-content-between small text-muted mt-1">
+                            <span>$${dailyExpenses.toFixed(2)} of $${dailyBudget.toFixed(2)}</span>
+                            <span>${Math.round(dailyUsed)}% used</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Weekly Budget -->
+                <div class="budget-card mb-3 p-2 border rounded">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="fw-medium">This Week's Budget</div>
+                        <div class="text-${weeklyRemaining >= 0 ? 'success' : 'danger'}">
+                            $${weeklyRemaining.toFixed(2)} left
+                        </div>
+                    </div>
+                    <div class="budget-progress mt-1">
+                        <div class="progress" style="height: 6px;">
+                            <div class="progress-bar bg-${weeklyUsed < 80 ? 'success' : weeklyUsed < 100 ? 'warning' : 'danger'}" 
+                                role="progressbar" 
+                                style="width: ${Math.min(100, weeklyUsed)}%" 
+                                aria-valuenow="${weeklyUsed}" 
+                                aria-valuemin="0" 
+                                aria-valuemax="100">
+                            </div>
+                        </div>
+                        <div class="d-flex justify-content-between small text-muted mt-1">
+                            <span>$${weeklyExpenses.toFixed(2)} of $${weeklyBudget.toFixed(2)}</span>
+                            <span>${Math.round(weeklyUsed)}% used</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Monthly Budget -->
+                <div class="budget-card mb-3 p-2 border rounded">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="fw-medium">This Month's Budget</div>
+                        <div class="text-${monthlyRemaining >= 0 ? 'success' : 'danger'}">
+                            $${monthlyRemaining.toFixed(2)} left
+                        </div>
+                    </div>
+                    <div class="budget-progress mt-1">
+                        <div class="progress" style="height: 6px;">
+                            <div class="progress-bar bg-${monthlyUsed < 80 ? 'success' : monthlyUsed < 100 ? 'warning' : 'danger'}" 
+                                role="progressbar" 
+                                style="width: ${Math.min(100, monthlyUsed)}%" 
+                                aria-valuenow="${monthlyUsed}" 
+                                aria-valuemin="0" 
+                                aria-valuemax="100">
+                            </div>
+                        </div>
+                        <div class="d-flex justify-content-between small text-muted mt-1">
+                            <span>$${monthlyExpenses.toFixed(2)} of $${monthlyBudget.toFixed(2)}</span>
+                            <span>${Math.round(monthlyUsed)}% used</span>
+                        </div>
                     </div>
                 </div>
                 
