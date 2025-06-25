@@ -1,5 +1,7 @@
 import { localDB } from './local-db.js';
 
+import { transactionAnalytics } from './analytics.js';
+
 class BudgetApp {
     constructor() {
         this.currentView = 'dashboard';
@@ -13,7 +15,22 @@ class BudgetApp {
     
     async init() {
         try {
+            console.log('Initializing database...');
             await localDB.init();
+            
+            // Check if we need to add sample data
+            const transactions = await localDB.getAllItems('transactions');
+            console.log(`Found ${transactions.length} existing transactions`);
+            
+            if (transactions.length === 0) {
+                console.log('No transactions found, adding sample data...');
+                await this.addSampleData();
+            }
+            
+            // Initialize tooltips and analytics toggle
+            this.initializeTooltips();
+            this.initializeAnalyticsToggle();
+            
             this.refreshCurrentView();
         } catch (error) {
             console.error('Error initializing app:', error);
@@ -81,61 +98,146 @@ class BudgetApp {
             });
         });
         
-        // Transaction search
+        // Transaction search in Search & Insights view
         const searchInput = document.getElementById('transaction-search');
-        if (searchInput) {
+        const searchBtn = document.getElementById('search-btn');
+        const transactionsSearchInput = document.getElementById('transactions-search');
+        const clearTransactionsSearchBtn = document.getElementById('clear-transactions-search');
+        
+        // Function to handle search in Transactions view
+        const handleTransactionsSearch = () => {
+            if (this.currentView === 'transactions' && transactionsSearchInput) {
+                const searchTerm = transactionsSearchInput.value.trim();
+                
+                // If search term is empty, clear the search
+                if (searchTerm === '') {
+                    this.loadTransactions();
+                    transactionAnalytics.showAnalytics(false);
+                } else {
+                    // Otherwise, filter transactions and show analytics
+                    this.filterTransactions(searchTerm);
+                }
+            }
+        };
+        
+        // Set up event listeners for Transactions search
+        if (transactionsSearchInput) {
             let searchTimeout;
-            searchInput.addEventListener('input', (e) => {
+            
+            // Handle search input with debounce
+            transactionsSearchInput.addEventListener('input', (e) => {
                 clearTimeout(searchTimeout);
                 searchTimeout = setTimeout(() => {
-                    this.filterTransactions(e.target.value);
+                    handleTransactionsSearch();
                 }, 300);
             });
             
-            // Clear search
-            const clearSearchBtn = document.getElementById('clear-search');
-            if (clearSearchBtn) {
-                clearSearchBtn.addEventListener('click', () => {
-                    searchInput.value = '';
-                    this.filterTransactions('');
-                });
-            }
+            // Handle Enter key in search input
+            transactionsSearchInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleTransactionsSearch();
+                }
+            });
         }
         
-        // Transaction filter
+        // Clear search button for Transactions view
+        if (clearTransactionsSearchBtn) {
+            clearTransactionsSearchBtn.addEventListener('click', () => {
+                if (transactionsSearchInput) {
+                    transactionsSearchInput.value = '';
+                    handleTransactionsSearch();
+                }
+            });
+        }
+        
+        // Handle search in Search & Insights view
+        if (searchInput) {
+            let searchTimeout;
+            
+            const performSearch = () => {
+                if (this.currentView !== 'search') return;
+                
+                const searchTerm = searchInput.value;
+                const filterType = document.getElementById('transaction-filter')?.value || '';
+                const timeRange = document.getElementById('time-range')?.value || 'all';
+                const exactMatch = document.getElementById('exact-match')?.checked || false;
+                const includeNotes = document.getElementById('include-notes')?.checked || false;
+                
+                // Update the search results in the Search & Insights view
+                this.updateSearchResults(searchTerm, filterType, timeRange, exactMatch, includeNotes);
+            };
+            
+            // Handle search input with debounce (only for Search & Insights view)
+            searchInput.addEventListener('input', (e) => {
+                clearTimeout(searchTimeout);
+                searchTimeout = setTimeout(() => {
+                    if (this.currentView === 'search') {
+                        performSearch();
+                    }
+                }, 300);
+            });
+            
+            // Handle search button click (for Search & Insights view)
+            if (searchBtn) {
+                searchBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    performSearch();
+                });
+            }
+            
+            // Handle Enter key in search input (only for Search & Insights view)
+            searchInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter' && this.currentView === 'search') {
+                    e.preventDefault();
+                    performSearch();
+                }
+            });
+        }
+        
+        // Search options (time range, exact match, include notes)
+        const searchOptions = ['time-range', 'exact-match', 'include-notes'];
+        searchOptions.forEach(optionId => {
+            const element = document.getElementById(optionId);
+            if (element) {
+                element.addEventListener('change', () => {
+                    if (this.currentView === 'search') {
+                        performSearch();
+                    }
+                });
+            }
+        });
+        
+        // Transaction filter (only for Search & Insights view)
         const filterSelect = document.getElementById('transaction-filter');
         if (filterSelect) {
-            filterSelect.addEventListener('change', (e) => {
-                this.filterTransactions('', e.target.value);
+            filterSelect.addEventListener('change', () => {
+                if (this.currentView === 'search') {
+                    performSearch();
+                }
+            });
+        }
+        
+        // Clear search button (only for Search & Insights view)
+        const clearSearchBtn = document.getElementById('clear-search');
+        if (clearSearchBtn) {
+            clearSearchBtn.addEventListener('click', () => {
+                if (this.currentView === 'search') {
+                    searchInput.value = '';
+                    performSearch();
+                }
             });
         }
     }
 
-
     switchView(viewName) {
         console.log(`Switching to view: ${viewName}`);
         
-        // Hide all views
+        // Hide all views and reset any active states
         const views = document.querySelectorAll('.view');
         views.forEach(view => {
             view.classList.remove('view--active');
         });
-        
-        // Show the selected view
-        const targetView = document.getElementById(`${viewName}-view`);
-        if (targetView) {
-            targetView.classList.add('view--active');
-            this.refreshView(viewName);
-        } else {
-            console.warn(`View '${viewName}' not found`);
-            // Fallback to dashboard if view not found
-            const dashboardView = document.getElementById('dashboard-view');
-            if (dashboardView) {
-                dashboardView.classList.add('view--active');
-                viewName = 'dashboard';
-                this.refreshView('dashboard');
-            }
-        }
         
         // Update active nav link
         const navLinks = document.querySelectorAll('.nav__link');
@@ -148,7 +250,44 @@ class BudgetApp {
             }
         });
         
+        // Show the selected view
+        const targetView = document.getElementById(`${viewName}-view`);
+        if (!targetView) {
+            console.warn(`View '${viewName}' not found`);
+            // Fallback to dashboard if view not found
+            const dashboardView = document.getElementById('dashboard-view');
+            if (dashboardView) {
+                return this.switchView('dashboard');
+            }
+            return;
+        }
+        
+        // Add active class to the target view
+        targetView.classList.add('view--active');
         this.currentView = viewName;
+        
+        // Special handling for Search & Insights view
+        if (viewName === 'search') {
+            // Initialize search with default values
+            this.updateSearchResults(
+                '', // searchTerm
+                '', // filterType
+                'month', // timeRange
+                false, // exactMatch
+                false // includeNotes
+            );
+        } else if (viewName === 'transactions') {
+            // Initialize transactions view with current search/filter values
+            const searchInput = document.getElementById('transaction-search');
+            const filterSelect = document.getElementById('transaction-filter');
+            this.loadTransactions(
+                searchInput?.value || '',
+                filterSelect?.value || ''
+            );
+        } else {
+            // For other views, just refresh them
+            this.refreshView(viewName);
+        }
     }
 
     showModal(modalId) {
@@ -595,6 +734,238 @@ class BudgetApp {
         }
     }
     
+    // Update search results in the Search & Insights view
+    async updateSearchResults(searchTerm, filterType = '', timeRange = 'all', exactMatch = false, includeNotes = false) {
+        try {
+            const resultsContainer = document.querySelector('#search-view .search-results');
+            const summaryElement = document.querySelector('#search-view .search-summary');
+            const resultsTable = document.querySelector('#search-view .search-results-table tbody');
+            const noResultsElement = document.querySelector('#search-view .no-results');
+            
+            if (!resultsContainer || !summaryElement || !resultsTable || !noResultsElement) return;
+            
+            // Show loading state
+            resultsContainer.classList.add('loading');
+            
+            // Get all transactions
+            const allTransactions = await localDB.getTransactions();
+            
+            // Filter by time range
+            let filtered = this.filterByTimeRange(allTransactions, timeRange);
+            
+            // Apply filters
+            filtered = filtered.filter(transaction => {
+                // Filter by type (income/expense)
+                if (filterType === 'income' && transaction.amount <= 0) return false;
+                if (filterType === 'expense' && transaction.amount >= 0) return false;
+                
+                // If no search term, return all filtered by type
+                if (!searchTerm.trim()) return true;
+                
+                // Search in description and notes
+                const searchInDescription = transaction.description?.toLowerCase().includes(searchTerm.toLowerCase()) || false;
+                const searchInNotes = includeNotes ? 
+                    (transaction.notes?.toLowerCase().includes(searchTerm.toLowerCase()) || false) : false;
+                
+                if (exactMatch) {
+                    // Exact match search
+                    return transaction.description?.toLowerCase() === searchTerm.toLowerCase() || 
+                           (includeNotes && transaction.notes?.toLowerCase() === searchTerm.toLowerCase());
+                } else {
+                    // Partial match search
+                    return searchInDescription || searchInNotes;
+                }
+            });
+            
+            // Update summary
+            const totalAmount = filtered.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+            const income = filtered.filter(t => t.amount > 0).reduce((sum, t) => sum + t.amount, 0);
+            const expenses = filtered.filter(t => t.amount < 0).reduce((sum, t) => sum + t.amount, 0);
+            
+            summaryElement.innerHTML = `
+                <div class="summary-item">
+                    <span class="summary-label">Results:</span>
+                    <span class="summary-value">${filtered.length} transactions</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Total Amount:</span>
+                    <span class="summary-value">${this.formatCurrency(totalAmount)}</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Income:</span>
+                    <span class="text-success">${this.formatCurrency(income)}</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Expenses:</span>
+                    <span class="text-danger">${this.formatCurrency(Math.abs(expenses))}</span>
+                </div>
+            `;
+            
+            // Update results table
+            if (filtered.length > 0) {
+                resultsTable.innerHTML = filtered.map(transaction => {
+                    const isIncome = transaction.amount > 0 || transaction.type === 'income';
+                    const amountClass = isIncome ? 'text-success' : 'text-danger';
+                    const amountSign = isIncome ? '+' : '-';
+                    const amount = Math.abs(transaction.amount);
+                    
+                    return `
+                        <tr>
+                            <td>${this.formatDate(transaction.date)}</td>
+                            <td>${transaction.description || 'No description'}</td>
+                            <td>${transaction.category || 'Uncategorized'}</td>
+                            <td class="text-end ${amountClass}">
+                                ${amountSign}${this.formatCurrency(amount, false)}
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+                
+                resultsTable.closest('table').style.display = 'table';
+                noResultsElement.style.display = 'none';
+            } else {
+                resultsTable.closest('table').style.display = 'none';
+                noResultsElement.style.display = 'block';
+                noResultsElement.textContent = searchTerm.trim() ? 
+                    'No transactions match your search criteria.' : 
+                    'No transactions found. Try adjusting your filters.';
+            }
+            
+            // Update charts
+            this.updateSearchCharts(filtered);
+            
+        } catch (error) {
+            console.error('Error updating search results:', error);
+            this.showToast('Error loading search results', 'error');
+        } finally {
+            const resultsContainer = document.querySelector('#search-view .search-results');
+            if (resultsContainer) {
+                resultsContainer.classList.remove('loading');
+            }
+        }
+    }
+    
+    // Helper to filter transactions by time range
+    filterByTimeRange(transactions, timeRange) {
+        const now = new Date();
+        let startDate = new Date(0); // Beginning of time
+        
+        if (timeRange === 'month') {
+            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        } else if (timeRange === '6months') {
+            startDate = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+        } else if (timeRange === 'year') {
+            startDate = new Date(now.getFullYear(), 0, 1);
+        } // 'all' uses the default startDate (beginning of time)
+        
+        return transactions.filter(transaction => {
+            try {
+                const transactionDate = new Date(transaction.date);
+                return transactionDate >= startDate;
+            } catch (e) {
+                console.warn('Invalid transaction date:', transaction.date, e);
+                return false;
+            }
+        });
+    }
+    
+    // Helper to format currency
+    formatCurrency(amount, includeSymbol = true) {
+        return new Intl.NumberFormat('en-US', {
+            style: includeSymbol ? 'currency' : 'decimal',
+            currency: 'USD',
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }).format(amount);
+    }
+    
+    // Helper to format date
+    formatDate(dateString) {
+        try {
+            const date = new Date(dateString);
+            if (isNaN(date.getTime())) return 'Invalid date';
+            
+            return date.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: true
+            });
+        } catch (e) {
+            console.warn('Error formatting date:', dateString, e);
+            return dateString || 'No date';
+        }
+    }
+    
+    // Update search charts (spending trend and category breakdown)
+    async updateSearchCharts(transactions) {
+        // This method would update the charts in the Search & Insights view
+        // Implementation depends on your charting library
+        console.log('Updating charts with', transactions.length, 'transactions');
+        
+        // Example: Update spending trend chart
+        // this.updateSpendingTrendChart(transactions);
+        
+        // Example: Update category breakdown chart
+        // this.updateCategoryBreakdown(transactions);
+    }
+    
+    // Add sample data if database is empty
+    async addSampleData() {
+        try {
+            const sampleTransactions = [
+                {
+                    date: new Date().toISOString().split('T')[0],
+                    description: 'Grocery Store',
+                    amount: -125.75,
+                    category: 'Groceries',
+                    type: 'expense'
+                },
+                {
+                    date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                    description: 'Salary Deposit',
+                    amount: 2500.00,
+                    category: 'Income',
+                    type: 'income'
+                },
+                {
+                    date: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                    description: 'Electric Bill',
+                    amount: -85.30,
+                    category: 'Utilities',
+                    type: 'expense'
+                },
+                {
+                    date: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                    description: 'Restaurant',
+                    amount: -45.50,
+                    category: 'Dining',
+                    type: 'expense'
+                },
+                {
+                    date: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                    description: 'Freelance Work',
+                    amount: 350.00,
+                    category: 'Income',
+                    type: 'income'
+                }
+            ];
+            
+            // Add sample transactions to the database
+            for (const transaction of sampleTransactions) {
+                await localDB.addItem('transactions', transaction);
+            }
+            
+            console.log('Added sample transactions');
+            return true;
+        } catch (error) {
+            console.error('Error adding sample data:', error);
+            return false;
+        }
+    }
+    
     // Helper method to refresh the current view
     refreshCurrentView() {
         if (this.currentView === 'transactions') {
@@ -605,6 +976,15 @@ class BudgetApp {
             const filterType = filterSelect ? filterSelect.value : '';
             
             this.loadTransactions(searchTerm, filterType);
+        } else if (this.currentView === 'search') {
+            const searchInput = document.getElementById('transaction-search');
+            this.updateSearchResults(
+                searchInput?.value || '',
+                document.getElementById('transaction-filter')?.value || '',
+                document.getElementById('time-range')?.value || 'all',
+                document.getElementById('exact-match')?.checked || false,
+                document.getElementById('include-notes')?.checked || false
+            );
         } else {
             this.refreshView(this.currentView);
         }
@@ -1366,19 +1746,24 @@ class BudgetApp {
     }
 
     // Method to load and display transactions with search and filter
-    async loadTransactions(searchTerm = '', filterType = '') {
+    async loadTransactions(searchTerm = '', filterType = '', returnTransactions = false) {
         try {
             const transactionsList = document.getElementById('transactions-list');
             const emptyState = document.getElementById('transactions-empty');
             const loadingState = document.getElementById('transactions-loading');
             const table = document.querySelector('.transactions-table');
             
-            if (!transactionsList || !emptyState || !loadingState || !table) return;
+            if ((!transactionsList || !emptyState || !loadingState || !table) && !returnTransactions) {
+                console.warn('Required DOM elements not found');
+                return [];
+            }
             
-            // Show loading state
-            loadingState.style.display = 'flex';
-            emptyState.style.display = 'none';
-            table.style.display = 'none';
+            // Show loading state if we're updating the UI
+            if (!returnTransactions) {
+                loadingState.style.display = 'flex';
+                emptyState.style.display = 'none';
+                table.style.display = 'none';
+            }
             
             // Get all transactions
             let transactions = await localDB.getTransactions();
@@ -1411,11 +1796,13 @@ class BudgetApp {
             // Clear existing rows
             transactionsList.innerHTML = '';
             
-            // Show empty state if no transactions
+            // Handle empty state
             if (transactions.length === 0) {
-                emptyState.style.display = 'block';
-                loadingState.style.display = 'none';
-                return;
+                if (!returnTransactions) {
+                    emptyState.style.display = 'block';
+                    loadingState.style.display = 'none';
+                }
+                return transactions || [];
             }
             
             // Sort by date (newest first)
@@ -1526,9 +1913,13 @@ class BudgetApp {
                 
             });
             
-            // Show the table and hide loading state
-            table.style.display = 'table';
-            loadingState.style.display = 'none';
+            // Show the table and hide loading state if we're updating the UI
+            if (!returnTransactions) {
+                table.style.display = 'table';
+                loadingState.style.display = 'none';
+            }
+            
+            return transactions;
             
         } catch (error) {
             console.error('Error loading transactions:', error);
@@ -1537,16 +1928,88 @@ class BudgetApp {
             // Make sure to hide loading state on error
             const loadingState = document.getElementById('transactions-loading');
             if (loadingState) loadingState.style.display = 'none';
+            
+            return [];
         }
     }
     
     // Filter transactions based on search term and filter type
     async filterTransactions(searchTerm = '', filterType = '') {
         try {
-            await this.loadTransactions(searchTerm, filterType);
+            // If no search term, hide analytics and return empty array
+            // (transactions will be loaded by loadTransactions separately)
+            if (!searchTerm || searchTerm.trim() === '') {
+                transactionAnalytics.showAnalytics(false);
+                return [];
+            }
+            
+            // Load transactions with limit for analytics
+            const transactions = await this.loadTransactions(searchTerm, filterType, true);
+            
+            // If we have transactions, show and update analytics
+            if (transactions.length > 0) {
+                // Process analytics in chunks to avoid memory issues
+                await this.processAnalyticsInChunks(transactions);
+            } else {
+                transactionAnalytics.showAnalytics(false);
+            }
+            
+            return transactions;
         } catch (error) {
             console.error('Error filtering transactions:', error);
             this.showToast('Error filtering transactions', 'error');
+            return [];
+        }
+    }
+    
+    // Process analytics in chunks to prevent memory issues
+    async processAnalyticsInChunks(transactions) {
+        try {
+            // Show loading state for analytics
+            transactionAnalytics.showAnalytics(true);
+            
+            // Process analytics in chunks with small delay between each
+            const CHUNK_SIZE = 1000; // Process 1000 transactions at a time
+            const totalChunks = Math.ceil(transactions.length / CHUNK_SIZE);
+            
+            // Process first chunk immediately
+            const firstChunk = transactions.slice(0, Math.min(CHUNK_SIZE, transactions.length));
+            transactionAnalytics.updateSearchSummary(firstChunk);
+            
+            // Process remaining chunks with delay to keep UI responsive
+            if (transactions.length > CHUNK_SIZE) {
+                // Use setTimeout to yield to the browser between chunks
+                setTimeout(() => {
+                    for (let i = 1; i < totalChunks; i++) {
+                        const start = i * CHUNK_SIZE;
+                        const end = Math.min(start + CHUNK_SIZE, transactions.length);
+                        const chunk = transactions.slice(start, end);
+                        
+                        // Update analytics with this chunk
+                        transactionAnalytics.updateSearchSummary(chunk, true);
+                        
+                        // Add small delay between chunks
+                        if (i % 5 === 0) {
+                            // Force UI update every 5 chunks
+                            setTimeout(() => {}, 0);
+                        }
+                    }
+                    
+                    // After all chunks are processed, update trend and seasonality
+                    transactionAnalytics.analyzeTrends(transactions);
+                    transactionAnalytics.analyzeSeasonality(transactions);
+                    transactionAnalytics.generateForecast(transactions);
+                }, 100);
+            } else {
+                // If we only have one chunk, update all analytics
+                transactionAnalytics.analyzeTrends(firstChunk);
+                transactionAnalytics.analyzeSeasonality(firstChunk);
+                transactionAnalytics.generateForecast(firstChunk);
+            }
+        } catch (error) {
+            console.error('Error processing analytics chunks:', error);
+            // Still try to show what we have
+            transactionAnalytics.showAnalytics(true);
         }
     }
     
@@ -1622,19 +2085,30 @@ class BudgetApp {
                 
             console.log('Calculated income:', income);
                 
-            // Expenses: negative amounts or type 'expense'
+            // Expenses: sum of all negative amounts or type 'expense'
+            console.log('All monthly transactions for expense calculation:', monthlyTransactions);
+            
             const expenseTransactions = monthlyTransactions.filter(t => {
                 const amount = typeof t.amount === 'number' ? t.amount : parseFloat(t.amount) || 0;
-                return t.type === 'expense' || amount < 0;
+                const isExpense = t.type === 'expense' || amount < 0;
+                console.log(`Transaction: ${t.description || 'No desc'}, Amount: ${amount}, Type: ${t.type}, IsExpense: ${isExpense}`);
+                return isExpense;
             });
                 
+            console.log('Filtered expense transactions:', expenseTransactions);
+            
             const expenses = expenseTransactions.reduce((sum, t) => {
-                const amount = Math.abs(typeof t.amount === 'number' ? t.amount : parseFloat(t.amount) || 0);
+                let amount = typeof t.amount === 'number' ? t.amount : parseFloat(t.amount) || 0;
+                console.log(`Processing expense: ${t.description || 'No desc'}, Original Amount: ${amount}, Type: ${t.type}`);
+                
+                // Convert to positive for the sum
+                amount = Math.abs(amount);
+                console.log(`  -> Adding to expenses: ${amount}`);
+                
                 return sum + amount;
             }, 0);
             
-            console.log('Expense transactions:', expenseTransactions);
-            console.log('Calculated expenses:', expenses);
+            console.log('Total calculated expenses:', expenses);
                     
             // Get budget data (if available)
             let budgeted = 0;
@@ -1835,6 +2309,57 @@ class BudgetApp {
         
         container.innerHTML = '';
         container.appendChild(list);
+    }
+    
+    // Initialize tooltips
+    initializeTooltips() {
+        // Check if Bootstrap is available
+        if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
+            const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+        }
+    }
+    
+    // Initialize analytics toggle
+    initializeAnalyticsToggle() {
+        const toggleBtn = document.getElementById('toggle-analytics');
+        const analyticsContent = document.getElementById('analytics-content');
+        
+        if (toggleBtn && analyticsContent) {
+            // Set initial state (hidden by default)
+            const isHidden = window.localStorage.getItem('analyticsHidden') !== 'false';
+            analyticsContent.style.display = isHidden ? 'none' : 'block';
+            this.updateToggleButton(toggleBtn, !isHidden);
+            
+            // Add click event listener
+            toggleBtn.addEventListener('click', () => {
+                const isNowHidden = analyticsContent.style.display === 'none';
+                analyticsContent.style.display = isNowHidden ? 'block' : 'none';
+                this.updateToggleButton(toggleBtn, isNowHidden);
+                
+                // Save preference to localStorage
+                window.localStorage.setItem('analyticsHidden', !isNowHidden);
+                
+                // Trigger window resize to ensure charts render correctly
+                setTimeout(() => window.dispatchEvent(new Event('resize')), 100);
+            });
+        }
+    }
+    
+    // Update toggle button icon and text
+    updateToggleButton(button, isExpanded) {
+        const icon = button.querySelector('i');
+        if (isExpanded) {
+            icon.classList.remove('fa-chevron-down');
+            icon.classList.add('fa-chevron-up');
+            button.innerHTML = '<i class="fas fa-chevron-up"></i> Hide Analytics';
+        } else {
+            icon.classList.remove('fa-chevron-up');
+            icon.classList.add('fa-chevron-down');
+            button.innerHTML = '<i class="fas fa-chevron-down"></i> Show Analytics';
+        }
     }
     
     showToast(message, type = 'info') {

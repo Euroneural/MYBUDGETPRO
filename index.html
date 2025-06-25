@@ -5,11 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Budget Pro - YNAB-Inspired Budgeting App</title>
     <link rel="stylesheet" href="style.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- FullCalendar CSS -->
     <link href="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css" rel="stylesheet" />
     <!-- FullCalendar JS -->
     <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Date-fns for date manipulation (ESM) -->
     <script type="module">
         import { 
@@ -204,19 +205,6 @@
                 <div class="view__header">
                     <h2>Transactions</h2>
                     <div class="transaction-controls">
-                        <div class="search-container">
-                            <i class="bi bi-search search-icon"></i>
-                            <input type="text" class="form-control search-input" id="transaction-search" 
-                                   placeholder="Search transactions by description, category, or amount...">
-                            <button class="btn btn--icon" id="clear-search" title="Clear search">
-                                <i class="bi bi-x"></i>
-                            </button>
-                        </div>
-                        <select class="form-control" id="transaction-filter">
-                            <option value="">All Categories</option>
-                            <option value="income">Income</option>
-                            <option value="expense">Expenses</option>
-                        </select>
                         <button class="btn btn--primary me-2" id="add-transaction-btn-2">
                             <i class="bi bi-plus-lg me-1"></i>Add Transaction
                         </button>
@@ -228,6 +216,133 @@
 
                 <div class="card">
                     <div class="card__body p-0">
+                        <div class="search-container mb-3 p-3 border-bottom">
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                <input type="text" class="form-control" id="transactions-search" 
+                                       placeholder="Search transactions...">
+                                <button class="btn btn-outline-secondary" type="button" id="clear-transactions-search">
+                                    <i class="bi bi-x"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <!-- Search Analytics -->
+                        <div id="transactions-search-analytics" class="search-analytics p-3 border-bottom" style="display: none;">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h5 class="mb-0">Search Analytics</h5>
+                                <button id="toggle-analytics" class="btn btn-sm btn-outline-secondary">
+                                    <i class="fas fa-chevron-down"></i> Show Analytics
+                                </button>
+                            </div>
+                            
+                            <div id="analytics-content" style="display: none;">
+                                <div class="row g-3">
+                                    <div class="col-md-4">
+                                        <div class="card h-100">
+                                            <div class="card-body">
+                                                <div class="d-flex justify-content-between align-items-start">
+                                                    <h5 class="card-title">Search Summary</h5>
+                                                    <button type="button" class="btn btn-sm btn-link text-muted p-0" data-bs-toggle="tooltip" data-bs-placement="top" 
+                                                            title="Shows key statistics about your search results, including total amount, average transaction, and count.">
+                                                        <i class="fas fa-info-circle"></i>
+                                                    </button>
+                                                </div>
+                                                <div id="search-summary">
+                                                    <p class="mb-1">Total Transactions: <span id="search-total-count" class="fw-bold">0</span></p>
+                                                    <p class="mb-1">Total Amount: <span id="search-total-amount" class="fw-bold">$0.00</span></p>
+                                                    <p class="mb-1">Average per Transaction: <span id="search-avg-amount" class="fw-bold">$0.00</span></p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-8">
+                                        <div class="card h-100">
+                                            <div class="card-body">
+                                                <div class="d-flex justify-content-between align-items-start">
+                                                    <h5 class="card-title">Trend Analysis</h5>
+                                                    <button type="button" class="btn btn-sm btn-link text-muted p-0" data-bs-toggle="tooltip" data-bs-placement="top" 
+                                                            title="Shows how your spending changes over time. Look for patterns or trends in your transaction history.">
+                                                        <i class="fas fa-info-circle"></i>
+                                                    </button>
+                                                </div>
+                                                <div id="search-trend-chart-container">
+                                                    <canvas id="transactions-trend-chart"></canvas>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="card h-100">
+                                            <div class="card-body">
+                                                <div class="d-flex justify-content-between align-items-start">
+                                                    <h5 class="card-title">Seasonality</h5>
+                                                    <button type="button" class="btn btn-sm btn-link text-muted p-0" data-bs-toggle="tooltip" data-bs-placement="top" 
+                                                            title="Highlights recurring patterns in your spending or income. Useful for identifying monthly or yearly cycles.">
+                                                        <i class="fas fa-info-circle"></i>
+                                                    </button>
+                                                </div>
+                                                <div id="search-seasonality-chart-container">
+                                                    <canvas id="transactions-seasonality-chart"></canvas>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="card h-100">
+                                            <div class="card-body">
+                                                <div class="d-flex justify-content-between align-items-start">
+                                                    <h5 class="card-title">Forecast</h5>
+                                                    <button type="button" class="btn btn-sm btn-link text-muted p-0" data-bs-toggle="tooltip" data-bs-placement="top" 
+                                                            title="Predicts future spending based on your transaction history. Use this to plan your budget.">
+                                                        <i class="fas fa-info-circle"></i>
+                                                    </button>
+                                                </div>
+                                                <div id="search-forecast">
+                                                    <p id="forecast-text">Enter a search term to see forecast analysis</p>
+                                                    <div id="forecast-chart-container" class="mt-2">
+                                                        <canvas id="transactions-forecast-chart"></canvas>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="card h-100">
+                                            <div class="card-body">
+                                                <div class="d-flex justify-content-between align-items-start">
+                                                    <h5 class="card-title">Amount Distribution</h5>
+                                                    <button type="button" class="btn btn-sm btn-link text-muted p-0" data-bs-toggle="tooltip" data-bs-placement="top" 
+                                                            title="Shows how your transaction amounts are distributed. The curve shows the normal distribution of your transaction amounts.">
+                                                        <i class="fas fa-info-circle"></i>
+                                                    </button>
+                                                </div>
+                                                <div id="distribution-chart-container">
+                                                    <canvas id="transactions-distribution-chart"></canvas>
+                                                </div>
+                                                <p class="text-muted small mt-2">Bell curve showing the distribution of transaction amounts</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="card h-100">
+                                            <div class="card-body">
+                                                <div class="d-flex justify-content-between align-items-start">
+                                                    <h5 class="card-title">Amount Statistics</h5>
+                                                    <button type="button" class="btn btn-sm btn-link text-muted p-0" data-bs-toggle="tooltip" data-bs-placement="top" 
+                                                            title="Shows key statistics about your transaction amounts: minimum, first quartile (Q1), median, third quartile (Q3), and maximum values.">
+                                                        <i class="fas fa-info-circle"></i>
+                                                    </button>
+                                                </div>
+                                                <div id="boxplot-chart-container">
+                                                    <canvas id="transactions-boxplot-chart"></canvas>
+                                                </div>
+                                                <p class="text-muted small mt-2">Visualization of amount statistics (min, Q1, median, Q3, max)</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                         <div class="transactions-container">
                             <table class="transactions-table">
                                 <thead>
@@ -362,21 +477,32 @@
             <div id="search-view" class="view">
                 <div class="view__header">
                     <h2>Transaction Search & Insights</h2>
+                    <div class="search-controls">
+                        <div class="search-container">
+                            <i class="bi bi-search search-icon"></i>
+                            <input type="text" class="form-control search-input" id="transaction-search" 
+                                   placeholder="Search transactions by description, category, or amount...">
+                            <button class="btn btn--icon" id="clear-search" title="Clear search">
+                                <i class="bi bi-x"></i>
+                            </button>
+                        </div>
+                        <select class="form-control" id="transaction-filter">
+                            <option value="">All Categories</option>
+                            <option value="income">Income</option>
+                            <option value="expense">Expenses</option>
+                        </select>
+                    </div>
                 </div>
                 <div class="search-container">
-                    <div class="search-box">
-                        <input type="text" id="transaction-search" placeholder="Search transactions by description, amount, or category..." class="search-input">
-                        <button id="search-btn" class="btn btn--primary">Search</button>
-                        <div class="search-options">
-                            <label><input type="checkbox" id="exact-match" checked> Exact match</label>
-                            <label><input type="checkbox" id="include-notes"> Include notes</label>
-                            <select id="time-range">
-                                <option value="all">All Time</option>
-                                <option value="year">This Year</option>
-                                <option value="6months">Last 6 Months</option>
-                                <option value="month" selected>This Month</option>
-                            </select>
-                        </div>
+                    <div class="search-options">
+                        <label><input type="checkbox" id="exact-match" checked> Exact match</label>
+                        <label><input type="checkbox" id="include-notes"> Include notes</label>
+                        <select id="time-range">
+                            <option value="all">All Time</option>
+                            <option value="year">This Year</option>
+                            <option value="6months">Last 6 Months</option>
+                            <option value="month" selected>This Month</option>
+                        </select>
                     </div>
                     <div class="search-results">
                         <div class="search-summary">
