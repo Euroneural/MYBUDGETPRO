@@ -729,6 +729,29 @@ class BudgetApp {
     // Store prediction history for learning
     predictionHistory = {};
     
+    // Apply learned patterns to transactions
+    applyLearnedPatterns(transactions) {
+        if (!this.predictionHistory || Object.keys(this.predictionHistory).length === 0) {
+            return transactions; // No learned patterns yet
+        }
+        
+        console.log('Applying learned patterns to transactions');
+        
+        // For now, we'll just log the learned patterns
+        // In a real implementation, we would adjust the transactions based on learned patterns
+        Object.entries(this.predictionHistory).forEach(([key, pattern]) => {
+            if (pattern.accepted > 0) {
+                console.log(`Pattern learned for ${key}:`, {
+                    confidence: pattern.accepted / pattern.totalPredictions,
+                    adjustments: pattern.adjustments.length,
+                    lastUpdated: pattern.lastUpdated
+                });
+            }
+        });
+        
+        return transactions;
+    }
+    
     // Predict recurring transactions with improved accuracy
     predictRecurringTransactions(transactions, startDate, endDate) {
         console.log('predictRecurringTransactions called with:', { 
@@ -767,8 +790,8 @@ class BudgetApp {
         // Group transactions by description and amount to find patterns
         const transactionGroups = {};
         
-        // First, apply any learned patterns from previous predictions
-        this.applyLearnedPatterns(transactions);
+        // Apply any learned patterns to enhance the transactions
+        const enhancedTransactions = this.applyLearnedPatterns(transactions);
         
         // First, normalize and group transactions
         transactions.forEach(transaction => {
