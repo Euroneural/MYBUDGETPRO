@@ -1,7 +1,6 @@
-file:///home/droid/.npm/_npx/9ed06546b0653f96/node_modules/vite/bin/vite.js:51
-    module.enableCompileCache?.()
-                              ^
-
-SyntaxError: Unexpected token '.'
-    at Loader.moduleStrategy (internal/modules/esm/translators.js:133:18)
-    at async link (internal/modules/esm/module_job.js:42:21)
+error when starting dev server:
+Error: Port 8003 is already in use
+    at Server.onError (file:///home/droid/Documents/My_Projects/MYBUDGETPRO/node_modules/vite/dist/node/chunks/dep-827b23df.js:54873:28)
+    at Server.emit (node:events:513:28)
+    at emitErrorNT (node:net:1767:8)
+    at process.processTicksAndRejections (node:internal/process/task_queues:82:21)

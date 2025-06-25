@@ -9,13 +9,22 @@ export default defineConfig({
     open: true, // Automatically open the browser
     strictPort: true, // Exit if port is already in use
   },
+  root: '.',
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
     sourcemap: true,
+    emptyOutDir: true,
     rollupOptions: {
       input: {
         main: 'index.html',
+      },
+    },
+    assetsInlineLimit: 0, // Don't inline assets
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: false,
       },
     },
   },
