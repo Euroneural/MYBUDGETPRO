@@ -1079,25 +1079,78 @@ class BudgetApp {
             transactions.forEach(transaction => {
                 try {
                     const date = new Date(transaction.date);
-                    const isExpense = transaction.amount < 0 || transaction.type === 'expense';
-                    const amount = Math.abs(parseFloat(transaction.amount) || 0);
+                    const amount = parseFloat(transaction.amount) || 0;
+                    const isExpense = (amount < 0 && transaction.type !== 'income' && transaction.type !== 'credit' && transaction.type !== 'deposit') || 
+                                   (transaction.type === 'expense');
+                    const displayAmount = Math.abs(amount);
+                    
+                    // Determine transaction type for styling
+                    const transactionType = (transaction.type || '').toLowerCase();
+                    let backgroundColor = '#d1e7dd'; // Default to deposit color
+                    let borderColor = '#a3cfbb';
+                    let textColor = '#0f5132';
+                    let amountPrefix = '+';
+                    let icon = '💰'; // Default icon
+                    
+                    // Style based on transaction type
+                    if (transactionType === 'expense' || amount < 0) {
+                        // Expense
+                        backgroundColor = '#f8d7da';
+                        borderColor = '#f5c2c7';
+                        textColor = '#842029';
+                        amountPrefix = '-';
+                        icon = '💸';
+                    } else if (transactionType === 'deposit') {
+                        // Deposit
+                        backgroundColor = '#d1e7dd';
+                        borderColor = '#a3cfbb';
+                        textColor = '#0f5132';
+                        amountPrefix = '+';
+                        icon = '💳';
+                    } else if (transactionType === 'credit') {
+                        // Credit
+                        backgroundColor = '#e2e3f5';
+                        borderColor = '#c7c9e9';
+                        textColor = '#2d3bb3';
+                        amountPrefix = '↗';
+                        icon = '💳';
+                    } else if (transactionType === 'transfer') {
+                        // Transfer
+                        backgroundColor = '#cfe2ff';
+                        borderColor = '#9ec5fe';
+                        textColor = '#084298';
+                        amountPrefix = '⇄';
+                        icon = '🔄';
+                    } else if (transactionType === 'income') {
+                        // Income
+                        backgroundColor = '#d1f2eb';
+                        borderColor = '#a2e0d4';
+                        textColor = '#0d6d5f';
+                        amountPrefix = '↑';
+                        icon = '💵';
+                    }
+                    
+                    // Create event title with icon and amount
+                    const title = `${icon} ${amountPrefix}$${displayAmount.toFixed(2)} ${transaction.description || ''}`.trim();
                     
                     events.push({
                         id: `t_${transaction.id || Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                        title: `${isExpense ? '-' : '+'}$${amount.toFixed(2)} ${transaction.description || ''}`.trim(),
+                        title: title,
                         start: date,
                         allDay: true,
-                        backgroundColor: isExpense ? '#f8d7da' : '#d1e7dd',
-                        borderColor: isExpense ? '#f5c2c7' : '#a3cfbb',
-                        textColor: isExpense ? '#842029' : '#0f5132',
+                        backgroundColor,
+                        borderColor,
+                        textColor,
                         extendedProps: {
                             type: 'transaction',
-                            isExpense,
-                            amount,
-                            originalAmount: transaction.amount,
+                            transactionType: transactionType || (amount < 0 ? 'expense' : 'deposit'),
+                            isExpense: amount < 0,
+                            amount: displayAmount,
+                            originalAmount: amount,
                             description: transaction.description || '',
                             category: transaction.category || 'Uncategorized',
-                            originalDate: date
+                            originalDate: date,
+                            icon: icon
                         }
                     });
                 } catch (e) {
@@ -1627,11 +1680,20 @@ class BudgetApp {
         }
     }
     
-    // Update calendar summary
+    // Update calendar summary with budget information
     async updateCalendarSummary(transactions, startDate, endDate) {
         try {
             const summaryEl = document.getElementById('calendar-summary');
             if (!summaryEl) return;
+            
+            // Get budget data
+            let monthlyBudget = 0;
+            try {
+                const budgetData = await localDB.getBudget();
+                monthlyBudget = parseFloat(budgetData?.monthlyBudget) || 0;
+            } catch (e) {
+                console.warn('Could not load budget data:', e);
+            }
             
             // Filter transactions for the current view
             const filteredTransactions = transactions.filter(t => {
@@ -1643,41 +1705,88 @@ class BudgetApp {
                 }
             });
             
-            // Calculate totals
-            const income = filteredTransactions
-                .filter(t => t.amount > 0 || t.type === 'income')
+            // Calculate days in period
+            const daysInPeriod = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
+            const daysInMonth = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 0).getDate();
+            const isMonthlyView = daysInPeriod > 7; // More than a week is considered monthly view
+            
+            // Calculate budget for the period
+            const periodBudget = isMonthlyView 
+                ? monthlyBudget 
+                : (monthlyBudget / daysInMonth) * daysInPeriod;
+                
+            // Calculate daily budget for the period
+            const dailyBudget = periodBudget / daysInPeriod;
+            
+            // Categorize transactions
+            const deposits = filteredTransactions
+                .filter(t => t.type === 'deposit' || t.type === 'credit' || (t.amount > 0 && t.type !== 'expense'))
                 .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount) || 0), 0);
                 
             const expenses = filteredTransactions
                 .filter(t => t.amount < 0 || t.type === 'expense')
                 .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount) || 0), 0);
                 
-            const net = income - expenses;
+            const net = deposits - expenses;
+            const remainingBudget = Math.max(0, periodBudget - expenses);
+            const budgetUsed = periodBudget > 0 ? (expenses / periodBudget) * 100 : 0;
             
-            // Group by category
+            // Group by transaction type and category
             const categories = {};
+            const types = {
+                deposit: { label: 'Deposits', total: 0, class: 'text-success' },
+                credit: { label: 'Credits', total: 0, class: 'text-info' },
+                expense: { label: 'Expenses', total: 0, class: 'text-danger' },
+                other: { label: 'Other', total: 0, class: 'text-muted' }
+            };
+            
             filteredTransactions.forEach(t => {
-                const category = t.category || 'Uncategorized';
                 const amount = Math.abs(parseFloat(t.amount) || 0);
-                const isExpense = t.amount < 0 || t.type === 'expense';
+                let type = t.type?.toLowerCase() || 'other';
                 
-                if (!categories[category]) {
-                    categories[category] = { income: 0, expenses: 0 };
+                // Categorize the type
+                if (!['deposit', 'credit', 'expense'].includes(type)) {
+                    type = t.amount > 0 ? 'deposit' : 'expense';
                 }
                 
-                if (isExpense) {
-                    categories[category].expenses += amount;
+                // Update type total
+                if (types[type]) {
+                    types[type].total += amount;
                 } else {
-                    categories[category].income += amount;
+                    types.other.total += amount;
                 }
+                
+                // Update category breakdown
+                const category = t.category || 'Uncategorized';
+                if (!categories[category]) {
+                    categories[category] = { 
+                        deposit: 0, 
+                        credit: 0, 
+                        expense: 0, 
+                        other: 0 
+                    };
+                }
+                categories[category][type] += amount;
             });
             
             // Generate HTML
             let html = `
-                <div class="summary-totals">
+                <div class="summary-period mb-3">
+                    <h4>${isMonthlyView ? 'Monthly' : 'Weekly'} Summary</h4>
+                    <div class="budget-info small text-muted">
+                        ${isMonthlyView ? 'Monthly' : daysInPeriod + '-day'} Budget: $${periodBudget.toFixed(2)} 
+                        ($${dailyBudget.toFixed(2)}/day)
+                    </div>
+                </div>
+                
+                <div class="summary-totals mb-3">
                     <div class="summary-total">
-                        <span class="summary-label">Income:</span>
-                        <span class="summary-amount text-success">$${income.toFixed(2)}</span>
+                        <span class="summary-label">Deposits:</span>
+                        <span class="summary-amount text-success">$${deposits.toFixed(2)}</span>
+                    </div>
+                    <div class="summary-total">
+                        <span class="summary-label">Credits:</span>
+                        <span class="summary-amount text-info">$${types.credit.total.toFixed(2)}</span>
                     </div>
                     <div class="summary-total">
                         <span class="summary-label">Expenses:</span>
@@ -1689,26 +1798,89 @@ class BudgetApp {
                             ${net >= 0 ? '+' : '-'}$${Math.abs(net).toFixed(2)}
                         </span>
                     </div>
-                </div>
-                <div class="summary-categories">
-                    <h4>By Category</h4>
-            `;
-            
-            // Add category breakdown
-            Object.entries(categories).forEach(([category, amounts]) => {
-                const net = amounts.income - amounts.expenses;
-                html += `
-                    <div class="category-summary">
-                        <div class="category-name">${category}</div>
-                        <div class="category-amounts">
-                            <span class="text-success">+$${amounts.income.toFixed(2)}</span> / 
-                            <span class="text-danger">-$${amounts.expenses.toFixed(2)}</span>
-                            <span class="${net >= 0 ? 'text-success' : 'text-danger'}">
-                                (${net >= 0 ? '+' : ''}${net.toFixed(2)})
+                    ${monthlyBudget > 0 ? `
+                        <div class="summary-total">
+                            <span class="summary-label">Remaining Budget:</span>
+                            <span class="summary-amount ${remainingBudget > 0 ? 'text-success' : 'text-danger'}">
+                                $${remainingBudget.toFixed(2)}
+                                <small class="text-muted">(${Math.round(100 - budgetUsed)}% left)</small>
                             </span>
                         </div>
-                    </div>
-                `;
+                        <div class="budget-progress mt-2">
+                            <div class="progress" style="height: 8px;">
+                                <div class="progress-bar bg-danger" role="progressbar" 
+                                    style="width: ${Math.min(100, budgetUsed)}%" 
+                                    aria-valuenow="${budgetUsed}" 
+                                    aria-valuemin="0" 
+                                    aria-valuemax="100">
+                                </div>
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+                <div class="summary-categories">
+                    <h5>By Category</h5>
+            `;
+            
+            // Add category breakdown with transaction types
+            const sortedCategories = Object.entries(categories)
+                .sort((a, b) => {
+                    const totalA = Object.values(a[1]).reduce((sum, val) => sum + val, 0);
+                    const totalB = Object.values(b[1]).reduce((sum, val) => sum + val, 0);
+                    return totalB - totalA;
+                });
+                
+            sortedCategories.forEach(([category, amounts]) => {
+                const total = Object.values(amounts).reduce((sum, val) => sum + val, 0);
+                if (total <= 0) return;
+                
+                // Create type breakdown
+                let typeBreakdown = '';
+                
+                // Show each type that has an amount
+                if (amounts.deposit > 0) {
+                    typeBreakdown += `
+                        <div class="category-type">
+                            <span class="category-label">Deposits:</span>
+                            <span class="category-amount text-success">$${amounts.deposit.toFixed(2)}</span>
+                        </div>`;
+                }
+                
+                if (amounts.credit > 0) {
+                    typeBreakdown += `
+                        <div class="category-type">
+                            <span class="category-label">Credits:</span>
+                            <span class="category-amount text-info">$${amounts.credit.toFixed(2)}</span>
+                        </div>`;
+                }
+                
+                if (amounts.expense > 0) {
+                    typeBreakdown += `
+                        <div class="category-type">
+                            <span class="category-label">Expenses:</span>
+                            <span class="category-amount text-danger">$${amounts.expense.toFixed(2)}</span>
+                        </div>`;
+                }
+                
+                if (amounts.other > 0) {
+                    typeBreakdown += `
+                        <div class="category-type">
+                            <span class="category-label">Other:</span>
+                            <span class="category-amount text-muted">$${amounts.other.toFixed(2)}</span>
+                        </div>`;
+                }
+                
+                // Add category row
+                html += `
+                    <div class="category-summary mb-2">
+                        <div class="category-header d-flex justify-content-between">
+                            <span class="category-name fw-medium">${category}</span>
+                            <span class="category-total">$${total.toFixed(2)}</span>
+                        </div>
+                        <div class="category-details ps-2 small">
+                            ${typeBreakdown}
+                        </div>
+                    </div>`;
             });
             
             html += '</div>';
