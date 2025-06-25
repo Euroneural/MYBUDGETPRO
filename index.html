@@ -10,15 +10,31 @@
     <link href="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css" rel="stylesheet" />
     <!-- FullCalendar JS -->
     <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js"></script>
-    <!-- Date-fns for date manipulation -->
-    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/format/index.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/addDays/index.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/isSameDay/index.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/isSameMonth/index.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/startOfMonth/index.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/endOfMonth/index.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/eachDayOfInterval/index.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/differenceInDays/index.js"></script>
+    <!-- Date-fns for date manipulation (ESM) -->
+    <script type="module">
+        import { 
+            format, 
+            addDays, 
+            isSameDay, 
+            isSameMonth, 
+            startOfMonth, 
+            endOfMonth, 
+            eachDayOfInterval, 
+            differenceInDays 
+        } from 'https://cdn.jsdelivr.net/npm/date-fns@2.29.3/esm/index.js';
+        
+        // Make date-fns functions available globally
+        window.dateFns = {
+            format,
+            addDays,
+            isSameDay,
+            isSameMonth,
+            startOfMonth,
+            endOfMonth,
+            eachDayOfInterval,
+            differenceInDays
+        };
+    </script>
     <!-- Local Database -->
     <!-- App (loaded as ES module) -->
     <script type="module">

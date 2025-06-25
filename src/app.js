@@ -727,6 +727,9 @@ class BudgetApp {
         const oneYearAgo = new Date(now);
         oneYearAgo.setFullYear(now.getFullYear() - 1);
         
+        // Get date-fns functions from global object
+        const { isSameDay, differenceInDays } = window.dateFns || {};
+        
         // Group transactions by description and amount to find patterns
         const transactionGroups = {};
         
@@ -831,7 +834,8 @@ class BudgetApp {
         // Update selected date display
         const selectedDateEl = document.getElementById('selected-date');
         if (selectedDateEl) {
-            selectedDateEl.textContent = date.toLocaleDateString('en-US', {
+            const { format } = window.dateFns || {};
+            selectedDateEl.textContent = format ? format(date, 'EEEE, MMMM d, yyyy') : date.toLocaleDateString('en-US', {
                 weekday: 'long',
                 year: 'numeric',
                 month: 'long',
