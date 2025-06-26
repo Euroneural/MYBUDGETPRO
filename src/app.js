@@ -1,3389 +1,3257 @@
 import { localDB } from './local-db.js';
 
-import { transactionAnalytics } from './analytics.js';
+// Chart.js is available globally via CDN in index.html
 
-class BudgetApp {
-    constructor() {
-        this.currentView = 'dashboard';
-        this.initializeEventListeners();
-        this.initializeCSVHandlers();
-        console.log('BudgetApp initialized');
-        
-        // Initialize database and load initial data
-        this.init();
-    }
+class SearchManager {
+  constructor(app) {
+    console.log('SearchManager: Initializing SearchManager');
+    this.app = app;
+    this.searchResults = [];
+    this.searchStats = {
+      totalAmount: 0,
+      averageAmount: 0,
+      minAmount: 0,
+      maxAmount: 0,
+      transactionCount: 0,
+      firstTransactionDate: null,
+      lastTransactionDate: null
+    };
+    console.log('SearchManager: Calling init()');
+    this.init();
+  }
     
-    // Load initial data when the app starts
-    async loadInitialData() {
-        try {
-            // Check if we have any transactions
-            const transactions = await localDB.getAllItems('transactions');
-            
-            // If no transactions, add sample data
-            if (transactions.length === 0) {
-                await this.addSampleData();
-            }
-            
-            // Load categories if they exist
-            let categories = await localDB.getAllItems('categories');
-            
-            // If no categories, initialize with default categories
-            if (categories.length === 0) {
-                const defaultCategories = [
-                    { name: 'Food & Dining', budget: 400, color: '#FF6B6B' },
-                    { name: 'Shopping', budget: 200, color: '#4ECDC4' },
-                    { name: 'Transportation', budget: 150, color: '#45B7D1' },
-                    { name: 'Bills & Utilities', budget: 300, color: '#96CEB4' },
-                    { name: 'Entertainment', budget: 100, color: '#FFEEAD' },
-                    { name: 'Income', budget: 0, color: '#D4EDDA' }
-                ];
-                
-                await Promise.all(
-                    defaultCategories.map(cat => 
-                        localDB.addItem('categories', {
-                            ...cat,
-                            createdAt: new Date().toISOString()
-                        })
-                    )
-                );
-            }
-            
-            // Initialize budget if not set
-            try {
-                const budgets = await localDB.getAllItems('budgets');
-                if (!budgets || budgets.length === 0) {
-                    const currentDate = new Date();
-                    const monthKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
-                    
-                    await localDB.addItem('budgets', {
-                        monthlyBudget: 2000, // Default monthly budget
-                        month: monthKey,
-                        createdAt: new Date().toISOString(),
-                        updatedAt: new Date().toISOString()
-                    });
-                }
-            } catch (error) {
-                console.error('Error initializing budget:', error);
-                // Continue without failing the entire initialization
-            }
-            
-            return true;
-        } catch (error) {
-            console.error('Error loading initial data:', error);
-            throw error;
-        }
-    }
-    
-    // Add sample data for new users
-    async addSampleData() {
-        try {
-            // Add sample transactions
-            const sampleTransactions = [
-                {
-                    description: 'Grocery Store',
-                    amount: -85.32,
-                    date: new Date().toISOString(),
-                    category: 'Food & Dining',
-                    type: 'expense'
-                },
-                {
-                    description: 'Monthly Salary',
-                    amount: 3000,
-                    date: new Date().toISOString(),
-                    category: 'Income',
-                    type: 'income'
-                },
-                {
-                    description: 'Electric Bill',
-                    amount: -120.50,
-                    date: new Date().toISOString(),
-                    category: 'Bills & Utilities',
-                    type: 'expense'
-                }
-            ];
-            
-            await Promise.all(
-                sampleTransactions.map(tx => 
-                    localDB.addItem('transactions', {
-                        ...tx,
-                        createdAt: new Date().toISOString()
-                    })
-                )
-            );
-            
-            return true;
-        } catch (error) {
-            console.error('Error adding sample data:', error);
-            throw error;
-        }
-    }
-    
-    // Format currency
-    formatCurrency(amount) {
-        return new Intl.NumberFormat('en-US', {
-            style: 'currency',
-            currency: 'USD',
-            minimumFractionDigits: 2
-        }).format(amount);
-    }
+  // Helper method to escape HTML to prevent XSS
+  escapeHtml(unsafe) {
+    if (typeof unsafe !== 'string') return '';
+    return unsafe
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
 
-    // Get current month key (YYYY-MM)
-    getCurrentMonthKey() {
-        const now = new Date();
-        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  init() {
+    console.log('SearchManager: Initializing search functionality');
+    try {
+      this.bindEvents();
+      console.log('SearchManager: Event binding completed');
+    } catch (error) {
+      console.error('SearchManager: Error during initialization:', error);
     }
+  }
 
-    // Get current month name and year
-    getCurrentMonthName() {
-        return new Date().toLocaleString('default', { month: 'long', year: 'numeric' });
-    }
-
-    // Update budget summary
-    async updateBudgetSummary() {
-        try {
-            const currentMonth = this.getCurrentMonthKey();
-            const [budgets, categories, allTransactions] = await Promise.all([
-                localDB.getAllItems('budgets'),
-                localDB.getAllItems('categories'),
-                localDB.getAllItems('transactions')
-            ]);
-            
-            // Filter transactions for the current month
-            const transactions = allTransactions.filter(transaction => {
-                const transactionDate = new Date(transaction.date);
-                const transactionMonth = `${transactionDate.getFullYear()}-${String(transactionDate.getMonth() + 1).padStart(2, '0')}`;
-                return transactionMonth === currentMonth;
-            });
-
-            const currentBudget = budgets.find(b => b.month === currentMonth) || { monthlyBudget: 0 };
-            const monthlyBudget = parseFloat(currentBudget.monthlyBudget) || 0;
-            
-            // Calculate total spent this month
-            const totalSpent = transactions
-                .filter(t => t.type === 'expense' || t.amount < 0)
-                .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount) || 0), 0);
-            
-            const remaining = Math.max(0, monthlyBudget - totalSpent);
-            const progress = monthlyBudget > 0 ? (totalSpent / monthlyBudget) * 100 : 0;
-            
-            // Update UI
-            document.getElementById('monthly-budget-amount').textContent = this.formatCurrency(monthlyBudget);
-            document.getElementById('monthly-spent').textContent = this.formatCurrency(totalSpent);
-            document.getElementById('budget-remaining').textContent = this.formatCurrency(remaining);
-            document.getElementById('budget-progress').textContent = `${Math.round(progress)}%`;
-            document.getElementById('current-month').textContent = this.getCurrentMonthName();
-            
-            // Update progress bar color based on usage
-            const progressBar = document.querySelector('.progress-bar');
-            if (progressBar) {
-                progressBar.style.width = `${Math.min(100, progress)}%`;
-                if (progress > 90) {
-                    progressBar.classList.add('bg-danger');
-                    progressBar.classList.remove('bg-warning', 'bg-success');
-                } else if (progress > 70) {
-                    progressBar.classList.add('bg-warning');
-                    progressBar.classList.remove('bg-danger', 'bg-success');
-                } else {
-                    progressBar.classList.add('bg-success');
-                    progressBar.classList.remove('bg-warning', 'bg-danger');
-                }
-            }
-            
-            // Update days remaining
-            const now = new Date();
-            const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-            document.getElementById('days-remaining').textContent = lastDay - now.getDate();
-            
-            // Update category budgets
-            await this.updateCategoryBudgets(categories, transactions);
-            
-        } catch (error) {
-            console.error('Error updating budget summary:', error);
-        }
-    }
-
-    // Update category budgets in the UI
-    async updateCategoryBudgets(categories, transactions) {
-        const tbody = document.getElementById('budget-categories');
-        if (!tbody) return;
+  bindEvents() {
+    console.log('Binding search events...');
         
-        // Group transactions by category
-        const categorySpending = {};
-        transactions.forEach(tx => {
-            const category = tx.category || 'Uncategorized';
-            const amount = Math.abs(parseFloat(tx.amount) || 0);
-            
-            if (!categorySpending[category]) {
-                categorySpending[category] = 0;
-            }
-            
-            if (tx.type === 'expense' || tx.amount < 0) {
-                categorySpending[category] += amount;
-            } else if (tx.type === 'income') {
-                categorySpending[category] -= amount; // Income reduces the spending
-            }
-        });
+    // Store reference to 'this' for use in callbacks
+    const self = this;
         
-        // Generate rows for each category
-        const rows = categories.map(category => {
-            const spent = categorySpending[category.name] || 0;
-            const remaining = Math.max(0, (category.budget || 0) - spent);
-            const progress = category.budget > 0 ? (spent / category.budget) * 100 : 0;
-            
-            return `
-                <tr>
-                    <td>
-                        <span class="badge" style="background-color: ${category.color || '#6c757d'}">
-                            ${category.name}
-                        </span>
-                    </td>
-                    <td>${this.formatCurrency(category.budget || 0)}</td>
-                    <td class="text-danger">${this.formatCurrency(spent)}</td>
-                    <td class="text-success">${this.formatCurrency(remaining)}</td>
-                    <td>
-                        <div class="progress" style="height: 8px;">
-                            <div class="progress-bar" 
-                                 role="progressbar" 
-                                 style="width: ${Math.min(100, progress)}%;" 
-                                 aria-valuenow="${Math.round(progress)}" 
-                                 aria-valuemin="0" 
-                                 aria-valuemax="100">
-                            </div>
-                        </div>
-                        <small class="text-muted">${Math.round(progress)}%</small>
-                    </td>
-                    <td>
-                        <button class="btn btn-sm btn-outline-primary edit-category" data-id="${category.id}">
-                            <i class="bi bi-pencil"></i>
-                        </button>
-                        <button class="btn btn-sm btn-outline-danger delete-category" data-id="${category.id}">
-                            <i class="bi bi-trash"></i>
-                        </button>
-                    </td>
-                </tr>
-            `;
-        });
+    const searchBtn = document.getElementById('search-btn');
+    const searchInput = document.getElementById('transaction-search');
         
-        tbody.innerHTML = rows.join('');
+    if (!searchBtn) console.warn('Search button not found');
+    if (!searchInput) console.warn('Search input not found');
         
-        // Add event listeners for edit/delete buttons
-        this.initializeCategoryActions();
-    }
-    
-    // Initialize category action buttons
-    initializeCategoryActions() {
-        // Edit category
-        document.querySelectorAll('.edit-category').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const categoryId = parseInt(e.currentTarget.dataset.id);
-                this.editCategory(categoryId);
-            });
-        });
-        
-        // Delete category
-        document.querySelectorAll('.delete-category').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const categoryId = parseInt(e.currentTarget.dataset.id);
-                if (confirm('Are you sure you want to delete this category? This will not delete any transactions.')) {
-                    this.deleteCategory(categoryId);
-                }
-            });
-        });
-    }
-    
-    // Edit category
-    async editCategory(categoryId) {
-        try {
-            const category = await localDB.getItem('categories', categoryId);
-            if (!category) return;
-            
-            document.getElementById('category-name').value = category.name;
-            document.getElementById('category-budget').value = category.budget || 0;
-            document.getElementById('category-color').value = category.color || '#3498db';
-            
-            // Update form to edit mode
-            const form = document.getElementById('category-form');
-            form.dataset.editId = categoryId;
-            form.querySelector('button[type="submit"]').textContent = 'Update Category';
-            
-            // Show the modal
-            document.getElementById('add-category-modal').style.display = 'block';
-            
-        } catch (error) {
-            console.error('Error editing category:', error);
-            this.showToast('Error editing category', 'error');
-        }
-    }
-    
-    // Delete category
-    async deleteCategory(categoryId) {
-        try {
-            await localDB.deleteItem('categories', categoryId);
-            this.showToast('Category deleted', 'success');
-            this.updateBudgetSummary();
-        } catch (error) {
-            console.error('Error deleting category:', error);
-            this.showToast('Error deleting category', 'error');
-        }
-    }
-
-    async init() {
-        try {
-            // Initialize database
-            await localDB.init();
-            
-            // Initialize category mappings
-            this.initializeCategoryMappings();
-            
-            // Load initial data
-            await this.loadInitialData();
-            
-            // Auto-categorize any uncategorized transactions
-            await this.autoCategorizeTransactions();
-            
-            // Initialize event listeners
-            this.initializeEventListeners();
-            
-            // Update budget summary
-            await this.updateBudgetSummary();
-            
-            // Show dashboard by default
-            this.switchView('dashboard');
-            
-            // Initialize tooltips
-            this.initializeTooltips();
-            
-            // Initialize analytics toggle
-            this.initializeAnalyticsToggle();
-            
-        } catch (error) {
-            console.error('Error initializing app:', error);
-            this.showToast('Error initializing application', 'error');
-        }
-    }
-
-    // Initialize category mappings from localStorage
-    initializeCategoryMappings() {
-        this.categoryMappings = JSON.parse(localStorage.getItem('categoryMappings') || '{}');
-    }
-    
-    // Save category mappings to localStorage
-    saveCategoryMappings() {
-        localStorage.setItem('categoryMappings', JSON.stringify(this.categoryMappings));
-    }
-    
-    // Map a description to a category
-    mapDescriptionToCategory(description, category) {
-        if (!description) return category;
-        
-        // First check exact matches
-        const normalizedDesc = description.toLowerCase().trim();
-        if (this.categoryMappings[normalizedDesc]) {
-            return this.categoryMappings[normalizedDesc];
-        }
-        
-        // Then check partial matches
-        for (const [key, value] of Object.entries(this.categoryMappings)) {
-            if (normalizedDesc.includes(key) || key.includes(normalizedDesc)) {
-                return value;
-            }
-        }
-        
-        return category;
-    }
-    
-    // Update all transactions with new category mapping
-    async updateTransactionsWithNewCategory(oldCategory, newCategory) {
-        try {
-            const transactions = await localDB.getTransactions();
-            const updates = [];
-            
-            for (const transaction of transactions) {
-                if (transaction.description && this.mapDescriptionToCategory(transaction.description, '') === oldCategory) {
-                    transaction.category = newCategory;
-                    updates.push(localDB.updateItem('transactions', transaction.id, transaction));
-                }
-            }
-            
-            await Promise.all(updates);
-            this.refreshCurrentView();
-        } catch (error) {
-            console.error('Error updating transactions with new category:', error);
-        }
-    }
-    
-    // Auto-categorize transactions
-    async autoCategorizeTransactions() {
-        try {
-            const transactions = await localDB.getTransactions();
-            const updates = [];
-            
-            for (const transaction of transactions) {
-                if (transaction.description && !transaction.category) {
-                    const category = this.mapDescriptionToCategory(transaction.description, 'Uncategorized');
-                    if (category !== 'Uncategorized') {
-                        transaction.category = category;
-                        updates.push(localDB.updateItem('transactions', transaction.id, transaction));
-                    }
-                }
-            }
-            
-            await Promise.all(updates);
-            this.refreshCurrentView();
-        } catch (error) {
-            console.error('Error auto-categorizing transactions:', error);
-        }
-    }
-    
-    initializeEventListeners() {
-        // Navigation links
-        const navLinks = document.querySelectorAll('.nav__link');
-        navLinks.forEach(link => {
-            link.addEventListener('click', (e) => {
-                e.preventDefault();
-                const view = link.getAttribute('data-view');
-                this.switchView(view);
-                
-                // Update budget view when switching to it
-                if (view === 'budget') {
-                    this.updateBudgetSummary();
-                }
-            });
-        });
-        
-        // Set Budget Modal
-        const setBudgetBtn = document.getElementById('set-budget-btn');
-        const budgetModal = document.getElementById('set-budget-modal');
-        const closeBudgetModal = document.getElementById('close-budget-modal');
-        const cancelBudgetBtn = document.getElementById('cancel-budget');
-        const budgetForm = document.getElementById('budget-form');
-        
-        // Category Modal
-        const addCategoryBtn = document.getElementById('add-category-btn');
-        const categoryModal = document.getElementById('add-category-modal');
-        const closeCategoryModal = document.getElementById('close-category-modal');
-        const cancelCategoryBtn = document.getElementById('cancel-category');
-        const categoryForm = document.getElementById('category-form');
-        
-        // Set Budget Button
-        if (setBudgetBtn) {
-            setBudgetBtn.addEventListener('click', async () => {
-                try {
-                    const currentMonth = this.getCurrentMonthKey();
-                    const budgets = await localDB.getAllItems('budgets');
-                    const currentBudget = budgets.find(b => b.month === currentMonth);
-                    
-                    if (currentBudget) {
-                        document.getElementById('monthly-budget').value = currentBudget.monthlyBudget;
-                    } else {
-                        document.getElementById('monthly-budget').value = '';
-                    }
-                    
-                    if (budgetModal) budgetModal.style.display = 'block';
-                } catch (error) {
-                    console.error('Error opening budget modal:', error);
-                    this.showToast('Error loading budget data', 'error');
-                }
-            });
-        }
-        
-        // Close Budget Modal
-        if (closeBudgetModal) {
-            closeBudgetModal.addEventListener('click', () => {
-                if (budgetModal) budgetModal.style.display = 'none';
-            });
-        }
-        
-        // Cancel Budget Button
-        if (cancelBudgetBtn) {
-            cancelBudgetBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                if (budgetModal) budgetModal.style.display = 'none';
-            });
-        }
-        
-        // Budget Form Submission
-        if (budgetForm) {
-            budgetForm.addEventListener('submit', async (e) => {
-                e.preventDefault();
-                
-                const monthlyBudget = parseFloat(document.getElementById('monthly-budget').value);
-                
-                if (isNaN(monthlyBudget) || monthlyBudget < 0) {
-                    this.showToast('Please enter a valid budget amount', 'error');
-                    return;
-                }
-                
-                try {
-                    const currentMonth = this.getCurrentMonthKey();
-                    const budgets = await localDB.getAllItems('budgets');
-                    let budget = budgets.find(b => b.month === currentMonth);
-                    
-                    if (budget) {
-                        // Update existing budget
-                        budget.monthlyBudget = monthlyBudget;
-                        budget.updatedAt = new Date().toISOString();
-                        await localDB.updateItem('budgets', budget.id, budget);
-                    } else {
-                        // Create new budget
-                        await localDB.addItem('budgets', {
-                            month: currentMonth,
-                            monthlyBudget,
-                            createdAt: new Date().toISOString(),
-                            updatedAt: new Date().toISOString()
-                        });
-                    }
-                    
-                    // Update UI
-                    await this.updateBudgetSummary();
-                    
-                    // Close modal and reset form
-                    if (budgetModal) budgetModal.style.display = 'none';
-                    budgetForm.reset();
-                    
-                    this.showToast('Budget saved successfully', 'success');
-                } catch (error) {
-                    console.error('Error saving budget:', error);
-                    this.showToast('Error saving budget', 'error');
-                }
-            });
-        }
-        
-        // Add Category Button
-        if (addCategoryBtn) {
-            addCategoryBtn.addEventListener('click', () => {
-                // Reset form
-                const form = document.getElementById('category-form');
-                form.reset();
-                form.dataset.editId = '';
-                form.querySelector('button[type="submit"]').textContent = 'Add Category';
-                
-                // Show modal
-                if (categoryModal) categoryModal.style.display = 'block';
-            });
-        }
-        
-        // Close Category Modal
-        if (closeCategoryModal) {
-            closeCategoryModal.addEventListener('click', () => {
-                if (categoryModal) categoryModal.style.display = 'none';
-            });
-        }
-        
-        // Cancel Category Button
-        if (cancelCategoryBtn) {
-            cancelCategoryBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                if (categoryModal) categoryModal.style.display = 'none';
-            });
-        }
-        
-        // Category Form Submission
-        if (categoryForm) {
-            categoryForm.addEventListener('submit', async (e) => {
-                e.preventDefault();
-                
-                const name = document.getElementById('category-name').value.trim();
-                const budget = parseFloat(document.getElementById('category-budget').value) || 0;
-                const color = document.getElementById('category-color').value;
-                const isEdit = categoryForm.dataset.editId !== '';
-                
-                if (!name) {
-                    this.showToast('Please enter a category name', 'error');
-                    return;
-                }
-                
-                try {
-                    if (isEdit) {
-                        // Update existing category
-                        const categoryId = parseInt(categoryForm.dataset.editId);
-                        const category = await localDB.getItem('categories', categoryId);
-                        
-                        if (category) {
-                            category.name = name;
-                            category.budget = budget;
-                            category.color = color;
-                            category.updatedAt = new Date().toISOString();
-                            
-                            await localDB.updateItem('categories', categoryId, category);
-                            this.showToast('Category updated successfully', 'success');
-                        }
-                    } else {
-                        // Create new category
-                        await localDB.addItem('categories', {
-                            name,
-                            budget,
-                            color,
-                            createdAt: new Date().toISOString(),
-                            updatedAt: new Date().toISOString()
-                        });
-                        this.showToast('Category added successfully', 'success');
-                    }
-                    
-                    // Update UI
-                    await this.updateBudgetSummary();
-                    
-                    // Close modal and reset form
-                    if (categoryModal) categoryModal.style.display = 'none';
-                    categoryForm.reset();
-                    
-                } catch (error) {
-                    console.error('Error saving category:', error);
-                    this.showToast('Error saving category', 'error');
-                }
-            });
-        }
-
-        // Add Transaction buttons
-        const addTransactionBtns = [
-            document.getElementById('add-transaction-btn'),
-            document.getElementById('add-transaction-btn-2'),
-            document.getElementById('add-first-transaction')
-        ];
-        
-        addTransactionBtns.forEach(btn => {
-            if (btn) {
-                btn.addEventListener('click', () => {
-                    this.showModal('add-transaction-modal');
-                });
-            }
-        });
-
-        // Clear all transactions button
-        document.getElementById('clear-transactions-btn')?.addEventListener('click', async () => {
-            if (confirm('Are you sure you want to delete ALL transactions? This action cannot be undone.')) {
-                try {
-                    await localDB.clearAllTransactions();
-                    this.showToast('All transactions have been deleted', 'success');
-                    this.loadTransactions(); // Refresh the view
-                } catch (error) {
-                    console.error('Error clearing transactions:', error);
-                    this.showToast('Error clearing transactions', 'error');
-                }
-            }
-        });
-
-        // Import CSV button
-        const importCsvBtn = document.getElementById('csv-import-btn');
-        if (importCsvBtn) {
-            importCsvBtn.addEventListener('click', () => {
-                this.showModal('csv-import-modal');
-            });
-        }
-
-        // Close modal buttons
-        const closeButtons = document.querySelectorAll('.modal__close');
-        closeButtons.forEach(button => {
-            button.addEventListener('click', (e) => {
-                e.preventDefault();
-                const modal = button.closest('.modal');
-                if (modal) {
-                    this.hideModal(modal.id);
-                }
-            });
-        });
-        
-        // Transaction search in Search & Insights view
-        const searchInput = document.getElementById('transaction-search');
-        const searchBtn = document.getElementById('search-btn');
-        const transactionsSearchInput = document.getElementById('transactions-search');
-        const clearTransactionsSearchBtn = document.getElementById('clear-transactions-search');
-        
-        // Function to handle search in Transactions view
-        const handleTransactionsSearch = () => {
-            if (this.currentView === 'transactions' && transactionsSearchInput) {
-                const searchTerm = transactionsSearchInput.value.trim();
-                
-                // If search term is empty, clear the search
-                if (searchTerm === '') {
-                    this.loadTransactions();
-                    transactionAnalytics.showAnalytics(false);
-                } else {
-                    // Otherwise, filter transactions and show analytics
-                    this.filterTransactions(searchTerm);
-                }
-            }
-        };
-        
-        // Set up event listeners for Transactions search
-        if (transactionsSearchInput) {
-            let searchTimeout;
-            
-            // Handle search input with debounce
-            transactionsSearchInput.addEventListener('input', (e) => {
-                clearTimeout(searchTimeout);
-                searchTimeout = setTimeout(() => {
-                    handleTransactionsSearch();
-                }, 300);
-            });
-            
-            // Handle Enter key in search input
-            transactionsSearchInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleTransactionsSearch();
-                }
-            });
-        }
-        
-        // Clear search button for Transactions view
-        if (clearTransactionsSearchBtn) {
-            clearTransactionsSearchBtn.addEventListener('click', () => {
-                if (transactionsSearchInput) {
-                    transactionsSearchInput.value = '';
-                    handleTransactionsSearch();
-                }
-            });
-        }
-        
-        // Handle search in Search & Insights view
-        if (searchInput) {
-            let searchTimeout;
-            
-            const performSearch = () => {
-                if (this.currentView !== 'search') return;
-                
-                const searchTerm = searchInput.value;
-                const filterType = document.getElementById('transaction-filter')?.value || '';
-                const timeRange = document.getElementById('time-range')?.value || 'all';
-                const exactMatch = document.getElementById('exact-match')?.checked || false;
-                const includeNotes = document.getElementById('include-notes')?.checked || false;
-                
-                // Update the search results in the Search & Insights view
-                this.updateSearchResults(searchTerm, filterType, timeRange, exactMatch, includeNotes);
-            };
-            
-            // Handle search input with debounce (only for Search & Insights view)
-            searchInput.addEventListener('input', (e) => {
-                clearTimeout(searchTimeout);
-                searchTimeout = setTimeout(() => {
-                    if (this.currentView === 'search') {
-                        performSearch();
-                    }
-                }, 300);
-            });
-            
-            // Handle search button click (for Search & Insights view)
-            if (searchBtn) {
-                searchBtn.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    performSearch();
-                });
-            }
-            
-            // Handle Enter key in search input (only for Search & Insights view)
-            searchInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter' && this.currentView === 'search') {
-                    e.preventDefault();
-                    performSearch();
-                }
-            });
-        }
-        
-        // Search options (time range, exact match, include notes)
-        const searchOptions = ['time-range', 'exact-match', 'include-notes'];
-        searchOptions.forEach(optionId => {
-            const element = document.getElementById(optionId);
-            if (element) {
-                element.addEventListener('change', () => {
-                    if (this.currentView === 'search') {
-                        performSearch();
-                    }
-                });
-            }
-        });
-        
-        // Transaction filter (only for Search & Insights view)
-        const filterSelect = document.getElementById('transaction-filter');
-        if (filterSelect) {
-            filterSelect.addEventListener('change', () => {
-                if (this.currentView === 'search') {
-                    performSearch();
-                }
-            });
-        }
-        
-        // Clear search button (only for Search & Insights view)
-        const clearSearchBtn = document.getElementById('clear-search');
-        if (clearSearchBtn) {
-            clearSearchBtn.addEventListener('click', () => {
-                if (this.currentView === 'search') {
-                    searchInput.value = '';
-                    performSearch();
-                }
-            });
-        }
-    }
-
-    async switchView(view) {
-        // Hide all views
-        document.querySelectorAll('.view').forEach(v => v.classList.remove('view--active'));
-        
-        // Show the selected view
-        const viewElement = document.getElementById(`${view}-view`);
-        if (!viewElement) {
-            console.warn(`View '${view}' not found`);
-            // Fallback to dashboard if view not found
-            const dashboardView = document.getElementById('dashboard-view');
-            if (dashboardView) {
-                return this.switchView('dashboard');
-            }
-            return;
-        }
-        
-        viewElement.classList.add('view--active');
-        this.currentView = view;
-        
-        // Special handling for different views
-        if (view === 'search') {
-            // Initialize search with default values
-            this.updateSearchResults(
-                '', // searchTerm
-                '', // filterType
-                'month', // timeRange
-                false, // exactMatch
-                false // includeNotes
-            );
-        } else if (view === 'transactions') {
-            // Initialize transactions view with current search/filter values
-            const searchInput = document.getElementById('transaction-search');
-            const filterSelect = document.getElementById('transaction-filter');
-            this.loadTransactions(
-                searchInput?.value || '',
-                filterSelect?.value || ''
-            );
-        } else if (view === 'budget') {
-            // Update budget view when switching to it
-            await this.updateBudgetSummary();
-        } else {
-            // For other views, just refresh them
-            this.refreshView(view);
-        }
-    }
-
-    showModal(modalId) {
-        const modal = document.getElementById(modalId);
-        if (modal) {
-            modal.style.display = 'flex';
-            document.body.style.overflow = 'hidden'; // Prevent scrolling when modal is open
-        }
-    }
-
-    hideModal(modalId) {
-        const modal = document.getElementById(modalId);
-        if (modal) {
-            modal.style.display = 'none';
-            document.body.style.overflow = ''; // Re-enable scrolling
-            
-            // Reset CSV import form when closing the modal
-            if (modalId === 'csv-import-modal') {
-                this.resetCSVImport();
-            }
-        }
-    }
-    
-    initializeCSVHandlers() {
-        const csvFileInput = document.getElementById('csv-file');
-        const csvDropzone = document.getElementById('csv-dropzone');
-        const selectFileBtn = document.getElementById('select-file-btn');
-        const cancelCsvBtn = document.getElementById('cancel-csv');
-        const importCsvConfirmBtn = document.getElementById('import-csv-confirm');
-        
-        // Handle file selection via button
-        if (selectFileBtn && csvFileInput) {
-            selectFileBtn.addEventListener('click', () => {
-                csvFileInput.click();
-            });
-            
-            csvFileInput.addEventListener('change', (e) => this.handleFileSelect(e));
-        }
-        
-        // Handle drag and drop
-        if (csvDropzone) {
-            // Prevent default drag behaviors
-            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-                csvDropzone.addEventListener(eventName, this.preventDefaults, false);
-                document.body.addEventListener(eventName, this.preventDefaults, false);
-            });
-            
-            // Highlight drop zone when item is dragged over it
-            ['dragenter', 'dragover'].forEach(eventName => {
-                csvDropzone.addEventListener(eventName, () => {
-                    csvDropzone.classList.add('drag-over');
-                }, false);
-            });
-            
-            // Remove highlight when drag leaves
-            ['dragleave', 'drop'].forEach(eventName => {
-                csvDropzone.addEventListener(eventName, () => {
-                    csvDropzone.classList.remove('drag-over');
-                }, false);
-            });
-            
-            // Handle dropped files
-            csvDropzone.addEventListener('drop', (e) => {
-                const dt = e.dataTransfer;
-                const files = dt.files;
-                if (files.length) {
-                    this.handleDroppedFiles(files);
-                }
-            }, false);
-        }
-        
-        // Handle cancel button
-        if (cancelCsvBtn) {
-            cancelCsvBtn.addEventListener('click', () => {
-                this.hideModal('csv-import-modal');
-            });
-        }
-        
-        // Handle import confirmation
-        if (importCsvConfirmBtn) {
-            importCsvConfirmBtn.addEventListener('click', () => {
-                this.processCSVImport();
-            });
-        }
-    }
-    
-    preventDefaults(e) {
-        e.preventDefault();
-        e.stopPropagation();
-    }
-    
-    handleFileSelect(e) {
-        const files = e.target.files;
-        if (files.length) {
-            this.processCSVFile(files[0]);
-        }
-    }
-    
-    handleDroppedFiles(files) {
-        const file = files[0];
-        if (file && (file.type === 'text/csv' || file.name.endsWith('.csv') || file.name.endsWith('.txt'))) {
-            this.processCSVFile(file);
-        } else {
-            this.showToast('Please upload a valid CSV file', 'error');
-        }
-    }
-    
-    async processCSVFile(file) {
-        if (file.size > 10 * 1024 * 1024) { // 10MB limit
-            this.showToast('File is too large. Maximum size is 10MB.', 'error');
-            return;
-        }
-        
-        try {
-            const text = await file.text();
-            this.previewCSV(text);
-        } catch (error) {
-            console.error('Error reading file:', error);
-            this.showToast('Error reading file. Please try again.', 'error');
-        }
-    }
-    
-    previewCSV(csvText) {
-        try {
-            const rows = this.parseCSV(csvText);
-            if (rows.length === 0) {
-                this.showToast('CSV file is empty', 'error');
-                return;
-            }
-            
-            // Update UI to show preview
-            const previewElement = document.getElementById('csv-preview');
-            const importConfirmBtn = document.getElementById('import-csv-confirm');
-            const importCount = document.getElementById('import-count');
-            
-            if (previewElement && importConfirmBtn && importCount) {
-                // Show preview
-                const table = this.createPreviewTable(rows);
-                previewElement.innerHTML = '';
-                previewElement.appendChild(table);
-                previewElement.classList.remove('hidden');
-                
-                // Update import button
-                importCount.textContent = (rows.length - 1).toString(); // Subtract 1 for header
-                importConfirmBtn.classList.remove('hidden');
-                
-                // Scroll to bottom of modal
-                previewElement.scrollIntoView({ behavior: 'smooth', block: 'end' });
-            }
-            
-            // Store the parsed data for later import
-            this.csvData = rows;
-            
-        } catch (error) {
-            console.error('Error parsing CSV:', error);
-            this.showToast('Error parsing CSV file. Please check the format.', 'error');
-        }
-    }
-    
-    parseCSV(csvText) {
-        // Simple CSV parser - can be enhanced based on your CSV format
-        const lines = csvText.split('\n').filter(line => line.trim() !== '');
-        return lines.map(line => {
-            // Handle quoted fields with commas
-            const values = [];
-            let inQuotes = false;
-            let currentValue = '';
-            
-            for (let i = 0; i < line.length; i++) {
-                const char = line[i];
-                const nextChar = line[i + 1];
-                
-                if (char === '"') {
-                    if (inQuotes && nextChar === '"') {
-                        // Escaped quote
-                        currentValue += '"';
-                        i++; // Skip next quote
-                    } else {
-                        inQuotes = !inQuotes;
-                    }
-                } else if (char === ',' && !inQuotes) {
-                    values.push(currentValue);
-                    currentValue = '';
-                } else {
-                    currentValue += char;
-                }
-            }
-            
-            // Add the last value
-            values.push(currentValue);
-            
-            return values;
-        });
-    }
-    
-    createPreviewTable(rows) {
-        const table = document.createElement('table');
-        table.className = 'preview-table';
-        
-        // Create header
-        const thead = document.createElement('thead');
-        const headerRow = document.createElement('tr');
-        if (rows.length > 0) {
-            rows[0].forEach(cell => {
-                const th = document.createElement('th');
-                th.textContent = cell;
-                headerRow.appendChild(th);
-            });
-            thead.appendChild(headerRow);
-            table.appendChild(thead);
-        }
-        
-        // Create body (limit to 5 rows for preview)
-        const tbody = document.createElement('tbody');
-        const maxPreviewRows = Math.min(5, rows.length - 1);
-        for (let i = 1; i <= maxPreviewRows; i++) {
-            const tr = document.createElement('tr');
-            rows[i].forEach(cell => {
-                const td = document.createElement('td');
-                td.textContent = cell;
-                tr.appendChild(td);
-            });
-            tbody.appendChild(tr);
-        }
-        table.appendChild(tbody);
-        
-        return table;
-    }
-    
-    resetCSVImport() {
-        // Reset file input
-        const fileInput = document.getElementById('csv-file');
-        if (fileInput) fileInput.value = '';
-        
-        // Hide preview and reset UI
-        const previewElement = document.getElementById('csv-preview');
-        const importConfirmBtn = document.getElementById('import-csv-confirm');
-        
-        if (previewElement) previewElement.innerHTML = '';
-        if (importConfirmBtn) importConfirmBtn.classList.add('hidden');
-        
-        // Clear stored data
-        delete this.csvData;
-    }
-    
-    // Helper function to detect column types from header names
-    detectColumnTypes(headers) {
-        const columnTypes = {
-            date: -1,
-            amount: -1,
-            description: -1,
-            merchant: -1,
-            category: -1,
-            type: -1
-        };
-        
-        const lowerHeaders = headers.map(h => h.toString().toLowerCase().trim());
-        
-        // Common column name patterns
-        lowerHeaders.forEach((header, index) => {
-            if (header.match(/(date|posted|transact)/) && columnTypes.date === -1) columnTypes.date = index;
-            if ((header.match(/(amount|amt|value|debit|credit)/) || header === '$') && columnTypes.amount === -1) columnTypes.amount = index;
-            if (header.match(/(desc|details|memo|note|info)/) && columnTypes.description === -1) columnTypes.description = index;
-            if (header.match(/(merchant|payee|vendor|store|from|to|name)/) && columnTypes.merchant === -1) columnTypes.merchant = index;
-            if (header.match(/(categor|type|group|label)/) && columnTypes.category === -1) columnTypes.category = index;
-            if (header.match(/(type|flow|direction)/) && columnTypes.type === -1) columnTypes.type = index;
-        });
-        
-        // If no amount columns found, try to find numeric columns
-        if (columnTypes.amount === -1) {
-            lowerHeaders.forEach((header, index) => {
-                if (header.match(/[0-9]/) && !header.match(/(date|phone|zip|id|ref)/) && columnTypes.amount === -1) {
-                    columnTypes.amount = index;
-                }
-            });
-        }
-        
-        return columnTypes;
-    }
-    
-    // Helper function to parse amount from string
-    parseAmount(amountStr) {
-        if (!amountStr && amountStr !== 0) return 0;
-        
-        // Handle negative amounts in parentheses
-        amountStr = amountStr.toString().trim();
-        const isNegative = amountStr.includes('(') || amountStr.startsWith('-');
-        
-        // Remove all non-numeric characters except decimal point and minus sign
-        const numericStr = amountStr.replace(/[^0-9.-]/g, '');
-        
-        // Convert to number and round to 2 decimal places
-        let amount = Math.round(parseFloat(numericStr) * 100) / 100 || 0;
-        
-        // Apply negative sign if needed
-        return isNegative ? -Math.abs(amount) : amount;
-    }
-    
-    // Helper function to parse date from string
-    parseDate(dateStr) {
-        if (!dateStr) return new Date().toISOString().split('T')[0];
-        
-        // Try different date formats
-        const formats = [
-            // MM/DD/YYYY or MM-DD-YYYY
-            /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/,
-            // YYYY-MM-DD
-            /^(\d{4})-(\d{1,2})-(\d{1,2})$/,
-            // DD/MM/YYYY or DD-MM-YYYY
-            /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/,
-        ];
-        
-        for (const format of formats) {
-            const match = dateStr.toString().match(format);
-            if (match) {
-                let month, day, year;
-                
-                if (match[1] > 12) {
-                    // Likely DD/MM/YYYY format
-                    day = parseInt(match[1], 10);
-                    month = parseInt(match[2], 10) - 1;
-                    year = parseInt(match[3], 10);
-                } else {
-                    // Likely MM/DD/YYYY format
-                    month = parseInt(match[1], 10) - 1;
-                    day = parseInt(match[2], 10);
-                    year = parseInt(match[3], 10);
-                }
-                
-                // Handle 2-digit years
-                if (year < 100) {
-                    year += 2000; // Adjust for 21st century
-                }
-                
-                const date = new Date(year, month, day);
-                if (!isNaN(date.getTime())) {
-                    return date.toISOString().split('T')[0];
-                }
-            }
-        }
-        
-        // If no format matched, return today's date
-        return new Date().toISOString().split('T')[0];
-    }
-    
-    async processCSVImport() {
-        if (!this.csvData || this.csvData.length < 2) {
-            this.showToast('No data to import', 'error');
-            return;
-        }
-        
-        try {
-            const headers = this.csvData[0];
-            const transactions = [];
-            const columnMap = this.detectColumnTypes(headers);
-            
-            console.log('Detected column mapping:', columnMap);
-            
-            // Skip header row
-            for (let i = 1; i < this.csvData.length; i++) {
-                const row = this.csvData[i];
-                if (row.every(cell => !cell || cell.toString().trim() === '')) continue;
-                
-                // Get values using detected columns or fallback to default positions
-                const date = columnMap.date >= 0 ? row[columnMap.date] : (row[0] || '');
-                const merchant = columnMap.merchant >= 0 ? row[columnMap.merchant] : (row[1] || '');
-                const description = columnMap.description >= 0 ? row[columnMap.description] : (row[2] || '');
-                const amountStr = columnMap.amount >= 0 ? row[columnMap.amount] : (row[3] || '0');
-                const category = columnMap.category >= 0 ? row[columnMap.category] : (row[4] || '');
-                const type = columnMap.type >= 0 ? row[columnMap.type] : '';
-                
-                // Parse amount - preserve original sign from CSV
-                const amount = this.parseAmount(amountStr);
-                const isDeposit = description && (
-                    description.toString().toLowerCase().includes('deposit') ||
-                    description.toString().toLowerCase().includes('credit') ||
-                    description.toString().toLowerCase().includes('achcredit') ||
-                    description.toString().toLowerCase().includes('direct dep')
-                );
-                
-                // Determine if this is income based on type hint or if it's a deposit
-                const isIncome = type ? type.toString().toLowerCase().includes('income') : (amount > 0 || isDeposit);
-                
-                const transaction = {
-                    date: this.parseDate(date),
-                    merchant: merchant.toString().trim() || 'Unknown',
-                    description: description.toString().trim() || 'No description',
-                    // Preserve the original amount sign from CSV
-                    amount: amount,
-                    category: category.toString().trim() || 'Uncategorized',
-                    type: isIncome ? 'income' : 'expense',
-                    createdAt: new Date().toISOString(),
-                    searchText: `${merchant} ${description}`.toLowerCase()
-                };
-                
-                console.log('Processed transaction:', {
-                    ...transaction,
-                    isIncome,
-                    isDeposit,
-                    originalAmount: amountStr
-                });
-                
-                // Skip if we don't have a valid amount
-                if (isNaN(transaction.amount)) {
-                    console.warn('Skipping row with invalid amount:', row);
-                    continue;
-                }
-                
-                transactions.push(transaction);
-            }
-            
-            if (transactions.length === 0) {
-                throw new Error('No valid transactions to import');
-            }
-            
-            // Save transactions to IndexedDB
-            const db = await localDB.init();
-            const tx = db.transaction(['transactions'], 'readwrite');
-            const store = tx.objectStore('transactions');
-            
-            // Add each transaction
-            const addPromises = transactions.map(transaction => {
-                return new Promise((resolve, reject) => {
-                    const request = store.add(transaction);
-                    request.onsuccess = () => resolve();
-                    request.onerror = (e) => {
-                        console.error('Error adding transaction:', e.target.error);
-                        resolve(); // Continue with other transactions even if one fails
-                    };
-                });
-            });
-            
-            await Promise.all(addPromises);
-            
-            this.showToast(`Successfully imported ${transactions.length} transactions`, 'success');
-            this.hideModal('csv-import-modal');
-            
-            // Refresh the current view to show the new transactions
-            this.refreshCurrentView();
-            
-        } catch (error) {
-            console.error('Error importing transactions:', error);
-            this.showToast('Error importing transactions: ' + error.message, 'error');
-        }
-    }
-    
-    // Update search results in the Search & Insights view
-    async updateSearchResults(searchTerm, filterType = '', timeRange = 'all', exactMatch = false, includeNotes = false) {
-        try {
-            const resultsContainer = document.querySelector('#search-view .search-results');
-            const summaryElement = document.querySelector('#search-view .search-summary');
-            const resultsTable = document.querySelector('#search-view .search-results-table tbody');
-            const noResultsElement = document.querySelector('#search-view .no-results');
-            
-            if (!resultsContainer || !summaryElement || !resultsTable || !noResultsElement) return;
-            
-            // Show loading state
-            resultsContainer.classList.add('loading');
-            
-            // Get all transactions
-            const allTransactions = await localDB.getTransactions();
-            
-            // Filter by time range
-            let filtered = this.filterByTimeRange(allTransactions, timeRange);
-            
-            // Apply filters
-            filtered = filtered.filter(transaction => {
-                // Filter by type (income/expense)
-                if (filterType === 'income' && transaction.amount <= 0) return false;
-                if (filterType === 'expense' && transaction.amount >= 0) return false;
-                
-                // If no search term, return all filtered by type
-                if (!searchTerm.trim()) return true;
-                
-                // Search in description and notes
-                const searchInDescription = transaction.description?.toLowerCase().includes(searchTerm.toLowerCase()) || false;
-                const searchInNotes = includeNotes ? 
-                    (transaction.notes?.toLowerCase().includes(searchTerm.toLowerCase()) || false) : false;
-                
-                if (exactMatch) {
-                    // Exact match search
-                    return transaction.description?.toLowerCase() === searchTerm.toLowerCase() || 
-                           (includeNotes && transaction.notes?.toLowerCase() === searchTerm.toLowerCase());
-                } else {
-                    // Partial match search
-                    return searchInDescription || searchInNotes;
-                }
-            });
-            
-            // Update summary
-            const totalAmount = filtered.reduce((sum, t) => sum + Math.abs(t.amount), 0);
-            const income = filtered.filter(t => t.amount > 0).reduce((sum, t) => sum + t.amount, 0);
-            const expenses = filtered.filter(t => t.amount < 0).reduce((sum, t) => sum + t.amount, 0);
-            
-            summaryElement.innerHTML = `
-                <div class="summary-item">
-                    <span class="summary-label">Results:</span>
-                    <span class="summary-value">${filtered.length} transactions</span>
-                </div>
-                <div class="summary-item">
-                    <span class="summary-label">Total Amount:</span>
-                    <span class="summary-value">${this.formatCurrency(totalAmount)}</span>
-                </div>
-                <div class="summary-item">
-                    <span class="summary-label">Income:</span>
-                    <span class="text-success">${this.formatCurrency(income)}</span>
-                </div>
-                <div class="summary-item">
-                    <span class="summary-label">Expenses:</span>
-                    <span class="text-danger">${this.formatCurrency(Math.abs(expenses))}</span>
-                </div>
-            `;
-            
-            // Update results table
-            if (filtered.length > 0) {
-                resultsTable.innerHTML = filtered.map(transaction => {
-                    const isIncome = transaction.amount > 0 || transaction.type === 'income';
-                    const amountClass = isIncome ? 'text-success' : 'text-danger';
-                    const amountSign = isIncome ? '+' : '-';
-                    const amount = Math.abs(transaction.amount);
-                    
-                    return `
+    // Helper function to safely perform search
+    const safeSearch = async () => {
+      try {
+        await self.performSearch();
+      } catch (error) {
+        console.error('Search error:', error);
+        const resultsBody = document.getElementById('search-results-body');
+        if (resultsBody) {
+          resultsBody.innerHTML = `
                         <tr>
-                            <td>${this.formatDate(transaction.date)}</td>
-                            <td>${transaction.description || 'No description'}</td>
-                            <td>${transaction.category || 'Uncategorized'}</td>
-                            <td class="text-end ${amountClass}">
-                                ${amountSign}${this.formatCurrency(amount, false)}
+                            <td colspan="5" class="text-center text-danger py-4">
+                                Error performing search: ${error.message}
                             </td>
-                        </tr>
-                    `;
-                }).join('');
-                
-                resultsTable.closest('table').style.display = 'table';
-                noResultsElement.style.display = 'none';
-            } else {
-                resultsTable.closest('table').style.display = 'none';
-                noResultsElement.style.display = 'block';
-                noResultsElement.textContent = searchTerm.trim() ? 
-                    'No transactions match your search criteria.' : 
-                    'No transactions found. Try adjusting your filters.';
-            }
-            
-            // Update charts
-            this.updateSearchCharts(filtered);
-            
-        } catch (error) {
-            console.error('Error updating search results:', error);
-            this.showToast('Error loading search results', 'error');
-        } finally {
-            const resultsContainer = document.querySelector('#search-view .search-results');
-            if (resultsContainer) {
-                resultsContainer.classList.remove('loading');
-            }
+                        </tr>`;
         }
-    }
-    
-    // Helper to filter transactions by time range
-    filterByTimeRange(transactions, timeRange) {
-        const now = new Date();
-        let startDate = new Date(0); // Beginning of time
+      }
+    };
         
-        if (timeRange === 'month') {
-            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-        } else if (timeRange === '6months') {
-            startDate = new Date(now.getFullYear(), now.getMonth() - 5, 1);
-        } else if (timeRange === 'year') {
-            startDate = new Date(now.getFullYear(), 0, 1);
-        } // 'all' uses the default startDate (beginning of time)
+    // Helper function to safely render results
+    const safeRenderResults = () => {
+      try {
+        self.renderSearchResults();
+      } catch (error) {
+        console.error('Error rendering search results:', error);
+      }
+    };
         
-        return transactions.filter(transaction => {
-            try {
-                const transactionDate = new Date(transaction.date);
-                return transactionDate >= startDate;
-            } catch (e) {
-                console.warn('Invalid transaction date:', transaction.date, e);
-                return false;
-            }
-        });
+    if (searchBtn) {
+      searchBtn.removeEventListener('click', safeSearch);
+      searchBtn.addEventListener('click', safeSearch);
+      console.log('Search button event listener added');
     }
-    
-    // Helper to format currency
-    formatCurrency(amount, includeSymbol = true) {
-        return new Intl.NumberFormat('en-US', {
-            style: includeSymbol ? 'currency' : 'decimal',
-            currency: 'USD',
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2
-        }).format(amount);
-    }
-    
-    // Helper to format date
-    formatDate(dateString) {
-        try {
-            const date = new Date(dateString);
-            if (isNaN(date.getTime())) return 'Invalid date';
+        
+    if (searchInput) {
+      // Remove any existing event listeners to prevent duplicates
+      searchInput.removeEventListener('keypress', this.handleSearchKeyPress);
             
-            return date.toLocaleDateString('en-US', {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-                hour12: true
-            });
-        } catch (e) {
-            console.warn('Error formatting date:', dateString, e);
-            return dateString || 'No date';
+      // Add debounced search on input
+      let searchTimeout;
+      searchInput.addEventListener('input', (e) => {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+          const searchTerm = e.target.value.trim();
+          if (searchTerm.length >= 2) {
+            console.log('Input changed, performing search for:', searchTerm);
+            safeSearch();
+          } else if (searchTerm.length === 0) {
+            // Clear results if search is empty
+            console.log('Search input cleared');
+            self.searchResults = [];
+            safeRenderResults();
+            self.renderSearchCharts();
+            self.generateSearchInsights();
+          }
+        }, 500); // 500ms debounce delay
+      });
+            
+      // Also search on Enter key
+      searchInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          console.log('Enter key pressed in search input');
+          clearTimeout(searchTimeout); // Clear any pending debounced search
+          safeSearch();
         }
+      });
+            
+      console.log('Search input event listeners added');
     }
-    
-    // Update search charts (spending trend and category breakdown)
-    async updateSearchCharts(transactions) {
-        // This method would update the charts in the Search & Insights view
-        // Implementation depends on your charting library
-        console.log('Updating charts with', transactions.length, 'transactions');
         
-        // Example: Update spending trend chart
-        // this.updateSpendingTrendChart(transactions);
+    const exactMatch = document.getElementById('exact-match');
+    const includeNotes = document.getElementById('include-notes');
+    const timeRange = document.getElementById('time-range');
         
-        // Example: Update category breakdown chart
-        // this.updateCategoryBreakdown(transactions);
+    if (!exactMatch) console.warn('Exact match checkbox not found');
+    if (!includeNotes) console.warn('Include notes checkbox not found');
+    if (!timeRange) console.warn('Time range select not found');
+        
+    if (exactMatch) {
+      exactMatch.removeEventListener('change', safeRenderResults);
+      exactMatch.addEventListener('change', () => {
+        console.log('Exact match changed:', exactMatch.checked);
+        safeRenderResults();
+      });
     }
-    
-    // Add sample data if database is empty
-    async addSampleData() {
-        try {
-            const sampleTransactions = [
-                {
-                    date: new Date().toISOString().split('T')[0],
-                    description: 'Grocery Store',
-                    amount: -125.75,
-                    category: 'Groceries',
-                    type: 'expense'
-                },
-                {
-                    date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-                    description: 'Salary Deposit',
-                    amount: 2500.00,
-                    category: 'Income',
-                    type: 'income'
-                },
-                {
-                    date: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-                    description: 'Electric Bill',
-                    amount: -85.30,
-                    category: 'Utilities',
-                    type: 'expense'
-                },
-                {
-                    date: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-                    description: 'Restaurant',
-                    amount: -45.50,
-                    category: 'Dining',
-                    type: 'expense'
-                },
-                {
-                    date: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-                    description: 'Freelance Work',
-                    amount: 350.00,
-                    category: 'Income',
-                    type: 'income'
-                }
-            ];
-            
-            // Add sample transactions to the database
-            for (const transaction of sampleTransactions) {
-                await localDB.addItem('transactions', transaction);
-            }
-            
-            console.log('Added sample transactions');
-            return true;
-        } catch (error) {
-            console.error('Error adding sample data:', error);
-            return false;
-        }
+        
+    if (includeNotes) {
+      includeNotes.removeEventListener('change', safeSearch);
+      includeNotes.addEventListener('change', () => {
+        console.log('Include notes changed:', includeNotes.checked);
+        safeSearch();
+      });
     }
-    
-    // Helper method to refresh the current view
-    async refreshCurrentView() {
-        switch (this.currentView) {
-            case 'transactions':
-                const searchInput = document.getElementById('transaction-search');
-                const filterSelect = document.getElementById('transaction-filter');
-                const searchTerm = searchInput ? searchInput.value : '';
-                const filterType = filterSelect ? filterSelect.value : '';
-                this.loadTransactions(searchTerm, filterType);
-                break;
-                
-            case 'search':
-                const searchInputSearch = document.getElementById('transaction-search');
-                this.updateSearchResults(
-                    searchInputSearch?.value || '',
-                    document.getElementById('transaction-filter')?.value || '',
-                    document.getElementById('time-range')?.value || 'all',
-                    document.getElementById('exact-match')?.checked || false,
-                    document.getElementById('include-notes')?.checked || false
-                );
-                break;
-                
-            case 'dashboard':
-                this.updateDashboard();
-                break;
-                
-            case 'calendar':
-                this.updateCalendar();
-                break;
-                
-            case 'budget':
-                await this.updateBudgetSummary();
-                break;
-                
-            // Add more cases as needed for other views
-        }
+        
+    if (timeRange) {
+      timeRange.removeEventListener('change', safeSearch);
+      timeRange.addEventListener('change', () => {
+        console.log('Time range changed:', timeRange.value);
+        safeSearch();
+      });
     }
-    
-    // Method to refresh a specific view
-    async refreshView(viewName) {
-        const currentView = this.currentView;
-        this.currentView = viewName; // Temporarily set the current view
-        
-        try {
-            await this.refreshCurrentView();
-        } finally {
-            this.currentView = currentView; // Restore the original view
-        }
-    }
-    
-    // Initialize calendar
-    async initCalendar() {
-        if (this.calendar) return; // Already initialized
-        
-        const calendarEl = document.getElementById('calendar');
-        if (!calendarEl) return;
-        
-        // Initialize FullCalendar
-        this.calendar = new FullCalendar.Calendar(calendarEl, {
-            initialView: 'dayGridMonth',
-            headerToolbar: {
-                left: 'prev,next today',
-                center: 'title',
-                right: 'dayGridMonth,timeGridWeek,timeGridDay'
-            },
-            dayMaxEvents: true,
-            events: this.getCalendarEvents.bind(this),
-            eventClick: this.handleCalendarEventClick.bind(this),
-            dateClick: this.handleDateClick.bind(this),
-            eventDidMount: this.handleEventDidMount.bind(this)
-        });
-        
-        this.calendar.render();
-        
-        // Initialize mini calendar
-        this.initMiniCalendar();
-    }
-    
-    // Initialize mini calendar
-    initMiniCalendar() {
-        const miniCalendarEl = document.getElementById('mini-calendar');
-        if (!miniCalendarEl || this.miniCalendar) return;
-        
-        this.miniCalendar = new FullCalendar.Calendar(miniCalendarEl, {
-            initialView: 'dayGridMonth',
-            headerToolbar: {
-                left: 'prev',
-                center: 'title',
-                right: 'next'
-            },
-            height: 'auto',
-            dateClick: (info) => {
-                this.calendar.gotoDate(info.date);
-            },
-            datesSet: () => {
-                // Sync mini calendar with main calendar
-                if (this.calendar) {
-                    const date = this.miniCalendar.getDate();
-                    this.calendar.gotoDate(date);
-                }
-            }
-        });
-        
-        this.miniCalendar.render();
-    }
-    
-    // Get events for the calendar
-    async getCalendarEvents(fetchInfo, successCallback, failureCallback) {
-        try {
-            const transactions = await localDB.getTransactions();
-            console.log('Total transactions in database:', transactions.length);
-            
-            // Debug: Log income transactions
-            const incomeTransactions = transactions.filter(t => t.amount > 0 || t.type === 'income');
-            console.log('Income transactions:', incomeTransactions);
-            
-            const events = [];
-            const now = new Date();
-            
-            // Process actual transactions
-            transactions.forEach(transaction => {
-                try {
-                    const date = new Date(transaction.date);
-                    const amount = parseFloat(transaction.amount) || 0;
-                    const isExpense = (amount < 0 && transaction.type !== 'income' && transaction.type !== 'credit' && transaction.type !== 'deposit') || 
-                                   (transaction.type === 'expense');
-                    const displayAmount = Math.abs(amount);
-                    
-                    // Determine transaction type for styling
-                    const transactionType = (transaction.type || '').toLowerCase();
-                    let backgroundColor = '#d1e7dd'; // Default to deposit color
-                    let borderColor = '#a3cfbb';
-                    let textColor = '#0f5132';
-                    let amountPrefix = '+';
-                    let icon = '💰'; // Default icon
-                    
-                    // Style based on transaction type
-                    if (transactionType === 'expense' || amount < 0) {
-                        // Expense
-                        backgroundColor = '#f8d7da';
-                        borderColor = '#f5c2c7';
-                        textColor = '#842029';
-                        amountPrefix = '-';
-                        icon = '💸';
-                    } else if (transactionType === 'deposit') {
-                        // Deposit
-                        backgroundColor = '#d1e7dd';
-                        borderColor = '#a3cfbb';
-                        textColor = '#0f5132';
-                        amountPrefix = '+';
-                        icon = '💳';
-                    } else if (transactionType === 'credit') {
-                        // Credit
-                        backgroundColor = '#e2e3f5';
-                        borderColor = '#c7c9e9';
-                        textColor = '#2d3bb3';
-                        amountPrefix = '↗';
-                        icon = '💳';
-                    } else if (transactionType === 'transfer') {
-                        // Transfer
-                        backgroundColor = '#cfe2ff';
-                        borderColor = '#9ec5fe';
-                        textColor = '#084298';
-                        amountPrefix = '⇄';
-                        icon = '🔄';
-                    } else if (transactionType === 'income') {
-                        // Income
-                        backgroundColor = '#d1f2eb';
-                        borderColor = '#a2e0d4';
-                        textColor = '#0d6d5f';
-                        amountPrefix = '↑';
-                        icon = '💵';
-                    }
-                    
-                    // Create event title with icon and amount
-                    const title = `${icon} ${amountPrefix}$${displayAmount.toFixed(2)} ${transaction.description || ''}`.trim();
-                    
-                    events.push({
-                        id: `t_${transaction.id || Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                        title: title,
-                        start: date,
-                        allDay: true,
-                        backgroundColor,
-                        borderColor,
-                        textColor,
-                        extendedProps: {
-                            type: 'transaction',
-                            transactionType: transactionType || (amount < 0 ? 'expense' : 'deposit'),
-                            isExpense: amount < 0,
-                            amount: displayAmount,
-                            originalAmount: amount,
-                            description: transaction.description || '',
-                            category: transaction.category || 'Uncategorized',
-                            originalDate: date,
-                            icon: icon
-                        }
-                    });
-                } catch (e) {
-                    console.warn('Error processing transaction for calendar:', transaction, e);
-                }
-            });
-            
-            // Add predicted recurring transactions
-            const predictedTransactions = this.predictRecurringTransactions(transactions, fetchInfo.start, fetchInfo.end);
-            events.push(...predictedTransactions);
-            
-            successCallback(events);
-            
-            // Update summary
-            this.updateCalendarSummary(transactions, fetchInfo.start, fetchInfo.end);
-            
-        } catch (error) {
-            console.error('Error loading calendar events:', error);
-            failureCallback(error);
-        }
-    }
-    
-    // Store prediction history for learning
-    predictionHistory = {};
-    
-    // Apply learned patterns to transactions
-    applyLearnedPatterns(transactions) {
-        if (!this.predictionHistory || Object.keys(this.predictionHistory).length === 0) {
-            return transactions; // No learned patterns yet
-        }
-        
-        console.log('Applying learned patterns to transactions');
-        
-        // For now, we'll just log the learned patterns
-        // In a real implementation, we would adjust the transactions based on learned patterns
-        Object.entries(this.predictionHistory).forEach(([key, pattern]) => {
-            if (pattern.accepted > 0) {
-                console.log(`Pattern learned for ${key}:`, {
-                    confidence: pattern.accepted / pattern.totalPredictions,
-                    adjustments: pattern.adjustments.length,
-                    lastUpdated: pattern.lastUpdated
-                });
-            }
-        });
-        
-        return transactions;
-    }
-    
-    // Predict recurring transactions with improved accuracy
-    predictRecurringTransactions(transactions, startDate, endDate) {
-        console.log('predictRecurringTransactions called with:', { 
-            transactionCount: transactions.length,
-            startDate,
-            endDate 
-        });
-        
-        const predictedEvents = [];
-        const now = new Date();
-        const oneYearAgo = new Date(now);
-        oneYearAgo.setFullYear(now.getFullYear() - 1);
-        
-        // Get date-fns functions from global object
-        const { isSameDay, differenceInDays, addDays, format, isAfter, isBefore } = window.dateFns || {};
-        
-        // Load prediction history from localStorage if available
-        try {
-            const savedHistory = localStorage.getItem('predictionHistory');
-            if (savedHistory) {
-                this.predictionHistory = JSON.parse(savedHistory);
-            }
-        } catch (e) {
-            console.warn('Error loading prediction history:', e);
-            this.predictionHistory = {};
-        }
-        
-        // Debug: Log the first few transactions
-        console.log('Sample transactions:', transactions.slice(0, 3).map(t => ({
-            description: t.description,
-            amount: t.amount,
-            date: t.date,
-            type: t.type
-        })));
-        
-        // Group transactions by description and amount to find patterns
-        const transactionGroups = {};
-        
-        // Apply any learned patterns to enhance the transactions
-        const enhancedTransactions = this.applyLearnedPatterns(transactions);
-        
-        // First, normalize and group transactions
-        transactions.forEach(transaction => {
-            try {
-                // Skip transactions without a valid date
-                if (!transaction.date) return;
-                
-                const transDate = new Date(transaction.date);
-                if (isNaN(transDate.getTime())) return;
-                
-                // Create a normalized description (lowercase, trim, remove special chars)
-                const normalizedDesc = transaction.description
-                    .toLowerCase()
-                    .trim()
-                    .replace(/[^\w\s]/g, '');
-                
-                // Create a group key with description and amount (rounded to avoid minor differences)
-                const amount = typeof transaction.amount === 'number' 
-                    ? Math.round(transaction.amount * 100) / 100 
-                    : Math.round(parseFloat(transaction.amount) * 100) / 100;
-                    
-                if (isNaN(amount)) return;
-                
-                const groupKey = `${normalizedDesc}_${amount.toFixed(2)}`;
-                
-                if (!transactionGroups[groupKey]) {
-                    transactionGroups[groupKey] = [];
-                }
-                
-                transactionGroups[groupKey].push({
-                    date: transDate,
-                    amount: amount,
-                    description: transaction.description,
-                    type: transaction.type || (amount >= 0 ? 'income' : 'expense')
-                });
-            } catch (e) {
-                console.warn('Error processing transaction for recurring detection:', transaction, e);
-            }
-        });
-        
-        console.log('Transaction groups:', Object.keys(transactionGroups).length, 'groups found');
-        
-        // Analyze each group for recurring patterns
-        Object.entries(transactionGroups).forEach(([groupKey, groupTransactions]) => {
-            try {
-                if (groupTransactions.length < 2) return; // Need at least 2 transactions to detect a pattern
-                
-                // Sort transactions by date
-                groupTransactions.sort((a, b) => a.date - b.date);
-                
-                // Calculate intervals between transactions
-                const intervals = [];
-                for (let i = 1; i < groupTransactions.length; i++) {
-                    const prevDate = groupTransactions[i - 1].date;
-                    const currDate = groupTransactions[i].date;
-                    const interval = differenceInDays(currDate, prevDate);
-                    intervals.push(interval);
-                }
-                
-                // Calculate average interval (in days)
-                const avgInterval = intervals.reduce((sum, val) => sum + val, 0) / intervals.length;
-                
-                // Calculate standard deviation to check consistency
-                const squaredDiffs = intervals.map(interval => Math.pow(interval - avgInterval, 2));
-                const variance = squaredDiffs.reduce((sum, val) => sum + val, 0) / intervals.length;
-                const stdDev = Math.sqrt(variance);
-                
-                // Calculate confidence (0-1) based on standard deviation and number of occurrences
-                let confidence = 0.7; // Base confidence
-                
-                // Increase confidence with more occurrences
-                confidence = Math.min(0.95, confidence + (groupTransactions.length * 0.05));
-                
-                // Decrease confidence with higher standard deviation
-                confidence = Math.max(0.1, confidence - (stdDev / 30));
-                
-                // If we have a consistent pattern, predict future occurrences
-                if (confidence > 0.5 && avgInterval > 0) {
-                    const lastTransaction = groupTransactions[groupTransactions.length - 1];
-                    let nextDate = new Date(lastTransaction.date);
-                    
-                    // Predict next 3 occurrences or until we reach the end date
-                    for (let i = 0; i < 3; i++) {
-                        nextDate = addDays(nextDate, Math.round(avgInterval));
-                        
-                        // Skip if the predicted date is in the past or before the start date
-                        if (nextDate < now || nextDate < new Date(startDate)) continue;
-                        
-                        // Stop if we've gone past the end date
-                        if (nextDate > new Date(endDate)) break;
-                        
-                        // Add predicted event
-                        predictedEvents.push({
-                            title: `${lastTransaction.description} (${(confidence * 100).toFixed(0)}% likely)`,
-                            start: nextDate.toISOString(),
-                            allDay: true,
-                            color: confidence > 0.8 ? '#FFA500' : '#FFD700', // Orange for high confidence, gold for medium
-                            extendedProps: {
-                                isPredicted: true,
-                                confidence: confidence,
-                                amount: lastTransaction.amount,
-                                description: lastTransaction.description,
-                                type: lastTransaction.type,
-                                originalDates: groupTransactions.map(t => t.date.toISOString().split('T')[0])
-                            }
-                        });
-                    }
-                }
-                
-                console.log(`Group ${groupKey}:`, {
-                    count: groupTransactions.length,
-                    avgInterval,
-                    stdDev,
-                    confidence: (confidence * 100).toFixed(1) + '%',
-                    lastDate: groupTransactions[groupTransactions.length - 1].date.toISOString()
-                });
-                
-            } catch (e) {
-                console.error('Error analyzing transaction group:', groupKey, e);
-            }
-        });
-        
-        console.log('Predicted events:', predictedEvents);
-        return predictedEvents;
-        
-        // Only consider transactions from the past year for prediction
-        const recentTransactions = transactions.filter(t => {
-            try {
-                const date = new Date(t.date);
-                return date >= oneYearAgo;
-            } catch (e) {
-                return false;
-            }
-        });
-        
-        // Group similar transactions
-        recentTransactions.forEach(transaction => {
-            try {
-                const key = `${transaction.description || ''}_${Math.abs(transaction.amount).toFixed(2)}`;
-                if (!transactionGroups[key]) {
-                    transactionGroups[key] = [];
-                }
-                transactionGroups[key].push({
-                    date: new Date(transaction.date),
-                    amount: parseFloat(transaction.amount) || 0,
-                    ...transaction
-                });
-            } catch (e) {
-                console.warn('Error processing transaction for prediction:', transaction, e);
-            }
-        });
-        
-        // Analyze each group for patterns
-        Object.values(transactionGroups).forEach(group => {
-            if (group.length < 2) return; // Need at least 2 transactions to detect a pattern
-            
-            // Sort by date
-            group.sort((a, b) => a.date - b.date);
-            
-            // Calculate average interval between transactions (in days)
-            const intervals = [];
-            for (let i = 1; i < group.length; i++) {
-                const diff = (group[i].date - group[i-1].date) / (1000 * 60 * 60 * 24);
-                intervals.push(diff);
-            }
-            
-            const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
-            const isExpense = group[0].amount < 0;
-            const amount = Math.abs(group[0].amount);
-            
-            // Only proceed if we have a somewhat regular pattern
-            const variance = Math.max(...intervals) - Math.min(...intervals);
-            if (variance > 10) return; // Too much variance to be considered recurring
-            
-            // Predict next occurrence
-            const lastDate = new Date(Math.max(...group.map(t => t.date)));
-            let nextDate = new Date(lastDate);
-            
-            while (nextDate < endDate) {
-                nextDate = new Date(nextDate);
-                nextDate.setDate(nextDate.getDate() + Math.round(avgInterval));
-                
-                if (nextDate >= startDate && nextDate <= endDate) {
-                    // Calculate confidence based on number of occurrences and variance
-                    const confidence = Math.min(100, Math.round(
-                        (1 - (variance / (avgInterval * 0.5))) * 
-                        Math.min(1, group.length / 3) * 100
-                    ));
-                    
-                    predictedEvents.push({
-                        id: `predicted_${group[0].id || ''}_${nextDate.getTime()}`,
-                        title: `[${confidence}%] ${isExpense ? '-' : '+'}$${amount.toFixed(2)} ${group[0].description || 'Recurring'}`.trim(),
-                        start: nextDate,
-                        allDay: true,
-                        backgroundColor: isExpense ? '#fff3cd' : '#cfe2ff',
-                        borderColor: isExpense ? '#ffecb5' : '#9ec5fe',
-                        textColor: isExpense ? '#664d03' : '#084298',
-                        extendedProps: {
-                            type: 'predicted',
-                            isExpense,
-                            amount,
-                            description: group[0].description || 'Recurring Transaction',
-                            category: group[0].category || 'Uncategorized',
-                            confidence,
-                            pattern: {
-                                interval: Math.round(avgInterval),
-                                occurrences: group.length,
-                                lastDate: lastDate.toISOString().split('T')[0]
-                            }
-                        }
-                    });
-                }
-            }
-        });
-        
-        return predictedEvents;
-    }
-    
-    // Handle date click on calendar
-    async handleDateClick(info) {
-        const date = info.date;
-        const dateStr = date.toISOString().split('T')[0];
-        
-        // Update selected date display
-        const selectedDateEl = document.getElementById('selected-date');
-        if (selectedDateEl) {
-            const { format } = window.dateFns || {};
-            selectedDateEl.textContent = format ? format(date, 'EEEE, MMMM d, yyyy') : date.toLocaleDateString('en-US', {
-                weekday: 'long',
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric'
-            });
-        }
-        
-        // Load transactions for selected date
-        await this.loadTransactionsForDate(date);
-    }
-    
-    // Load transactions for a specific date
-    async loadTransactionsForDate(date) {
-        try {
-            const transactions = await localDB.getTransactions();
-            const dateStr = date.toISOString().split('T')[0];
-            
-            // Filter transactions for the selected date
-            const dayTransactions = transactions.filter(t => {
-                try {
-                    const transDate = new Date(t.date).toISOString().split('T')[0];
-                    return transDate === dateStr;
-                } catch (e) {
-                    return false;
-                }
-            });
-            
-            // Update transactions list
-            const container = document.getElementById('selected-date-transactions');
-            if (!container) return;
-            
-            if (dayTransactions.length === 0) {
-                container.innerHTML = '<p class="text-muted">No transactions for this date</p>';
-                return;
-            }
-            
-            let html = '<div class="transaction-list">';
-            
-            dayTransactions.forEach(transaction => {
-                const isExpense = transaction.amount < 0 || transaction.type === 'expense';
-                const amount = Math.abs(parseFloat(transaction.amount) || 0);
-                
-                html += `
-                    <div class="transaction-item ${isExpense ? 'expense' : 'income'}">
-                        <div class="transaction-details">
-                            <div class="transaction-description">${transaction.description || 'No description'}</div>
-                            <div class="transaction-category">${transaction.category || 'Uncategorized'}</div>
-                        </div>
-                        <div class="transaction-amount ${isExpense ? 'text-danger' : 'text-success'}">
-                            ${isExpense ? '-' : '+'}$${amount.toFixed(2)}
-                        </div>
-                    </div>
-                `;
-            });
-            
-            html += '</div>';
-            container.innerHTML = html;
-            
-        } catch (error) {
-            console.error('Error loading transactions for date:', error);
-            this.showToast('Error loading transactions', 'error');
-        }
-    }
-    
-    // Handle calendar event click
-    handleCalendarEventClick(info) {
-        const event = info.event;
-        const isPredicted = event.extendedProps?.isPredicted;
-        
-        if (isPredicted) {
-            const response = prompt(
-                `Edit predicted transaction:\n\n` +
-                `Description: ${event.title.replace(/\(\d+%\)/g, '').trim()}\n` +
-                `Amount: ${event.extendedProps.amount}\n` +
-                `Prediction Confidence: ${Math.round(event.extendedProps.confidence * 100)}%\n\n` +
-                'Options:\n' +
-                '1. Keep as is\n' +
-                '2. Add as new transaction\n' +
-                '3. Adjust amount and add\n' +
-                '4. Ignore this prediction\n\n' +
-                'Enter your choice (1-4):', '1'
-            );
+  }
 
-            switch(response) {
-                case '2':
-                    this.addPredictedTransaction(event);
-                    break;
-                case '3':
-                    const newAmount = prompt('Enter new amount:', Math.abs(event.extendedProps.amount));
-                    if (newAmount && !isNaN(newAmount)) {
-                        const updatedEvent = {...event};
-                        updatedEvent.extendedProps.amount = parseFloat(newAmount);
-                        if (updatedEvent.title.includes('$')) {
-                            updatedEvent.title = updatedEvent.title.replace(/\$\d+(\.\d{2})?/, `$${parseFloat(newAmount).toFixed(2)}`);
-                        }
-                        this.addPredictedTransaction(updatedEvent);
-                        this.improvePrediction(updatedEvent, 'adjusted');
-                    }
-                    break;
-                case '4':
-                    this.improvePrediction(event, 'ignored');
-                    break;
-                default:
-                    // Keep as is
-                    break;
-            }
-        } else {
-            // Show transaction details for existing transactions
-            const transactionId = event.extendedProps?.transactionId;
-            if (transactionId) {
-                this.viewTransactionDetails(transactionId);
-            }
-        }
+  async performSearch() {
+    console.log('performSearch called');
+        
+    // Get search input and validate
+    const searchInput = document.getElementById('transaction-search');
+    if (!searchInput) {
+      console.error('Search input element not found');
+      return;
     }
-    
-    // Improve prediction based on user feedback
-    improvePrediction(event, action) {
-        try {
-            const { description, amount, originalDates = [] } = event.extendedProps;
-            const key = `${description}_${amount.toFixed(2)}`;
-            
-            if (!this.predictionHistory[key]) {
-                this.predictionHistory[key] = {
-                    pattern: {},
-                    adjustments: [],
-                    totalPredictions: 0,
-                    accepted: 0,
-                    adjusted: 0,
-                    ignored: 0,
-                    lastUpdated: new Date().toISOString()
-                };
-            }
-            
-            const prediction = this.predictionHistory[key];
-            
-            // Update statistics based on user action
-            prediction.totalPredictions++;
-            if (action === 'accepted') prediction.accepted++;
-            if (action === 'adjusted') prediction.adjusted++;
-            if (action === 'ignored') prediction.ignored++;
-            prediction.lastUpdated = new Date().toISOString();
-            
-            // Store the adjustment details if this was an adjustment
-            if (action === 'adjusted') {
-                prediction.adjustments.push({
-                    originalAmount: amount,
-                    adjustedAmount: parseFloat(prompt('Enter adjusted amount:')),
-                    date: new Date().toISOString()
-                });
-            }
-            
-            // Save the updated prediction history
-            localStorage.setItem('predictionHistory', JSON.stringify(this.predictionHistory));
-            
-            console.log(`Prediction ${action}:`, { key, prediction });
-            
-        } catch (e) {
-            console.error('Error improving prediction:', e);
-        }
+        
+    const searchTerm = searchInput.value.trim();
+    if (!searchTerm) {
+      console.log('No search term entered');
+      return;
     }
-    
-    // Add predicted transaction to the database
-    async addPredictedTransaction(event) {
-        try {
-            const transaction = {
-                description: event.title.replace(/\(\d+%\)/g, '').trim(),
-                amount: event.extendedProps.amount,
-                date: event.start,
-                type: event.extendedProps.type || 'expense',
-                category: event.extendedProps.category || 'Uncategorized',
-                isPredicted: true,
-                originalPrediction: event.extendedProps.originalDates || []
-            };
-            
-            await this.addTransaction(transaction);
-            
-            // Update prediction model with this positive example
-            this.improvePrediction(event, 'accepted');
-            
-        } catch (error) {
-            console.error('Error adding predicted transaction:', error);
-            this.showToast('Error adding transaction', 'error');
-        }
+        
+    console.log('Searching for:', searchTerm);
+        
+    // Show loading state
+    const searchBtn = document.getElementById('search-btn');
+    if (searchBtn) {
+      searchBtn.disabled = true;
+      searchBtn.innerHTML = '<i class="bi bi-hourglass"></i> Searching...';
     }
-    
-    async addTransaction(transaction) {
-        try {
-            // Auto-categorize based on description
-            if (transaction.description && !transaction.category) {
-                transaction.category = this.mapDescriptionToCategory(transaction.description, 'Uncategorized');
+        
+    try {
+      // Get search options
+      const exactMatch = document.getElementById('exact-match')?.checked || false;
+      const includeNotes = document.getElementById('include-notes')?.checked || false;
+      const timeRange = document.getElementById('time-range')?.value || 'all';
+            
+      console.log('Search options:', { exactMatch, includeNotes, timeRange });
+            
+      // Calculate date range based on selection
+      const today = new Date();
+      const endDate = today.toISOString().split('T')[0];
+      let startDate;
+            
+      switch(timeRange) {
+        case 'week':
+          startDate = new Date(today);
+          startDate.setDate(today.getDate() - 7);
+          startDate = startDate.toISOString().split('T')[0];
+          break;
+        case 'month':
+          startDate = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+          break;
+        case '6months':
+          startDate = new Date(today.getFullYear(), today.getMonth() - 5, 1).toISOString().split('T')[0];
+          break;
+        case 'year':
+          startDate = new Date(today.getFullYear(), 0, 1).toISOString().split('T')[0];
+          break;
+        default: // 'all'
+          startDate = '1970-01-01';
+      }
+            
+      console.log('Date range:', { startDate, endDate });
+            
+      let transactions;
+      try {
+        console.log(`Fetching transactions from ${startDate} to ${endDate}`);
+        transactions = await this.app.db.getTransactions({
+          startDate,
+          endDate
+        });
                 
-                // If we have a mapping, save it for future transactions
-                if (transaction.category !== 'Uncategorized') {
-                    const normalizedDesc = transaction.description.toLowerCase().trim();
-                    if (!this.categoryMappings[normalizedDesc]) {
-                        this.categoryMappings[normalizedDesc] = transaction.category;
-                        this.saveCategoryMappings();
-                    }
-                }
-            }
-            
-            // Add the transaction to the database
-            const addedTransaction = await localDB.addItem('transactions', {
-                ...transaction,
-                date: transaction.date || new Date().toISOString(),
-                createdAt: new Date().toISOString()
-            });
-            
-            // If this is a category change, update similar transactions
-            if (transaction.category && transaction.description) {
-                // Update the mapping
-                const normalizedDesc = transaction.description.toLowerCase().trim();
-                this.categoryMappings[normalizedDesc] = transaction.category;
-                this.saveCategoryMappings();
+        if (!Array.isArray(transactions)) {
+          throw new Error('Invalid transactions data received from database');
+        }
                 
-                // Update similar transactions
-                await this.updateTransactionsWithNewCategory(
-                    '', // Empty string will match uncategorized transactions with same description
-                    transaction.category
-                );
-            }
+        console.log(`Found ${transactions.length} transactions in date range`);
+      } catch (error) {
+        console.error('Error fetching transactions:', error);
+        throw new Error('Could not load transactions. Please try again.');
+      }
             
-            // Refresh the current view
-            this.refreshCurrentView();
+      // Process search terms
+      const searchTerms = searchTerm.toLowerCase()
+        .split(' ')
+        .map(term => term.trim())
+        .filter(term => term.length > 0);
+                
+      if (searchTerms.length === 0) {
+        console.log('No valid search terms after processing');
+        this.searchResults = [];
+        return;
+      }
             
-            // Show success message
-            this.showToast('Transaction added successfully', 'success');
+      console.log('Searching with terms:', searchTerms);
             
-            return addedTransaction;
-        } catch (error) {
-            console.error('Error adding transaction:', error);
-            this.showToast('Error adding transaction', 'error');
+      // Filter transactions based on search term with detailed logging
+      this.searchResults = transactions.filter(transaction => {
+        try {
+          if (!transaction) {
+            console.warn('Encountered undefined transaction in search');
             return false;
-        }
-    }
-    
-    async editTransaction(id, updates) {
-        try {
-            // Get the original transaction to check for category changes
-            const originalTransaction = await localDB.getItem('transactions', id);
-            
-            // Update the transaction in the database
-            const updatedTransaction = await localDB.updateItem('transactions', id, {
-                ...updates,
-                updatedAt: new Date().toISOString()
-            });
-            
-            // If category or description changed, update mappings and similar transactions
-            if ((updates.category || updates.description) && originalTransaction) {
-                const newDescription = updates.description || originalTransaction.description;
-                const newCategory = updates.category || originalTransaction.category;
-                
-                if (newDescription) {
-                    const normalizedDesc = newDescription.toLowerCase().trim();
+          }
                     
-                    // Update the mapping
-                    this.categoryMappings[normalizedDesc] = newCategory;
-                    this.saveCategoryMappings();
+          // Build searchable text
+          const searchText = [
+            String(transaction.description || '').toLowerCase(),
+            String(transaction.category || '').toLowerCase()
+          ];
                     
-                    // Update similar transactions if category changed
-                    if (updates.category) {
-                        await this.updateTransactionsWithNewCategory(
-                            originalTransaction.category || '',
-                            newCategory
-                        );
-                    }
-                }
-            }
-            
-            // Refresh the current view
-            this.refreshCurrentView();
-            
-            // Show success message
-            this.showToast('Transaction updated successfully', 'success');
-            
-            return updatedTransaction;
+          if (includeNotes && transaction.notes) {
+            searchText.push(String(transaction.notes).toLowerCase());
+          }
+                    
+          const searchTextStr = searchText.join(' ');
+                    
+          // Apply search logic
+          if (exactMatch) {
+            // All search terms must be present
+            return searchTerms.every(term => searchTextStr.includes(term));
+          } 
+          // Any search term can match (OR logic)
+          return searchTerms.some(term => searchTextStr.includes(term));
+                    
         } catch (error) {
-            console.error('Error updating transaction:', error);
-            this.showToast('Error updating transaction', 'error');
-            return false;
+          console.error('Error processing transaction during search:', error, transaction);
+          return false; // Skip this transaction if there's an error
         }
+      });
+            
+      console.log(`Found ${this.searchResults.length} matching transactions`);
+            
+      // Calculate search statistics
+      this.calculateSearchStats();
+            
+      // Debug: Log before rendering
+      console.log('About to render search results');
+            
+      // Render results with error handling for each step
+      try {
+        this.renderSearchResults();
+        console.log('Search results rendered');
+                
+        this.renderSearchCharts();
+        console.log('Search charts rendered');
+                
+        this.generateSearchInsights();
+        console.log('Search insights generated');
+      } catch (renderError) {
+        console.error('Error during search result rendering:', renderError);
+        throw renderError; // Re-throw to be caught by the outer try-catch
+      }
+            
+    } catch (error) {
+      console.error('Error performing search:', error);
+      // Show error to user
+      const tbody = document.getElementById('search-results-body');
+      if (tbody) {
+        tbody.innerHTML = `
+                    <tr>
+                        <td colspan="5" class="text-center text-error">Error performing search: ${error.message}</td>
+                    </tr>`;
+      }
+    } finally {
+      // Reset button state
+      const searchBtn = document.getElementById('search-btn');
+      if (searchBtn) {
+        searchBtn.disabled = false;
+        searchBtn.textContent = 'Search';
+      }
     }
+  }
     
-    // Customize event rendering
-    handleEventDidMount(info) {
-        // Add tooltip for events
-        if (info.event.extendedProps.type === 'predicted') {
-            const tooltip = document.createElement('div');
-            tooltip.className = 'event-tooltip';
-            tooltip.innerHTML = `
-                <strong>${info.event.title}</strong><br>
-                <small>Predicted with ${info.event.extendedProps.confidence}% confidence</small>
-            `;
-            info.el.appendChild(tooltip);
+  calculateSearchStats() {
+    console.log('Calculating search statistics...');
+        
+    // Initialize default stats
+    const defaultStats = {
+      totalAmount: 0,
+      averageAmount: 0,
+      minAmount: 0,
+      maxAmount: 0,
+      transactionCount: 0,
+      firstTransactionDate: null,
+      lastTransactionDate: null,
+      incomeTotal: 0,
+      expenseTotal: 0,
+      transactionDates: []
+    };
+        
+    // Reset to default if no results
+    if (!Array.isArray(this.searchResults) || this.searchResults.length === 0) {
+      console.log('No search results, resetting stats to default');
+      this.searchStats = { ...defaultStats };
+      return;
+    }
+        
+    try {
+      // Filter out invalid transactions
+      const validTransactions = this.searchResults
+        .filter(transaction => {
+          if (!transaction) return false;
+          const amount = parseFloat(transaction.amount);
+          return !isNaN(amount);
+        });
             
-            // Position the tooltip
-            info.el.addEventListener('mouseenter', () => {
-                tooltip.style.display = 'block';
-                const rect = info.el.getBoundingClientRect();
-                tooltip.style.left = `${rect.left}px`;
-                tooltip.style.top = `${rect.bottom + 5}px`;
-            });
+      if (validTransactions.length === 0) {
+        console.log('No valid transactions with amounts found');
+        this.searchStats = { ...defaultStats, transactionCount: this.searchResults.length };
+        return;
+      }
             
-            info.el.addEventListener('mouseleave', () => {
-                tooltip.style.display = 'none';
-            });
+      // Extract and parse amounts
+      const amounts = validTransactions.map(t => {
+        const amount = parseFloat(t.amount);
+        return isNaN(amount) ? 0 : amount;
+      });
+            
+      // Calculate financial stats
+      const totalAmount = amounts.reduce((sum, amount) => sum + amount, 0);
+      const incomeTotal = amounts.filter(amount => amount > 0).reduce((sum, amount) => sum + amount, 0);
+      const expenseTotal = Math.abs(amounts.filter(amount => amount < 0).reduce((sum, amount) => sum + amount, 0));
+            
+      // Process transaction dates
+      const transactionDates = validTransactions
+        .map(t => {
+          try {
+            const date = new Date(t.date);
+            return isNaN(date.getTime()) ? null : date;
+          } catch (e) {
+            console.warn('Invalid transaction date:', t.date, e);
+            return null;
+          }
+        })
+        .filter(date => date !== null)
+        .sort((a, b) => a - b);
+            
+      // Update stats
+      this.searchStats = {
+        totalAmount,
+        averageAmount: validTransactions.length > 0 ? totalAmount / validTransactions.length : 0,
+        minAmount: Math.min(...amounts),
+        maxAmount: Math.max(...amounts),
+        transactionCount: validTransactions.length,
+        firstTransactionDate: transactionDates.length > 0 ? transactionDates[0] : null,
+        lastTransactionDate: transactionDates.length > 0 ? transactionDates[transactionDates.length - 1] : null,
+        incomeTotal,
+        expenseTotal,
+        transactionDates,
+        // Additional calculated fields
+        isSingleDay: transactionDates.length <= 1 || 
+                    (transactionDates[0] && transactionDates[transactionDates.length - 1] &&
+                     transactionDates[0].toDateString() === transactionDates[transactionDates.length - 1].toDateString()),
+        dayCount: new Set(transactionDates.map(d => d.toDateString())).size,
+        averagePerDay: transactionDates.length > 0 ? totalAmount / new Set(transactionDates.map(d => d.toDateString())).size : 0
+      };
+            
+      console.log('Calculated search stats:', {
+        ...this.searchStats,
+        firstTransactionDate: this.searchStats.firstTransactionDate?.toISOString(),
+        lastTransactionDate: this.searchStats.lastTransactionDate?.toISOString(),
+        transactionDates: this.searchStats.transactionDates.map(d => d.toISOString().split('T')[0])
+      });
+            
+    } catch (error) {
+      console.error('Error calculating search statistics:', error);
+      // Fall back to default stats with the count of all results
+      this.searchStats = { 
+        ...defaultStats, 
+        transactionCount: this.searchResults.length 
+      };
+    }
+  }
+    
+  renderSearchResults() {
+    console.log('Rendering search results...');
+        
+    const tbody = document.getElementById('search-results-body');
+    if (!tbody) {
+      console.error('Search results table body not found');
+      return;
+    }
+        
+    // Clear existing content
+    tbody.innerHTML = '';
+        
+    // Reset search button state
+    const searchBtn = document.getElementById('search-btn');
+    if (searchBtn) {
+      searchBtn.disabled = false;
+      searchBtn.textContent = 'Search';
+    }
+        
+    // Validate search results
+    if (!Array.isArray(this.searchResults)) {
+      console.error('searchResults is not an array:', this.searchResults);
+      tbody.innerHTML = `
+                <tr>
+                    <td colspan="5" class="text-center text-danger py-4">
+                        <div class="d-flex flex-column align-items-center">
+                            <i class="bi bi-exclamation-triangle-fill text-danger mb-2" style="font-size: 1.5rem;"></i>
+                            <div>Error: Invalid search results format</div>
+                            <div class="small mt-1">Please try your search again</div>
+                        </div>
+                    </td>
+                </tr>`;
+      return;
+    }
+        
+    // Handle empty results
+    if (this.searchResults.length === 0) {
+      console.log('No search results to display');
+      const searchInput = document.getElementById('transaction-search')?.value.trim() || '';
+            
+      let emptyStateHtml = '';
+            
+      if (searchInput) {
+        // If there was a search term
+        emptyStateHtml = `
+                    <tr>
+                        <td colspan="5" class="text-center py-5">
+                            <div class="d-flex flex-column align-items-center">
+                                <i class="bi bi-search-x" style="font-size: 2.5rem; opacity: 0.7; margin-bottom: 1rem;"></i>
+                                <h5 class="mb-2">No matching transactions</h5>
+                                <p class="text-muted mb-3">We couldn't find any transactions matching "${this.app.escapeHtml(searchInput)}"</p>
+                                <div class="d-flex gap-2">
+                                    <button class="btn btn-sm btn-outline-primary" onclick="document.getElementById('transaction-search').value = ''; document.getElementById('search-btn').click();">
+                                        <i class="bi bi-arrow-counterclockwise me-1"></i> Clear search
+                                    </button>
+                                    <button class="btn btn-sm btn-primary" onclick="document.getElementById('transaction-search').focus();">
+                                        <i class="bi bi-search me-1"></i> Try a different search
+                                    </button>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>`;
+      } else {
+        // If no search term was entered
+        emptyStateHtml = `
+                    <tr>
+                        <td colspan="5" class="text-center py-5">
+                            <div class="d-flex flex-column align-items-center">
+                                <i class="bi bi-search" style="font-size: 2.5rem; opacity: 0.7; margin-bottom: 1rem;"></i>
+                                <h5 class="mb-2">Search for transactions</h5>
+                                <p class="text-muted mb-3">Enter a search term to find matching transactions</p>
+                                <div class="input-group" style="max-width: 400px;">
+                                    <input type="text" id="search-input-focus" class="form-control" placeholder="Search transactions...">
+                                    <button class="btn btn-primary" type="button" onclick="document.getElementById('search-btn').click();">
+                                        <i class="bi bi-search me-1"></i> Search
+                                    </button>
+                                </div>
+                                <script>
+                                    // Auto-focus the search input when this is rendered
+                                    document.addEventListener('DOMContentLoaded', () => {
+                                        const input = document.getElementById('search-input-focus');
+                                        if (input) {
+                                            input.focus();
+                                            // Handle Enter key in the search input
+                                            input.addEventListener('keypress', (e) => {
+                                                if (e.key === 'Enter') {
+                                                    document.getElementById('transaction-search').value = input.value;
+                                                    document.getElementById('search-btn').click();
+                                                }
+                                            });
+                                        }
+                                    });
+                                </script>
+                            </div>
+                        </td>
+                    </tr>`;
+      }
+            
+      tbody.innerHTML = emptyStateHtml;
+      return;
+    }
+        
+    // Sort by date (newest first)
+    const sortedResults = [...this.searchResults].sort((a, b) => {
+      try {
+        return new Date(b.date) - new Date(a.date);
+      } catch (error) {
+        console.error('Error sorting transactions by date:', error);
+        return 0;
+      }
+    });
+        
+    // Update result count and total
+    const resultCount = document.getElementById('result-count');
+    const resultTotal = document.getElementById('result-total');
+        
+    if (resultCount) resultCount.textContent = this.searchResults.length;
+    if (resultTotal) resultTotal.textContent = this.app.formatCurrency(this.searchStats.totalAmount);
+        
+    // Render transaction rows
+    tbody.innerHTML = sortedResults.map(transaction => {
+      if (!transaction) {
+        console.warn('Skipping undefined transaction');
+        return '';
+      }
+            
+      try {
+        const date = new Date(transaction.date);
+        const formattedDate = date.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric'
+        });
+                
+        const amount = parseFloat(transaction.amount) || 0;
+        const amountClass = amount >= 0 ? 'text-success' : 'text-danger';
+                
+        return `
+                    <tr>
+                        <td>${formattedDate}</td>
+                        <td>${this.app.escapeHtml(transaction.description || 'No description')}</td>
+                        <td>${this.app.escapeHtml(transaction.category || 'Uncategorized')}</td>
+                        <td class="${amountClass} text-end">${this.app.formatCurrency(amount)}</td>
+                        <td>${this.calculateTransactionChange(transaction)}</td>
+                    </tr>`;
+      } catch (error) {
+        console.error('Error rendering transaction row:', error, transaction);
+        return `
+                    <tr class="table-warning">
+                        <td colspan="5">Error displaying transaction</td>
+                    </tr>`;
+      }
+    }).join('');
+  }
+    
+  calculateTransactionChange(_transaction) {
+    // This is a simplified version - you would want to implement more sophisticated
+    // change detection based on similar transactions over time
+    return '—'; // Placeholder
+  }
+    
+  renderSearchCharts() {
+    console.log('Rendering search charts...');
+        
+    if (!Array.isArray(this.searchResults) || this.searchResults.length === 0) {
+      console.log('No results to render charts for');
+      return;
+    }
+        
+    try {
+      this.renderSearchTrendChart();
+            
+      // Only show category chart if we have categories
+      const hasCategories = this.searchResults.some(t => t.category);
+      console.log(`Transactions with categories: ${hasCategories ? 'Yes' : 'No'}`);
+            
+      if (hasCategories) {
+        this.renderSearchCategoryChart();
+      } else {
+        console.log('No categories found in search results, skipping category chart');
+        const categoryChartContainer = document.getElementById('search-category-chart-container');
+        if (categoryChartContainer) {
+          categoryChartContainer.innerHTML = '<p class="text-muted">No category data available for this search</p>';
         }
+      }
+    } catch (error) {
+      console.error('Error rendering search charts:', error);
     }
+  }
     
-    // Update calendar summary with budget information
-    async updateCalendarSummary(transactions, startDate, endDate) {
-        try {
-            const summaryEl = document.getElementById('calendar-summary');
-            if (!summaryEl) return;
-            
-            // Get budget data
-            let monthlyBudget = 0;
-            try {
-                const budgetData = await localDB.getBudget();
-                monthlyBudget = parseFloat(budgetData?.monthlyBudget) || 0;
-            } catch (e) {
-                console.warn('Could not load budget data:', e);
-            }
-            
-            // Filter transactions for the current view
-            const filteredTransactions = transactions.filter(t => {
-                try {
-                    const date = new Date(t.date);
-                    return date >= startDate && date <= endDate;
-                } catch (e) {
-                    return false;
-                }
-            });
-            
-            // Calculate days in period
-            const daysInPeriod = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
-            const daysInMonth = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 0).getDate();
-            const isMonthlyView = daysInPeriod > 7; // More than a week is considered monthly view
-            
-            // Calculate budget for the period
-            const periodBudget = isMonthlyView 
-                ? monthlyBudget 
-                : (monthlyBudget / daysInMonth) * daysInPeriod;
-                
-            // Calculate daily budget for the period
-            const dailyBudget = periodBudget / daysInPeriod;
-            
-            // Categorize transactions
-            const deposits = filteredTransactions
-                .filter(t => t.type === 'deposit' || t.type === 'credit' || (t.amount > 0 && t.type !== 'expense'))
-                .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount) || 0), 0);
-                
-            const expenses = filteredTransactions
-                .filter(t => t.amount < 0 || t.type === 'expense')
-                .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount) || 0), 0);
-                
-            const net = deposits - expenses;
-            const remainingBudget = Math.max(0, periodBudget - expenses);
-            const budgetUsed = periodBudget > 0 ? (expenses / periodBudget) * 100 : 0;
-            
-            // Group by transaction type and category
-            const categories = {};
-            const types = {
-                deposit: { label: 'Deposits', total: 0, class: 'text-success' },
-                credit: { label: 'Credits', total: 0, class: 'text-info' },
-                expense: { label: 'Expenses', total: 0, class: 'text-danger' },
-                other: { label: 'Other', total: 0, class: 'text-muted' }
-            };
-            
-            filteredTransactions.forEach(t => {
-                const amount = Math.abs(parseFloat(t.amount) || 0);
-                let type = t.type?.toLowerCase() || 'other';
-                
-                // Categorize the type
-                if (!['deposit', 'credit', 'expense'].includes(type)) {
-                    type = t.amount > 0 ? 'deposit' : 'expense';
-                }
-                
-                // Update type total
-                if (types[type]) {
-                    types[type].total += amount;
-                } else {
-                    types.other.total += amount;
-                }
-                
-                // Update category breakdown
-                const category = t.category || 'Uncategorized';
-                if (!categories[category]) {
-                    categories[category] = { 
-                        deposit: 0, 
-                        credit: 0, 
-                        expense: 0, 
-                        other: 0 
-                    };
-                }
-                categories[category][type] += amount;
-            });
-            
-            // Calculate daily, weekly, and monthly metrics
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            
-            // Daily metrics
-            const dailyTransactions = transactions.filter(t => {
-                try {
-                    const date = new Date(t.date);
-                    date.setHours(0, 0, 0, 0);
-                    return date.getTime() === today.getTime();
-                } catch (e) {
-                    return false;
-                }
-            });
-            
-            const dailyExpenses = dailyTransactions
-                .filter(t => t.amount < 0 || t.type === 'expense')
-                .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount) || 0), 0);
-            
-            const dailyRemaining = Math.max(0, dailyBudget - dailyExpenses);
-            const dailyUsed = dailyBudget > 0 ? (dailyExpenses / dailyBudget) * 100 : 0;
-            
-            // Weekly metrics (current week)
-            const weekStart = new Date(today);
-            weekStart.setDate(today.getDate() - today.getDay()); // Start of week (Sunday)
-            const weekEnd = new Date(weekStart);
-            weekEnd.setDate(weekStart.getDate() + 6); // End of week (Saturday)
-            
-            const weeklyTransactions = transactions.filter(t => {
-                try {
-                    const date = new Date(t.date);
-                    return date >= weekStart && date <= weekEnd;
-                } catch (e) {
-                    return false;
-                }
-            });
-            
-            const weeklyExpenses = weeklyTransactions
-                .filter(t => t.amount < 0 || t.type === 'expense')
-                .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount) || 0), 0);
-                
-            const weeklyBudget = (monthlyBudget / daysInMonth) * 7; // Weekly budget based on monthly
-            const weeklyRemaining = Math.max(0, weeklyBudget - weeklyExpenses);
-            const weeklyUsed = weeklyBudget > 0 ? (weeklyExpenses / weeklyBudget) * 100 : 0;
-            
-            // Monthly metrics (current month)
-            const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-            const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-            
-            const monthlyTransactions = transactions.filter(t => {
-                try {
-                    const date = new Date(t.date);
-                    return date >= monthStart && date <= monthEnd;
-                } catch (e) {
-                    return false;
-                }
-            });
-            
-            const monthlyExpenses = monthlyTransactions
-                .filter(t => t.amount < 0 || t.type === 'expense')
-                .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount) || 0), 0);
-                
-            const monthlyRemaining = Math.max(0, monthlyBudget - monthlyExpenses);
-            const monthlyUsed = monthlyBudget > 0 ? (monthlyExpenses / monthlyBudget) * 100 : 0;
-            
-            // Generate HTML
-            let html = `
-                <div class="summary-period mb-3">
-                    <h4>Budget Summary</h4>
-                    <div class="budget-info small text-muted">
-                        <div>${isMonthlyView ? 'Viewing' : 'Selected'} Period: $${periodBudget.toFixed(2)} 
-                        ($${dailyBudget.toFixed(2)}/day)</div>
-                    </div>
-                </div>
-                
-                <!-- Daily Budget -->
-                <div class="budget-card mb-3 p-2 border rounded">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div class="fw-medium">Today's Budget</div>
-                        <div class="text-${dailyRemaining >= 0 ? 'success' : 'danger'}">
-                            $${dailyRemaining.toFixed(2)} left
+  generateSearchInsights() {
+    console.log('Generating search insights...');
+        
+    const insightsContainer = document.getElementById('search-insights');
+    if (!insightsContainer) {
+      console.error('Insights container not found');
+      return;
+    }
+        
+    // Clear any existing content
+    insightsContainer.innerHTML = '';
+        
+    // Validate search results
+    if (!Array.isArray(this.searchResults)) {
+      console.error('searchResults is not an array:', this.searchResults);
+      insightsContainer.innerHTML = `
+                <div class="alert alert-danger">
+                    <div class="d-flex align-items-center">
+                        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                        <div>
+                            <h6 class="mb-1">Error Loading Insights</h6>
+                            <p class="mb-0 small">Invalid search results format. Please try your search again.</p>
                         </div>
                     </div>
-                    <div class="budget-progress mt-1">
-                        <div class="progress" style="height: 6px;">
-                            <div class="progress-bar bg-${dailyUsed < 80 ? 'success' : dailyUsed < 100 ? 'warning' : 'danger'}" 
-                                role="progressbar" 
-                                style="width: ${Math.min(100, dailyUsed)}%" 
-                                aria-valuenow="${dailyUsed}" 
-                                aria-valuemin="0" 
-                                aria-valuemax="100">
+                </div>`;
+      return;
+    }
+        
+    if (this.searchResults.length === 0) {
+      console.log('No search results, showing empty state');
+      const searchInput = document.getElementById('transaction-search')?.value.trim() || '';
+            
+      if (searchInput) {
+        insightsContainer.innerHTML = `
+                    <div class="alert alert-info">
+                        <div class="d-flex align-items-center">
+                            <i class="bi bi-info-circle-fill me-2"></i>
+                            <div>
+                                <h6 class="mb-1">No Matching Transactions</h6>
+                                <p class="mb-0 small">No transactions found matching "${this.app.escapeHtml(searchInput)}"</p>
                             </div>
                         </div>
-                        <div class="d-flex justify-content-between small text-muted mt-1">
-                            <span>$${dailyExpenses.toFixed(2)} of $${dailyBudget.toFixed(2)}</span>
-                            <span>${Math.round(dailyUsed)}% used</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Weekly Budget -->
-                <div class="budget-card mb-3 p-2 border rounded">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div class="fw-medium">This Week's Budget</div>
-                        <div class="text-${weeklyRemaining >= 0 ? 'success' : 'danger'}">
-                            $${weeklyRemaining.toFixed(2)} left
-                        </div>
-                    </div>
-                    <div class="budget-progress mt-1">
-                        <div class="progress" style="height: 6px;">
-                            <div class="progress-bar bg-${weeklyUsed < 80 ? 'success' : weeklyUsed < 100 ? 'warning' : 'danger'}" 
-                                role="progressbar" 
-                                style="width: ${Math.min(100, weeklyUsed)}%" 
-                                aria-valuenow="${weeklyUsed}" 
-                                aria-valuemin="0" 
-                                aria-valuemax="100">
+                    </div>`;
+      } else {
+        insightsContainer.innerHTML = `
+                    <div class="alert alert-secondary">
+                        <div class="d-flex align-items-center">
+                            <i class="bi bi-search me-2"></i>
+                            <div>
+                                <h6 class="mb-1">Search for Transactions</h6>
+                                <p class="mb-0 small">Enter a search term to find matching transactions and see insights</p>
                             </div>
                         </div>
-                        <div class="d-flex justify-content-between small text-muted mt-1">
-                            <span>$${weeklyExpenses.toFixed(2)} of $${weeklyBudget.toFixed(2)}</span>
-                            <span>${Math.round(weeklyUsed)}% used</span>
-                        </div>
+                    </div>`;
+      }
+      return;
+    }
+        
+    // Generate insights based on search results
+    try {
+      const stats = this.searchStats;
+      const hasDates = stats.firstTransactionDate && stats.lastTransactionDate;
+      const dateRange = hasDates ? 
+        `${stats.firstTransactionDate.toLocaleDateString()} - ${stats.lastTransactionDate.toLocaleDateString()}` : 
+        'N/A';
+            
+      // Create insights HTML
+      const insightsHtml = `
+                <div class="card mb-4">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Search Insights</h5>
+                        <span class="badge bg-primary">${stats.transactionCount} transactions</span>
                     </div>
-                </div>
-                
-                <!-- Monthly Budget -->
-                <div class="budget-card mb-3 p-2 border rounded">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div class="fw-medium">This Month's Budget</div>
-                        <div class="text-${monthlyRemaining >= 0 ? 'success' : 'danger'}">
-                            $${monthlyRemaining.toFixed(2)} left
-                        </div>
-                    </div>
-                    <div class="budget-progress mt-1">
-                        <div class="progress" style="height: 6px;">
-                            <div class="progress-bar bg-${monthlyUsed < 80 ? 'success' : monthlyUsed < 100 ? 'warning' : 'danger'}" 
-                                role="progressbar" 
-                                style="width: ${Math.min(100, monthlyUsed)}%" 
-                                aria-valuenow="${monthlyUsed}" 
-                                aria-valuemin="0" 
-                                aria-valuemax="100">
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <h6>Date Range</h6>
+                                    <p class="mb-1">${dateRange}</p>
+                                    ${hasDates ? `<small class="text-muted">${stats.dayCount} day${stats.dayCount !== 1 ? 's' : ''}</small>` : ''}
+                                </div>
+                                <div class="mb-3">
+                                    <h6>Total Amount</h6>
+                                    <p class="h4 ${stats.totalAmount >= 0 ? 'text-success' : 'text-danger'}">
+                                        ${this.app.formatCurrency(stats.totalAmount)}
+                                    </p>
+                                </div>
                             </div>
-                        </div>
-                        <div class="d-flex justify-content-between small text-muted mt-1">
-                            <span>$${monthlyExpenses.toFixed(2)} of $${monthlyBudget.toFixed(2)}</span>
-                            <span>${Math.round(monthlyUsed)}% used</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="summary-totals mb-3">
-                    <div class="summary-total">
-                        <span class="summary-label">Deposits:</span>
-                        <span class="summary-amount text-success">$${deposits.toFixed(2)}</span>
-                    </div>
-                    <div class="summary-total">
-                        <span class="summary-label">Credits:</span>
-                        <span class="summary-amount text-info">$${types.credit.total.toFixed(2)}</span>
-                    </div>
-                    <div class="summary-total">
-                        <span class="summary-label">Expenses:</span>
-                        <span class="summary-amount text-danger">$${expenses.toFixed(2)}</span>
-                    </div>
-                    <div class="summary-total">
-                        <span class="summary-label">Net:</span>
-                        <span class="summary-amount ${net >= 0 ? 'text-success' : 'text-danger'}">
-                            ${net >= 0 ? '+' : '-'}$${Math.abs(net).toFixed(2)}
-                        </span>
-                    </div>
-                    ${monthlyBudget > 0 ? `
-                        <div class="summary-total">
-                            <span class="summary-label">Remaining Budget:</span>
-                            <span class="summary-amount ${remainingBudget > 0 ? 'text-success' : 'text-danger'}">
-                                $${remainingBudget.toFixed(2)}
-                                <small class="text-muted">(${Math.round(100 - budgetUsed)}% left)</small>
-                            </span>
-                        </div>
-                        <div class="budget-progress mt-2">
-                            <div class="progress" style="height: 8px;">
-                                <div class="progress-bar bg-danger" role="progressbar" 
-                                    style="width: ${Math.min(100, budgetUsed)}%" 
-                                    aria-valuenow="${budgetUsed}" 
-                                    aria-valuemin="0" 
-                                    aria-valuemax="100">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <h6>Income vs. Expenses</h6>
+                                    <div class="d-flex justify-content-between">
+                                        <span class="text-success">${this.app.formatCurrency(stats.incomeTotal)}</span>
+                                        <span class="text-danger">-${this.app.formatCurrency(stats.expenseTotal)}</span>
+                                    </div>
+                                    <div class="progress mt-1" style="height: 6px;">
+                                        <div class="progress-bar bg-success" role="progressbar" 
+                                             style="width: ${stats.incomeTotal + stats.expenseTotal > 0 ? 
+    (stats.incomeTotal / (stats.incomeTotal + stats.expenseTotal) * 100) : 0}%"
+                                             aria-valuenow="50" aria-valuemin="0" aria-valuemax="100">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <h6>Transaction Stats</h6>
+                                    <div class="small">
+                                        <div class="d-flex justify-content-between">
+                                            <span>Average:</span>
+                                            <span>${this.app.formatCurrency(stats.averageAmount)}</span>
+                                        </div>
+                                        <div class="d-flex justify-content-between">
+                                            <span>Min:</span>
+                                            <span>${this.app.formatCurrency(stats.minAmount)}</span>
+                                        </div>
+                                        <div class="d-flex justify-content-between">
+                                            <span>Max:</span>
+                                            <span>${this.app.formatCurrency(stats.maxAmount)}</span>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    ` : ''}
-                </div>
-                <div class="summary-categories">
-                    <h5>By Category</h5>
-            `;
+                    </div>
+                </div>`;
+                
+      insightsContainer.innerHTML = insightsHtml;
             
-            // Add category breakdown with transaction types
-            const sortedCategories = Object.entries(categories)
-                .sort((a, b) => {
-                    const totalA = Object.values(a[1]).reduce((sum, val) => sum + val, 0);
-                    const totalB = Object.values(b[1]).reduce((sum, val) => sum + val, 0);
-                    return totalB - totalA;
-                });
-                
-            sortedCategories.forEach(([category, amounts]) => {
-                const total = Object.values(amounts).reduce((sum, val) => sum + val, 0);
-                if (total <= 0) return;
-                
-                // Create type breakdown
-                let typeBreakdown = '';
-                
-                // Show each type that has an amount
-                if (amounts.deposit > 0) {
-                    typeBreakdown += `
-                        <div class="category-type">
-                            <span class="category-label">Deposits:</span>
-                            <span class="category-amount text-success">$${amounts.deposit.toFixed(2)}</span>
-                        </div>`;
-                }
-                
-                if (amounts.credit > 0) {
-                    typeBreakdown += `
-                        <div class="category-type">
-                            <span class="category-label">Credits:</span>
-                            <span class="category-amount text-info">$${amounts.credit.toFixed(2)}</span>
-                        </div>`;
-                }
-                
-                if (amounts.expense > 0) {
-                    typeBreakdown += `
-                        <div class="category-type">
-                            <span class="category-label">Expenses:</span>
-                            <span class="category-amount text-danger">$${amounts.expense.toFixed(2)}</span>
-                        </div>`;
-                }
-                
-                if (amounts.other > 0) {
-                    typeBreakdown += `
-                        <div class="category-type">
-                            <span class="category-label">Other:</span>
-                            <span class="category-amount text-muted">$${amounts.other.toFixed(2)}</span>
-                        </div>`;
-                }
-                
-                // Add category row
-                html += `
-                    <div class="category-summary mb-2">
-                        <div class="category-header d-flex justify-content-between">
-                            <span class="category-name fw-medium">${category}</span>
-                            <span class="category-total">$${total.toFixed(2)}</span>
+    } catch (error) {
+      console.error('Error generating search insights:', error);
+      insightsContainer.innerHTML = `
+                <div class="alert alert-warning">
+                    <div class="d-flex align-items-center">
+                        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                        <div>
+                            <h6 class="mb-1">Error Generating Insights</h6>
+                            <p class="mb-0 small">An error occurred while generating insights. ${error.message}</p>
                         </div>
-                        <div class="category-details ps-2 small">
-                            ${typeBreakdown}
+                    </div>
+                </div>`;
+    }
+  }
+  renderSearchTrendChart() {
+    console.log('Rendering search trend chart...');
+        
+    const chartCanvas = document.getElementById('search-trend-chart');
+    if (!chartCanvas) {
+      console.error('Trend chart canvas not found');
+      return;
+    }
+        
+    // Get the chart instance if it exists and destroy it
+    const chartInstance = Chart.getChart(chartCanvas);
+    if (chartInstance) {
+      chartInstance.destroy();
+    }
+        
+    // Group transactions by date
+    const transactionsByDate = {};
+    this.searchResults.forEach(transaction => {
+      if (!transaction || !transaction.date) return;
+            
+      try {
+        const date = new Date(transaction.date);
+        if (isNaN(date.getTime())) return;
+                
+        const dateKey = date.toISOString().split('T')[0];
+        const amount = parseFloat(transaction.amount) || 0;
+                
+        if (!transactionsByDate[dateKey]) {
+          transactionsByDate[dateKey] = 0;
+        }
+        transactionsByDate[dateKey] += amount;
+      } catch (error) {
+        console.warn('Error processing transaction date:', error);
+      }
+    });
+        
+    // Sort dates
+    const sortedDates = Object.keys(transactionsByDate).sort();
+    if (sortedDates.length === 0) {
+      console.log('No valid date data for trend chart');
+      chartCanvas.closest('.card').style.display = 'none';
+      return;
+    }
+        
+    // Prepare data for chart
+    const labels = sortedDates.map(date => {
+      const d = new Date(date);
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    });
+        
+    const data = sortedDates.map(date => transactionsByDate[date]);
+        
+    // Create the chart
+    try {
+      const ctx = chartCanvas.getContext('2d');
+      if (!ctx) {
+        throw new Error('Could not get 2D context for chart');
+      }
+            
+      new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Amount',
+            data: data,
+            borderColor: 'rgba(13, 110, 253, 1)',
+            backgroundColor: 'rgba(13, 110, 253, 0.1)',
+            borderWidth: 2,
+            tension: 0.3,
+            fill: true,
+            pointBackgroundColor: 'rgba(13, 110, 253, 1)',
+            pointBorderColor: '#fff',
+            pointBorderWidth: 2,
+            pointRadius: 4,
+            pointHoverRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: false
+            },
+            tooltip: {
+              callbacks: {
+                label: function (context) {
+                  return `$${context.parsed.y.toFixed(2)}`;
+                }
+              }
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: false,
+              grid: {
+                drawBorder: false
+              },
+              ticks: {
+                callback: function (value) {
+                  return '$' + value.toFixed(2);
+                }
+              }
+            },
+            x: {
+              grid: {
+                display: false
+              },
+              ticks: {
+                maxRotation: 45,
+                minRotation: 45
+              }
+            }
+          }
+        }
+      });
+            
+      // Make sure the chart container is visible
+      chartCanvas.closest('.card').style.display = 'block';
+            
+    } catch (error) {
+      console.error('Error creating trend chart:', error);
+      const container = chartCanvas.closest('.card');
+      if (container) {
+        container.innerHTML = `
+                    <div class="alert alert-warning m-3">
+                        <div class="d-flex align-items-center">
+                            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                            <div>
+                                <h6 class="mb-1">Error Loading Chart</h6>
+                                <p class="mb-0 small">Could not render the trend chart. ${error.message}</p>
+                            </div>
                         </div>
                     </div>`;
-            });
-            
-            html += '</div>';
-            summaryEl.innerHTML = html;
-            
-        } catch (error) {
-            console.error('Error updating calendar summary:', error);
-        }
+      }
     }
+  }
     
-    // Update calendar view with transactions
-    async updateCalendar() {
-        try {
-            await this.initCalendar();
+  renderSearchCategoryChart() {
+    console.log('Rendering search category chart...');
+        
+    const chartCanvas = document.getElementById('search-category-chart');
+    if (!chartCanvas) {
+      console.error('Search category chart canvas not found');
+      return;
+    }
+        
+    // Get the chart instance if it exists and destroy it
+    const chartInstance = Chart.getChart(chartCanvas);
+    if (chartInstance) {
+      chartInstance.destroy();
+    }
+        
+    const ctx = chartCanvas.getContext('2d');
+    if (!ctx) {
+      console.error('Could not get 2D context for category chart');
+      return;
+    }
+        
+    // Group transactions by category
+    const categoryData = {};
+    try {
+      // Check if we have search results
+      if (!Array.isArray(this.searchResults) || this.searchResults.length === 0) {
+        console.log('No search results to render category chart');
+        chartCanvas.closest('.card').style.display = 'none';
+        return;
+      }
             
-            // Refresh the calendar to load events
-            if (this.calendar) {
-                this.calendar.refetchEvents();
-                
-                // Update for current view
-                const view = this.calendar.view;
-                if (view) {
-                    this.updateCalendarSummary(
-                        await localDB.getTransactions(),
-                        view.activeStart,
-                        view.activeEnd
-                    );
-                }
-            }
-            
-        } catch (error) {
-            console.error('Error updating calendar:', error);
-            this.showToast('Error updating calendar', 'error');
+      // Count transactions per category
+      this.searchResults.forEach(transaction => {
+        if (!transaction) {
+          console.warn('Encountered undefined transaction');
+          return;
         }
+                
+        const category = transaction.category || 'Uncategorized';
+        const amount = Math.abs(parseFloat(transaction.amount) || 0);
+                
+        if (!categoryData[category]) {
+          categoryData[category] = 0;
+        }
+        categoryData[category] += amount;
+      });
+            
+      // Sort categories by amount (descending)
+      const sortedCategories = Object.entries(categoryData)
+        .sort((a, b) => b[1] - a[1]);
+                
+      if (sortedCategories.length === 0) {
+        console.log('No category data available for chart');
+        chartCanvas.closest('.card').style.display = 'none';
+        return;
+      }
+            
+      const labels = sortedCategories.map(([category]) => category);
+      const data = sortedCategories.map(([_, amount]) => amount);
+            
+      console.log('Category labels:', labels);
+      console.log('Category data values:', data);
+            
+      // Generate colors for categories
+      const backgroundColors = labels.map((_, i) => {
+        const hue = (i * 137.508) % 360; // Golden angle approximation
+        return `hsl(${hue}, 70%, 60%)`;
+      });
+            
+      // Create the chart
+      new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: labels,
+          datasets: [{
+            data: data,
+            backgroundColor: backgroundColors,
+            borderWidth: 1,
+            borderColor: '#fff'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: '60%',
+          plugins: {
+            legend: {
+              position: 'right',
+              labels: {
+                padding: 15,
+                usePointStyle: true,
+                pointStyle: 'circle',
+                font: {
+                  size: 12
+                }
+              }
+            },
+            tooltip: {
+              callbacks: {
+                label: (context) => {
+                  const value = context.raw;
+                  const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                  const percentage = Math.round((value / total) * 100);
+                  return `${context.label}: ${this.app.formatCurrency(value)} (${percentage}%)`;
+                }
+              }
+            }
+          },
+          layout: {
+            padding: 10
+          },
+          animation: {
+            animateScale: true,
+            animateRotate: true
+          }
+        }
+      });
+            
+      // Make sure the chart container is visible
+      chartCanvas.closest('.card').style.display = 'block';
+      console.log('Category chart rendered successfully');
+            
+    } catch (error) {
+      console.error('Error rendering category chart:', error);
+      const container = chartCanvas.closest('.card');
+      if (container) {
+        container.innerHTML = `
+                    <div class="alert alert-warning m-3">
+                        <div class="d-flex align-items-center">
+                            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                            <div>
+                                <h6 class="mb-1">Error Loading Chart</h6>
+                                <p class="mb-0 small">Could not render the category chart. ${error.message}</p>
+                            </div>
+                        </div>
+                    </div>`;
+      }
+    }
+  }
+}
+
+class BudgetApp {
+  // Static getter for bank format configurations
+  static get BANK_FORMATS() {
+    return {
+      'chase': {
+        name: 'Chase',
+        date: 'Posting Date',
+        description: 'Description',
+        amount: 'Amount',
+        type: 'Type',
+        skipLines: 0,
+        dateFormat: 'MM/DD/YYYY'
+      },
+      'bankofamerica': {
+        name: 'Bank of America',
+        date: 'Date',
+        description: 'Description',
+        amount: 'Amount',
+        type: 'Type',
+        skipLines: 0,
+        dateFormat: 'MM/DD/YYYY'
+      },
+      'wellsfargo': {
+        name: 'Wells Fargo',
+        date: 'Date',
+        description: 'Description',
+        amount: 'Amount',
+        type: 'Type',
+        skipLines: 0,
+        dateFormat: 'MM/DD/YYYY'
+      },
+      'citi': {
+        name: 'Citi Bank',
+        date: 'Date',
+        description: 'Description',
+        amount: 'Debit',
+        credit: 'Credit',
+        type: 'Type',
+        skipLines: 0,
+        dateFormat: 'MM/DD/YYYY'
+      }
+    };
+  }
+
+  constructor() {
+    this.transactions = [];
+    this.charts = {}; // Initialize charts object
+    this.budgetCategories = [];
+    this.accounts = [];
+    this.merchantCategories = {};
+    this.currentView = 'dashboard';
+    this.currentMonth = new Date().getMonth();
+    this.currentYear = new Date().getFullYear();
+    this.db = localDB;
+    this.dbInitialized = false;
+    this.unsubscribeCallbacks = [];
+    this.pendingImport = []; // Initialize pending import array
+        
+    // Initialize search manager
+    this.searchManager = new SearchManager(this);
+        
+    // Initialize the app when DOM is ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => this.initializeApp());
+    } else {
+      this.initializeApp();
+    }
+  }
+    
+  async initializeApp() {
+    try {
+      console.log('Initializing app...');
+            
+      // Initialize the database first
+      await this.db.initializeDB();
+      this.dbInitialized = true;
+            
+      // Load initial data
+      await this.loadTransactions();
+      await this.loadBudgetCategories();
+      await this.loadAccounts();
+            
+      // Set up real-time listeners
+      this.setupRealtimeListeners();
+            
+      // Initial render
+      this.renderCurrentView();
+            
+      console.log('App initialized successfully');
+    } catch (error) {
+      console.error('Failed to initialize app:', error);
+    }
+  }
+
+  async loadTransactions() {
+    try {
+      this.transactions = await this.db.getAllItems('transactions') || [];
+      // Sort by date (newest first)
+      this.transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+      console.log(`Loaded ${this.transactions.length} transactions into memory`);
+      return this.transactions;
+    } catch (error) {
+      console.error('Error loading transactions:', error);
+      this.transactions = [];
+      return [];
+    }
+  }
+    
+  /**
+     * Get transactions for a specific date range
+     * @param {Date} startDate - Start date
+     * @param {Date} endDate - End date
+     * @returns {Array} Filtered transactions
+     */
+  getTransactionsByDateRange(startDate, endDate) {
+    console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+        
+    const filtered = this.transactions.filter(t => {
+      const transactionDate = new Date(t.date);
+      const isInRange = transactionDate >= startDate && transactionDate <= endDate;
+            
+      if (isInRange) {
+        console.log('Transaction in range:', {
+          id: t.id,
+          date: t.date,
+          amount: t.amount,
+          description: t.description
+        });
+      }
+            
+      return isInRange;
+    });
+        
+    console.log('getTransactionsByDateRange - Total transactions in range:', filtered.length);
+    return filtered;
+  }
+    
+  /**
+     * Get transactions for a specific date
+     * @param {Date} date - The date to get transactions for
+     * @returns {Array} Filtered transactions
+     */
+  getTransactionsByDate(date) {
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+        
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+        
+    console.log('getTransactionsByDate - Date range:', {
+      start: startOfDay,
+      end: endOfDay,
+      inputDate: date
+    });
+        
+    const transactions = this.getTransactionsByDateRange(startOfDay, endOfDay);
+    console.log('getTransactionsByDate - Found transactions:', transactions);
+        
+    return transactions;
+  }
+    
+  /**
+     * Format date as YYYY-MM-DD
+     * @param {Date} date - The date to format
+     * @returns {string} Formatted date string
+     */
+  formatDateKey(date) {
+    return date.toISOString().split('T')[0];
+  }
+    
+  /**
+     * Render the calendar view
+     * @param {Date} [date] - The date to display (defaults to current month)
+     */
+  renderCalendar(date = new Date()) {
+    // Update current month and year
+    this.currentMonth = date.getMonth();
+    this.currentYear = date.getFullYear();
+        
+    const calendarEl = document.getElementById('calendar');
+    if (!calendarEl) return;
+        
+    const month = date.getMonth();
+    const year = date.getFullYear();
+    const today = new Date();
+        
+    // Get first day of month (0-6, where 0 is Sunday)
+    const firstDay = new Date(year, month, 1).getDay();
+    // Get number of days in month
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    // Get number of days in previous month
+    const daysInPrevMonth = new Date(year, month, 0).getDate();
+        
+    // Get transactions for the current month
+    const startDate = new Date(year, month, 1);
+    const endDate = new Date(year, month + 1, 0);
+    const monthlyTransactions = this.getTransactionsByDateRange(startDate, endDate);
+        
+    // Group transactions by day with proper month/year validation
+    const transactionsByDay = {};
+    console.log('Grouping ' + monthlyTransactions.length + ' transactions for ' + (month + 1) + '/' + year);
+        
+    monthlyTransactions.forEach(t => {
+      const transactionDate = new Date(t.date);
+      const day = transactionDate.getDate();
+      const transactionMonth = transactionDate.getMonth();
+      const transactionYear = transactionDate.getFullYear();
+            
+      // Only include if it's in the current month we're displaying
+      if (transactionMonth === month && transactionYear === year) {
+        if (!transactionsByDay[day]) {
+          transactionsByDay[day] = [];
+        }
+        transactionsByDay[day].push(t);
+        console.log('Added transaction to day ' + day + ':', t);
+      } else {
+        console.log('Skipping transaction not in current month:', t);
+      }
+    });
+        
+    console.log('Transactions grouped by day:', transactionsByDay);
+        
+    // Generate calendar HTML
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'];
+        
+    let calendarHTML = `
+            <div class="calendar-controls">
+                <button id="prev-month" class="btn btn--icon">
+                    <i class="bi bi-chevron-left"></i>
+                </button>
+                <h2>${monthNames[month]} ${year}</h2>
+                <button id="next-month" class="btn btn--icon">
+                    <i class="bi bi-chevron-right"></i>
+                </button>
+            </div>
+            <div class="calendar">
+                <div class="calendar__header">
+                    <div class="calendar__day">Sun</div>
+                    <div class="calendar__day">Mon</div>
+                    <div class="calendar__day">Tue</div>
+                    <div class="calendar__day">Wed</div>
+                    <div class="calendar__day">Thu</div>
+                    <div class="calendar__day">Fri</div>
+                    <div class="calendar__day">Sat</div>
+                </div>
+                <div class="calendar__body">
+        `;
+        
+    // Calculate the previous month and year
+    let prevMonth = month - 1;
+    let prevYear = year;
+    if (prevMonth < 0) {
+      prevMonth = 11;
+      prevYear--;
+    }
+        
+    // Add empty cells for days from previous month
+    for (let i = 0; i < firstDay; i++) {
+      const day = daysInPrevMonth - firstDay + i + 1;
+      const dayOfWeek = new Date(prevYear, prevMonth, day).getDay();
+      const dayName = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dayOfWeek];
+            
+      calendarHTML += `
+                <div class="calendar__day calendar__day--other-month" 
+                     data-date="${prevYear}-${String(prevMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}">
+                    <div class="calendar__day-number">${day}</div>
+                    <div class="calendar__day-name">${dayName}</div>
+                </div>`;
+    }
+        
+    // Add days of current month
+    const isCurrentMonth = today.getMonth() === month && today.getFullYear() === year;
+        
+    for (let day = 1; day <= daysInMonth; day++) {
+      const currentDate = new Date(year, month, day);
+      const dayOfWeek = currentDate.getDay();
+      const _dayName = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dayOfWeek];
+      const isToday = isCurrentMonth && day === today.getDate();
+      const isSelected = this.selectedDate && 
+                             currentDate.getDate() === this.selectedDate.getDate() &&
+                             currentDate.getMonth() === this.selectedDate.getMonth() &&
+                             currentDate.getFullYear() === this.selectedDate.getFullYear();
+            
+      const dayTransactions = transactionsByDay[day] || [];
+      const _hasTransactions = dayTransactions.length > 0;
+      const income = dayTransactions
+        .filter(t => parseFloat(t.amount) > 0)
+        .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount)), 0);
+      const expenses = dayTransactions
+        .filter(t => parseFloat(t.amount) < 0)
+        .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount)), 0);
+            
+      calendarHTML += `
+                <div class="calendar__day ${isToday ? 'calendar__day--today' : ''} ${isSelected ? 'calendar__day--selected' : ''}" 
+                     data-date="${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}">
+                    <div class="calendar__day-number">${day}</div>
+                    <div class="calendar__day-name">${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date(year, month, day).getDay()]}</div>`;
+            
+      if (dayTransactions.length > 0) {
+        calendarHTML += `
+                    <div class="calendar__transactions">`;
+
+        // Show up to 2 transactions per day in the calendar
+        dayTransactions.slice(0, 2).forEach(transaction => {
+          const isIncome = parseFloat(transaction.amount) > 0;
+          calendarHTML += `
+                        <div class="calendar__transaction ${isIncome ? 'income' : 'expense'}">
+                            <span class="transaction-description">${transaction.description || 'No description'}</span>
+                            <span class="transaction-amount">${this.formatCurrency(transaction.amount)}</span>
+                        </div>`;
+        });
+
+        // Show indicator if there are more transactions
+        if (dayTransactions.length > 2) {
+          calendarHTML += `
+                        <div class="calendar__transaction-more">+${dayTransactions.length - 2} more</div>`;
+        }
+                
+        calendarHTML += `
+                    </div>`;
+      }
+            
+      // Show daily total if there are transactions
+      if (dayTransactions.length > 0) {
+        const net = income - expenses;
+        calendarHTML += `
+                    <div class="calendar__total ${net >= 0 ? 'calendar__total--positive' : 'calendar__total--negative'}">
+                        ${net >= 0 ? '+' : ''}${this.formatCurrency(net)}
+                    </div>`;
+      }
+            
+      calendarHTML += `
+                </div>`;
+    }
+        
+    // Add empty cells for days from next month to complete the grid
+    const totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
+    const remainingCells = totalCells - (firstDay + daysInMonth);
+        
+    // Calculate the next month and year
+    let nextMonth = month + 1;
+    let nextYear = year;
+    if (nextMonth > 11) {
+      nextMonth = 0;
+      nextYear++;
+    }
+        
+    // Add days from next month
+    for (let i = 1; i <= remainingCells; i++) {
+      const dayOfWeek = (firstDay + daysInMonth + i - 1) % 7;
+      const dayName = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dayOfWeek];
+            
+      calendarHTML += `
+                <div class="calendar__day calendar__day--other-month" 
+                     data-date="${nextYear}-${String(nextMonth + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}">
+                    <div class="calendar__day-number">${i}</div>
+                    <div class="calendar__day-name">${dayName}</div>
+                </div>`;
+    }
+        
+    calendarHTML += `
+                </div>
+            </div>`;
+        
+    // Update the calendar element
+    calendarEl.innerHTML = calendarHTML;
+        
+    // Set up event listeners
+    this.setupCalendarEventListeners();
+        
+    // Update the calendar summary
+    this.updateCalendarSummary(date);
+        
+    // Update month/year display
+    const monthYearEl = document.getElementById('calendar-month-year');
+    if (monthYearEl) {
+      monthYearEl.textContent = new Intl.DateTimeFormat('en-US', { 
+        year: 'numeric', 
+        month: 'long' 
+      }).format(new Date(year, month, 1));
+    }
+        
+    // Close calendar days div
+    calendarHTML += '</div>';
+        
+    // Update the DOM
+    calendarEl.innerHTML = calendarHTML;
+        
+    // Add event listeners
+    this.setupCalendarEventListeners();
+        
+    // Update mini calendar
+    this.renderMiniCalendar(new Date(year, month, 1));
+        
+    // Update summary
+    this.updateCalendarSummary(new Date(year, month, 1));
+  }
+    
+  /**
+     * Render the mini calendar in the sidebar
+     * @param {Date} date - The date to display
+     */
+  renderMiniCalendar(date) {
+    const miniCalendarEl = document.getElementById('mini-calendar');
+    if (!miniCalendarEl) return;
+        
+    const month = date.getMonth();
+    const year = date.getFullYear();
+    const today = new Date();
+        
+    // Get first day of month (0-6, where 0 is Sunday)
+    const firstDay = new Date(year, month, 1).getDay();
+    // Get number of days in month
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    // Get number of days in previous month
+    const daysInPrevMonth = new Date(year, month, 0).getDate();
+        
+    // Get transactions for the current month
+    const startDate = new Date(year, month, 1);
+    const endDate = new Date(year, month + 1, 0);
+    const monthlyTransactions = this.getTransactionsByDateRange(startDate, endDate);
+        
+    // Group transactions by day
+    const transactionsByDay = {};
+    monthlyTransactions.forEach(t => {
+      const day = new Date(t.date).getDate();
+      if (!transactionsByDay[day]) {
+        transactionsByDay[day] = [];
+      }
+      transactionsByDay[day].push(t);
+    });
+        
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'];
+    const dayNames = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+        
+    let html = `
+            <div class="mini-calendar-header">
+                <button id="mini-prev-month" class="btn btn--icon btn--sm" title="Previous month">
+                    <i class="bi bi-chevron-left"></i>
+                </button>
+                <h4>${monthNames[month].substring(0, 3)} ${year}</h4>
+                <button id="mini-next-month" class="btn btn--icon btn--sm" title="Next month">
+                    <i class="bi bi-chevron-right"></i>
+                </button>
+            </div>
+            <div class="mini-calendar-grid">
+                ${dayNames.map(day => `<div class="mini-calendar-day-header">${day}</div>`).join('')}
+        `;
+        
+    // Calculate previous month and year
+    let prevMonth = month - 1;
+    let prevYear = year;
+    if (prevMonth < 0) {
+      prevMonth = 11;
+      prevYear--;
+    }
+        
+    // Add empty cells for days from previous month
+    for (let i = 0; i < firstDay; i++) {
+      const day = daysInPrevMonth - firstDay + i + 1;
+      const dateStr = `${prevYear}-${String(prevMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      html += `
+                <div class="mini-calendar-day mini-calendar-day--other-month" data-date="${dateStr}">
+                    <span class="mini-calendar-day-number">${day}</span>
+                </div>`;
+    }
+        
+    // Add days of current month
+    for (let day = 1; day <= daysInMonth; day++) {
+      const _currentDate = new Date(year, month, day);
+      const isToday = today.getDate() === day && 
+                          today.getMonth() === month && 
+                          today.getFullYear() === year;
+      const isSelected = this.selectedDate && 
+                             this.selectedDate.getDate() === day &&
+                             this.selectedDate.getMonth() === month &&
+                             this.selectedDate.getFullYear() === year;
+            
+      const hasTransactions = transactionsByDay[day]?.length > 0;
+      const dayClass = [
+        'mini-calendar-day',
+        isToday ? 'mini-calendar-day--today' : '',
+        isSelected ? 'mini-calendar-day--selected' : '',
+        hasTransactions ? 'has-transactions' : ''
+      ].filter(Boolean).join(' ');
+            
+      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      html += `
+                <div class="${dayClass}" data-date="${dateStr}">
+                    <span class="mini-calendar-day-number">${day}</span>
+                    ${hasTransactions ? '<span class="mini-calendar-day-dot"></span>' : ''}
+                </div>`;
+    }
+        
+    // Calculate next month and year
+    let nextMonth = month + 1;
+    let nextYear = year;
+    if (nextMonth > 11) {
+      nextMonth = 0;
+      nextYear++;
+    }
+        
+    // Add empty cells for days from next month to complete the grid
+    const totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
+    const remainingCells = totalCells - (firstDay + daysInMonth);
+        
+    for (let i = 1; i <= remainingCells; i++) {
+      const dateStr = `${nextYear}-${String(nextMonth + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+      html += `
+                <div class="mini-calendar-day mini-calendar-day--other-month" data-date="${dateStr}">
+                    <span class="mini-calendar-day-number">${i}</span>
+                </div>`;
+    }
+        
+    html += '</div>';
+    miniCalendarEl.innerHTML = html;
+        
+    // Add event listeners
+    miniCalendarEl.querySelectorAll('.mini-calendar-day').forEach(dayEl => {
+      dayEl.addEventListener('click', () => {
+        const dateStr = dayEl.dataset.date;
+        if (dateStr) {
+          const [y, m, d] = dateStr.split('-').map(Number);
+          const selectedDate = new Date(y, m - 1, d);
+          this.selectDate(selectedDate);
+          this.renderCalendar(selectedDate);
+        }
+      });
+    });
+        
+    document.getElementById('mini-prev-month')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.renderCalendar(new Date(year, month - 1, 1));
+    });
+        
+    document.getElementById('mini-next-month')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.renderCalendar(new Date(year, month + 1, 1));
+    });
+  }
+    
+  /**
+     * Set up event listeners for the calendar
+     */
+  setupCalendarEventListeners() {
+    const calendarEl = document.getElementById('calendar');
+    if (!calendarEl) return;
+        
+    // Day click handler
+    calendarEl.querySelectorAll('.calendar__day').forEach(dayEl => {
+      dayEl.addEventListener('click', async () => {
+        const dateStr = dayEl.getAttribute('data-date');
+        if (dateStr) {
+          const [year, month, day] = dateStr.split('-').map(Number);
+          try {
+            await this.selectDate(new Date(year, month - 1, day));
+            // Update active day styling
+            calendarEl.querySelectorAll('.calendar__day').forEach(el => {
+              el.classList.remove('calendar__day--selected');
+            });
+            dayEl.classList.add('calendar__day--selected');
+          } catch (error) {
+            console.error('Error selecting date:', error);
+          }
+        }
+      });
+    });
+  }
+
+  // Add event listeners for the app
+  bindEventListeners() {
+    // Navigation buttons
+    const navButtons = [
+      { id: 'add-transaction-btn', handler: () => this.showTransactionModal() },
+      { id: 'add-transaction-btn-2', handler: () => this.showTransactionModal() },
+      { id: 'add-category-btn', handler: () => this.showCategoryModal() },
+      { id: 'import-csv-btn', handler: () => this.showCSVModal() },
+      { id: 'export-csv-btn', handler: () => this.exportToCSV() },
+      { id: 'search-btn', handler: () => this.switchView('search') },
+      { id: 'budget-btn', handler: () => this.switchView('budget') },
+      { id: 'transactions-btn', handler: () => this.switchView('transactions') },
+      { id: 'calendar-btn', handler: () => this.switchView('calendar') },
+      { id: 'dashboard-btn', handler: () => this.switchView('dashboard') },
+      { id: 'close-transaction-modal', handler: () => this.closeModal('add-transaction-modal') },
+      { id: 'close-category-modal', handler: () => this.closeModal('add-category-modal') },
+      { id: 'close-budget-modal', handler: () => this.closeModal('set-budget-modal') },
+      { id: 'close-csv-modal', handler: () => this.closeModal('csv-import-modal') },
+      { id: 'import-csv-confirm', handler: () => this.confirmCSVImport() },
+      { id: 'cancel-csv', handler: () => this.cancelCSVImport() }
+    ];
+
+    // Add event listeners for navigation buttons
+    navButtons.forEach(button => {
+      const element = document.getElementById(button.id);
+      if (element) {
+        element.addEventListener('click', button.handler);
+      }
+    });
+
+    // Form submissions
+    const forms = [
+      { id: 'transaction-form', handler: (e) => this.handleTransactionSubmit(e) },
+      { id: 'category-form', handler: (e) => this.handleCategorySubmit(e) },
+      { id: 'budget-form', handler: (e) => this.handleBudgetSubmit(e) }
+    ];
+
+    forms.forEach(form => {
+      const element = document.getElementById(form.id);
+      if (element) {
+        element.addEventListener('submit', form.handler);
+      }
+    });
+
+    // Search and filter
+    const searchElements = [
+      { id: 'transaction-search', event: 'input', handler: () => this.filterTransactions() },
+      { id: 'transaction-filter', event: 'change', handler: () => this.filterTransactions() }
+    ];
+
+    searchElements.forEach(item => {
+      const element = document.getElementById(item.id);
+      if (element) {
+        element.addEventListener(item.event, item.handler);
+      }
+    });
+
+    // Handle delete and edit button clicks with event delegation
+    document.addEventListener('click', (e) => {
+      // Handle delete button clicks
+      if (e.target.classList.contains('btn-delete') || e.target.closest('.btn-delete')) {
+        e.preventDefault();
+        e.stopPropagation();
+        const button = e.target.classList.contains('btn-delete') ? e.target : e.target.closest('.btn-delete');
+        const transactionId = button.getAttribute('data-id');
+        if (transactionId) {
+          this.confirmAndDeleteTransaction(transactionId, new Date());
+        }
+        return;
+      }
+
+      // Handle edit button clicks
+      if (e.target.classList.contains('btn-edit') || e.target.closest('.btn-edit')) {
+        e.preventDefault();
+        e.stopPropagation();
+        const button = e.target.classList.contains('btn-edit') ? e.target : e.target.closest('.btn-edit');
+        const transactionId = button.getAttribute('data-id');
+        if (transactionId) {
+          this.editTransaction(transactionId);
+        }
+        return;
+      }
+    });
+
+    // CSV file input
+    const csvFileInput = document.getElementById('csv-file-input');
+    if (csvFileInput) {
+      csvFileInput.addEventListener('change', (e) => this.handleCSVFile(e));
     }
 
-    // Method to load and display transactions with search and filter
-    async loadTransactions(searchTerm = '', filterType = '', returnTransactions = false) {
-        try {
-            const transactionsList = document.getElementById('transactions-list');
-            const emptyState = document.getElementById('transactions-empty');
-            const loadingState = document.getElementById('transactions-loading');
-            const table = document.querySelector('.transactions-table');
+    // Calendar navigation
+    const prevMonthBtn = document.getElementById('prev-month');
+    const nextMonthBtn = document.getElementById('next-month');
+    if (prevMonthBtn) prevMonthBtn.addEventListener('click', () => this.navigateMonth(-1));
+    if (nextMonthBtn) nextMonthBtn.addEventListener('click', () => this.navigateMonth(1));
+
+    // Initialize any other event listeners
+    this.initializeAdditionalEventListeners();
+  }
+
+  // Method to initialize any additional event listeners
+  initializeAdditionalEventListeners() {
+    // Initialize CSV dropzone
+    const dropzone = document.getElementById('csv-dropzone');
+    if (dropzone) {
+      dropzone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropzone.classList.add('csv-upload__dropzone--dragover');
+      });
             
-            if ((!transactionsList || !emptyState || !loadingState || !table) && !returnTransactions) {
-                console.warn('Required DOM elements not found');
-                return [];
-            }
+      dropzone.addEventListener('dragleave', () => {
+        dropzone.classList.remove('csv-upload__dropzone--dragover');
+      });
             
-            // Show loading state if we're updating the UI
-            if (!returnTransactions) {
-                loadingState.style.display = 'flex';
-                emptyState.style.display = 'none';
-                table.style.display = 'none';
-            }
-            
-            // Get all transactions
-            let transactions = await localDB.getTransactions();
-            console.log('Loaded transactions from DB:', transactions);
-            
-            // Apply search filter if provided
-            if (searchTerm) {
-                const searchTerms = searchTerm.toLowerCase().trim().split('|').map(term => term.trim()).filter(term => term);
-                
-                if (searchTerms.length > 0) {
-                    transactions = transactions.filter(t => {
-                        // Check if any of the search terms match
-                        return searchTerms.some(term => {
-                            // Search in merchant, description, category, amount, and searchText
-                            return (
-                                (t.merchant && t.merchant.toLowerCase().includes(term)) ||
-                                (t.description && t.description.toLowerCase().includes(term)) ||
-                                (t.category && t.category.toLowerCase().includes(term)) ||
-                                (t.amount && t.amount.toString().includes(term)) ||
-                                (t.searchText && t.searchText.includes(term))
-                            );
-                        });
-                    });
-                }
-            }
-            
-            // Apply type filter if provided
-            if (filterType) {
-                transactions = transactions.filter(t => {
-                    if (filterType === 'income') return parseFloat(t.amount) >= 0;
-                    if (filterType === 'expense') return parseFloat(t.amount) < 0;
-                    return true;
-                });
-            }
-            
-            // Clear existing rows
-            transactionsList.innerHTML = '';
-            
-            // Handle empty state
-            if (transactions.length === 0) {
-                if (!returnTransactions) {
-                    emptyState.style.display = 'block';
-                    loadingState.style.display = 'none';
-                }
-                return transactions || [];
-            }
-            
-            // Sort by date (newest first)
-            transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
-            
-            // Add transactions to the table
-            transactions.forEach(transaction => {
-                const row = document.createElement('tr');
-                
-                // Parse transaction data
-                const amount = parseFloat(transaction.amount) || 0;
-                
-                // Check for deposit indicators in description
-                const isDeposit = transaction.description && (
-                    transaction.description.toLowerCase().includes('achcredit') ||
-                    transaction.description.toLowerCase().includes('deposit') ||
-                    transaction.description.toLowerCase().includes('direct dep') ||
-                    transaction.description.toLowerCase().includes('credit')
-                );
-                
-                // Determine if transaction is income based on type, amount sign, and deposit indicators
-                const isIncome = (transaction.type === 'income' && amount > 0) || 
-                               (transaction.type !== 'expense' && (amount > 0 || isDeposit));
-                
-                // Use the actual amount sign for display
-                const displayAmount = Math.abs(amount);
-                const amountSign = amount >= 0 ? '+' : '-';
-                const amountClass = amount >= 0 ? 'text-success' : 'text-danger';
-                
-                console.log('Transaction:', { 
-                    description: transaction.description, 
-                    amount: amount,
-                    displayAmount: displayAmount,
-                    type: transaction.type, 
-                    isIncome: isIncome,
-                    isDeposit: isDeposit
-                });
-                
-                // Format date
-                let formattedDate = 'Invalid Date';
-                try {
-                    const date = new Date(transaction.date);
-                    if (!isNaN(date.getTime())) {
-                        formattedDate = date.toLocaleDateString(undefined, {
-                            year: 'numeric',
-                            month: 'short',
-                            day: 'numeric'
-                        });
-                    }
-                } catch (e) {
-                    console.warn('Invalid date:', transaction.date, e);
-                }
-                
-                // Create row HTML
-                row.innerHTML = `
-                    <td class="text-nowrap">${formattedDate}</td>
-                    <td class="fw-medium">
-                        ${transaction.merchant || 'Unknown'}
-                    </td>
-                    <td class="text-truncate" style="max-width: 200px;" title="${transaction.description || ''}">
-                        ${transaction.description || 'No description'}
-                    </td>
-                    <td>
-                        <span class="badge bg-light text-dark">
-                            ${transaction.category || 'Uncategorized'}
-                        </span>
-                    </td>
-                    <td class="text-end ${amountClass} fw-medium">
-                        ${amountSign}$${displayAmount.toFixed(2)}
-                    </td>
-                    <td class="text-end">
-                        <button class="btn btn-sm btn-outline-primary me-1" data-id="${transaction.id || ''}" title="Edit">
-                            <i class="bi bi-pencil"></i>
-                        </button>
-                        <button class="btn btn-sm btn-outline-danger" data-id="${transaction.id || ''}" title="Delete">
-                            <i class="bi bi-trash"></i>
-                        </button>
-                    </td>`;
-                
-                // Add click handlers for edit/delete
-                const editBtn = row.querySelector('button[title="Edit"]');
-                const deleteBtn = row.querySelector('button[title="Delete"]');
-                
-                if (editBtn) {
-                    editBtn.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        if (transaction.id) this.editTransaction(transaction.id);
-                    });
-                }
-                
-                if (deleteBtn) {
-                    deleteBtn.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        if (transaction.id) this.deleteTransaction(transaction.id);
-                    });
-                }
-                
-                // Add click handler for row to view details
-                row.style.cursor = 'pointer';
-                // Make row clickable to view details
-                row.style.cursor = 'pointer';
-                row.addEventListener('click', () => {
-                    if (transaction.id) this.viewTransactionDetails(transaction);
-                });
-                
-                // Add the row to the transactions list
-                transactionsList.appendChild(row);
-                
-            });
-            
-            // Show the table and hide loading state if we're updating the UI
-            if (!returnTransactions) {
-                table.style.display = 'table';
-                loadingState.style.display = 'none';
-            }
-            
-            return transactions;
-            
-        } catch (error) {
-            console.error('Error loading transactions:', error);
-            this.showToast('Error loading transactions', 'error');
-            
-            // Make sure to hide loading state on error
-            const loadingState = document.getElementById('transactions-loading');
-            if (loadingState) loadingState.style.display = 'none';
-            
-            return [];
+      dropzone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropzone.classList.remove('csv-upload__dropzone--dragover');
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+          this.processCSVFile(files[0]);
         }
-    }
-    
-    // Filter transactions based on search term and filter type
-    async filterTransactions(searchTerm = '', filterType = '') {
-        try {
-            // If no search term, hide analytics and return empty array
-            // (transactions will be loaded by loadTransactions separately)
-            if (!searchTerm || searchTerm.trim() === '') {
-                transactionAnalytics.showAnalytics(false);
-                return [];
-            }
+      });
             
-            // Load transactions with limit for analytics
-            const transactions = await this.loadTransactions(searchTerm, filterType, true);
-            
-            // If we have transactions, show and update analytics
-            if (transactions.length > 0) {
-                // Process analytics in chunks to avoid memory issues
-                await this.processAnalyticsInChunks(transactions);
-            } else {
-                transactionAnalytics.showAnalytics(false);
-            }
-            
-            return transactions;
-        } catch (error) {
-            console.error('Error filtering transactions:', error);
-            this.showToast('Error filtering transactions', 'error');
-            return [];
+      dropzone.addEventListener('click', () => {
+        const fileInput = document.getElementById('csv-file-input');
+        if (fileInput) {
+          fileInput.click();
         }
+      });
     }
-    
-    // Process analytics in chunks to prevent memory issues
-    async processAnalyticsInChunks(transactions) {
-        try {
-            // Show loading state for analytics
-            transactionAnalytics.showAnalytics(true);
-            
-            // Process analytics in chunks with small delay between each
-            const CHUNK_SIZE = 1000; // Process 1000 transactions at a time
-            const totalChunks = Math.ceil(transactions.length / CHUNK_SIZE);
-            
-            // Process first chunk immediately
-            const firstChunk = transactions.slice(0, Math.min(CHUNK_SIZE, transactions.length));
-            transactionAnalytics.updateSearchSummary(firstChunk);
-            
-            // Process remaining chunks with delay to keep UI responsive
-            if (transactions.length > CHUNK_SIZE) {
-                // Use setTimeout to yield to the browser between chunks
-                setTimeout(() => {
-                    for (let i = 1; i < totalChunks; i++) {
-                        const start = i * CHUNK_SIZE;
-                        const end = Math.min(start + CHUNK_SIZE, transactions.length);
-                        const chunk = transactions.slice(start, end);
-                        
-                        // Update analytics with this chunk
-                        transactionAnalytics.updateSearchSummary(chunk, true);
-                        
-                        // Add small delay between chunks
-                        if (i % 5 === 0) {
-                            // Force UI update every 5 chunks
-                            setTimeout(() => {}, 0);
-                        }
-                    }
-                    
-                    // After all chunks are processed, update all analytics
-                    transactionAnalytics.analyzeTrends(transactions);
-                    transactionAnalytics.analyzeSeasonality(transactions);
-                    transactionAnalytics.generateForecast(transactions);
-                    transactionAnalytics.renderPriceTrendChart(transactions);
-                }, 100);
-            } else {
-                // If we only have one chunk, update all analytics
-                transactionAnalytics.analyzeTrends(firstChunk);
-                transactionAnalytics.analyzeSeasonality(firstChunk);
-                transactionAnalytics.generateForecast(firstChunk);
-                transactionAnalytics.renderPriceTrendChart(firstChunk);
-            }
-        } catch (error) {
-            console.error('Error processing analytics chunks:', error);
-            // Still try to show what we have
-            transactionAnalytics.showAnalytics(true);
-        }
-    }
-    
-    // View transaction details
-    viewTransactionDetails(transaction) {
-        // This can be expanded to show a detailed view of the transaction
-        console.log('Viewing transaction:', transaction);
-        // For now, just show a toast with the transaction details
-        this.showToast(`Viewing: ${transaction.description || 'Transaction'} (${transaction.amount})`, 'info');
-    }
-    
-    // Edit transaction
-    async editTransaction(id) {
-        console.log('Editing transaction:', id);
-        // TODO: Implement edit transaction functionality
-        this.showToast('Edit transaction: ' + id, 'info');
-    }
-    
-    // Delete transaction
-    async deleteTransaction(id) {
-        if (confirm('Are you sure you want to delete this transaction?')) {
-            try {
-                await localDB.deleteItem('transactions', id);
-                this.showToast('Transaction deleted', 'success');
-                this.refreshCurrentView();
-            } catch (error) {
-                console.error('Error deleting transaction:', error);
-                this.showToast('Error deleting transaction', 'error');
-            }
-        }
-    }
-    
-    // Update dashboard with summary data
-    async updateDashboard() {
-        console.log('Updating dashboard...');
-        try {
-            // Get all transactions
-            const transactions = await localDB.getTransactions();
-            console.log('All transactions:', transactions);
-            
-            // Filter transactions for the current month
-            const now = new Date();
-            const currentMonth = now.getMonth();
-            const currentYear = now.getFullYear();
-            
-            const monthlyTransactions = transactions.filter(t => {
-                try {
-                    const transDate = new Date(t.date);
-                    const isCurrentMonth = transDate.getMonth() === currentMonth;
-                    const isCurrentYear = transDate.getFullYear() === currentYear;
-                    return isCurrentMonth && isCurrentYear;
-                } catch (e) {
-                    console.warn('Error processing transaction date:', t, e);
-                    return false;
-                }
-            });
-            
-            console.log('Monthly transactions:', monthlyTransactions);
-            
-            // Calculate totals
-            // Income: positive amounts or type 'income'
-            const incomeTransactions = monthlyTransactions.filter(t => {
-                const amount = typeof t.amount === 'number' ? t.amount : parseFloat(t.amount) || 0;
-                return t.type === 'income' || amount > 0;
-            });
-                
-            console.log('Income transactions:', incomeTransactions);
-                
-            const income = incomeTransactions.reduce((sum, t) => {
-                const amount = Math.abs(typeof t.amount === 'number' ? t.amount : parseFloat(t.amount) || 0);
-                return sum + amount;
-            }, 0);
-                
-            console.log('Calculated income:', income);
-                
-            // Expenses: sum of all negative amounts or type 'expense'
-            console.log('All monthly transactions for expense calculation:', monthlyTransactions);
-            
-            const expenseTransactions = monthlyTransactions.filter(t => {
-                const amount = typeof t.amount === 'number' ? t.amount : parseFloat(t.amount) || 0;
-                const isExpense = t.type === 'expense' || amount < 0;
-                console.log(`Transaction: ${t.description || 'No desc'}, Amount: ${amount}, Type: ${t.type}, IsExpense: ${isExpense}`);
-                return isExpense;
-            });
-                
-            console.log('Filtered expense transactions:', expenseTransactions);
-            
-            const expenses = expenseTransactions.reduce((sum, t) => {
-                let amount = typeof t.amount === 'number' ? t.amount : parseFloat(t.amount) || 0;
-                console.log(`Processing expense: ${t.description || 'No desc'}, Original Amount: ${amount}, Type: ${t.type}`);
-                
-                // Convert to positive for the sum
-                amount = Math.abs(amount);
-                console.log(`  -> Adding to expenses: ${amount}`);
-                
-                return sum + amount;
-            }, 0);
-            
-            console.log('Total calculated expenses:', expenses);
-                    
-            // Get budget data (if available)
-            let budgeted = 0;
-            try {
-                const budgets = await localDB.getAllItems('budgets');
-                const currentBudget = budgets.find(b => {
-                    const budgetDate = new Date(b.month);
-                    return budgetDate.getMonth() === currentMonth && 
-                           budgetDate.getFullYear() === currentYear;
-                });
-                budgeted = currentBudget?.amount || 0;
-            } catch (e) {
-                console.warn('Could not load budget data:', e);
-            }
-            
-            // Calculate available to budget
-            const availableToBudget = income - budgeted;
-            
-            // Update the UI with correct element IDs from HTML
-            this.updateDashboardMetric('available-budget', availableToBudget);
-            this.updateDashboardMetric('total-budgeted', budgeted);
-            this.updateDashboardMetric('total-spent', expenses);
-            this.updateDashboardMetric('total-income', income);
-            
-            // Update recent transactions
-            this.updateRecentTransactions(transactions.slice(0, 5));
-            
-            // Update budget overview chart
-            this.updateBudgetOverview(monthlyTransactions);
-            
-        } catch (error) {
-            console.error('Error updating dashboard:', error);
-            this.showToast('Error updating dashboard', 'error');
-        }
-    }
-    
-    // Helper to update dashboard metric elements
-    updateDashboardMetric(elementId, value) {
-        const element = document.getElementById(elementId);
-        if (element) {
-            // Format as currency
-            const formattedValue = new Intl.NumberFormat('en-US', {
-                style: 'currency',
-                currency: 'USD',
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-            }).format(value);
-            
-            // Update the element's text content
-            element.textContent = formattedValue;
-        }
-    }
-    
-    // Update recent transactions list
-    updateRecentTransactions(transactions) {
-        const container = document.getElementById('recent-transactions');
-        if (!container) return;
         
-        if (transactions.length === 0) {
-            container.innerHTML = '<div class="text-muted">No recent transactions</div>';
-            return;
-        }
+    // Initialize search manager if not already initialized
+    if (!this.searchManager) {
+      this.searchManager = new SearchManager(this);
+    }
+  }
+
+  switchView(view) {
+    // Update navigation
+    document.querySelectorAll('.nav__link').forEach(link => {
+      link.classList.remove('nav__link--active');
+    });
         
-        const list = document.createElement('div');
-        list.className = 'list-group list-group-flush';
+    const activeNav = document.querySelector(`[data-view="${view}"]`);
+    if (activeNav) {
+      activeNav.classList.add('nav__link--active');
+    }
+
+    // Update views
+    document.querySelectorAll('.view').forEach(v => {
+      v.classList.remove('view--active');
+    });
         
-        transactions.forEach(transaction => {
-            const isIncome = transaction.type === 'income' || transaction.amount > 0;
-            const amountClass = isIncome ? 'text-success' : 'text-danger';
-            const amountSign = isIncome ? '+' : '-';
+    const activeView = document.getElementById(`${view}-view`);
+    if (activeView) {
+      activeView.classList.add('view--active');
+    }
+        
+    // If switching to calendar view, initialize it with today's date
+    if (view === 'calendar' && !this.selectedDate) {
+      this.selectedDate = new Date();
+      this.renderCalendar(this.selectedDate);
+    }
+        
+    // If switching to search view, ensure search UI is properly initialized
+    if (view === 'search' && this.searchManager) {
+      // Re-bind events in case the search tab was not loaded when the page first loaded
+      this.searchManager.bindEvents();
+    }
+        
+    this.currentView = view;
+    this.renderCurrentView();
+  }
+
+  async renderTransactions() {
+    try {
+      // Get the transactions view container
+      const transactionsView = document.getElementById('transactions-view');
+      if (!transactionsView) {
+        console.error('Transactions view not found');
+        return;
+      }
             
-            const item = document.createElement('div');
-            item.className = 'list-group-item d-flex justify-content-between align-items-center';
-            item.innerHTML = `
-                <div>
-                    <h6 class="mb-1">${transaction.description || 'No description'}</h6>
-                    <small class="text-muted">${transaction.category || 'Uncategorized'}</small>
+      // Get the transactions table container
+      const transactionsTable = document.getElementById('transactions-table');
+      if (!transactionsTable) {
+        console.error('Transactions table not found');
+        return;
+      }
+            
+      // Show loading state
+      transactionsTable.innerHTML = '<div class="loading">Loading transactions...</div>';
+      console.log('Fetching transactions from database...');
+            
+      try {
+        // Get all transactions from the database
+        const transactions = await this.db.getAllItems('transactions');
+        console.log('Retrieved transactions:', transactions);
+                
+        if (!transactions || transactions.length === 0) {
+          console.log('No transactions found in the database');
+          transactionsTable.innerHTML = `
+                        <div class="no-transactions">
+                            <p>No transactions found.</p>
+                            <button class="btn btn--primary" id="add-sample-data">Add Sample Data</button>
+                        </div>
+                    `;
+          document.getElementById('add-sample-data')?.addEventListener('click', () => this.loadSampleData());
+          return;
+        }
+            
+        // Sort by date descending (newest first)
+        transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+                
+        // Render the transactions list
+        transactionsTable.innerHTML = this.renderTransactionList(transactions);
+                
+      } catch (error) {
+        console.error('Error loading transactions:', error);
+        transactionsTable.innerHTML = `
+                    <div class="error">
+                        Error loading transactions: ${error.message}
+                    </div>
+                `;
+      }
+    } catch (error) {
+      console.error('Error in renderTransactions:', error);
+      const transactionsView = document.getElementById('transactions-view');
+      if (transactionsView) {
+        transactionsView.innerHTML = `
+                    <div class="error">
+                        An error occurred while loading transactions. Please try again.
+                    </div>
+                `;
+      }
+    }
+  }
+    
+  async filterTransactions() {
+    try {
+      const searchInput = document.getElementById('transaction-search');
+      const filterSelect = document.getElementById('transaction-filter');
+      const searchTerm = (searchInput?.value || '').toLowerCase();
+      const filterValue = filterSelect?.value || '';
+            
+      // Get all transactions
+      const transactions = await this.db.getAllItems('transactions');
+            
+      // Apply filters
+      let filtered = [...transactions];
+            
+      // Apply search term filter
+      if (searchTerm) {
+        filtered = filtered.filter(t => 
+          (t.description && t.description.toLowerCase().includes(searchTerm)) ||
+                    (t.notes && t.notes.toLowerCase().includes(searchTerm)) ||
+                    (t.category && t.category.toLowerCase().includes(searchTerm))
+        );
+      }
+            
+      // Apply category filter
+      if (filterValue) {
+        filtered = filtered.filter(t => t.category === filterValue);
+      }
+            
+      // Sort by date (newest first)
+      filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
+            
+      // Update the transactions list
+      const transactionsTable = document.getElementById('transactions-table');
+      if (transactionsTable) {
+        transactionsTable.innerHTML = this.renderTransactionList(filtered);
+      }
+            
+    } catch (error) {
+      console.error('Error filtering transactions:', error);
+    }
+  }
+    
+  renderTransactionList(transactions = []) {
+    if (!transactions || transactions.length === 0) {
+      return '<div class="no-transactions">No transactions found</div>';
+    }
+        
+    return `
+            <div class="transactions-container">
+                <table class="transactions-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 100px;">Date</th>
+                            <th>Description</th>
+                            <th>Category</th>
+                            <th class="amount-col" style="width: 120px;">Amount</th>
+                            <th style="width: 180px; text-align: right;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${transactions.map(transaction => `
+                            <tr data-id="${transaction.id}">
+                                <td>${new Date(transaction.date).toLocaleDateString()}</td>
+                                <td>${this.escapeHtml(transaction.description || '')}</td>
+                                <td>${this.escapeHtml(transaction.category || 'Uncategorized')}</td>
+                                <td class="amount-col ${transaction.amount < 0 ? 'expense' : 'income'}">
+                                    ${transaction.amount < 0 ? '-' : ''}${this.formatCurrency(Math.abs(transaction.amount))}
+                                </td>
+                                <td class="transaction-actions">
+                                    <button class="btn-edit" data-id="${transaction.id}">
+                                        Edit
+                                    </button>
+                                    <button class="btn-delete" data-id="${transaction.id}">
+                                        Delete
+                                    </button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+  }
+    
+  async renderBudget() {
+    try {
+      const budgetEl = document.getElementById('budget');
+      if (!budgetEl) return;
+            
+      // Show loading state
+      budgetEl.innerHTML = '<div class="loading">Loading budget...</div>';
+            
+      // Get all transactions and categories
+      const transactions = await this.db.getAllItems('transactions');
+      const _categories = await this.db.getAllItems('categories');
+            
+      // Calculate budget summary
+      const now = new Date();
+      const currentMonth = now.getMonth();
+      const currentYear = now.getFullYear();
+            
+      const monthlyTransactions = transactions.filter(t => {
+        const date = new Date(t.date);
+        return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
+      });
+            
+      // Group by category and calculate totals
+      const categoryTotals = {};
+      monthlyTransactions.forEach(t => {
+        const category = t.category || 'Uncategorized';
+        if (!categoryTotals[category]) {
+          categoryTotals[category] = 0;
+        }
+        categoryTotals[category] += parseFloat(t.amount);
+      });
+            
+      // Render the budget view
+      budgetEl.innerHTML = `
+                <div class="budget-header">
+                    <h2>Budget for ${new Date(currentYear, currentMonth).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</h2>
                 </div>
-                <span class="${amountClass}">${amountSign}$${Math.abs(transaction.amount).toFixed(2)}</span>
+                <div class="budget-summary">
+                    ${Object.entries(categoryTotals).map(([category, amount]) => `
+                        <div class="budget-category">
+                            <div class="category-name">${this.escapeHtml(category)}</div>
+                            <div class="category-amount ${amount < 0 ? 'expense' : 'income'}">
+                                ${amount < 0 ? '-' : ''}${this.formatCurrency(Math.abs(amount))}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
             `;
             
-            list.appendChild(item);
-        });
+    } catch (error) {
+      console.error('Error rendering budget:', error);
+      const budgetEl = document.getElementById('budget');
+      if (budgetEl) {
+        budgetEl.innerHTML = `
+                    <div class="error">
+                        Error loading budget: ${error.message}
+                    </div>
+                `;
+      }
+    }
+  }
+    
+  async renderCurrentView() {
+    try {
+      if (!this.dbInitialized) {
+        console.log('Waiting for database to initialize...');
+        setTimeout(() => this.renderCurrentView(), 100);
+        return;
+      }
+
+      switch (this.currentView) {
+        case 'dashboard':
+          await this.renderDashboard();
+          break;
+        case 'transactions':
+          await this.renderTransactions();
+          break;
+        case 'budget': // Rendering the budget view
+          await this.renderBudget();
+          break;
+        case 'reports':
+          await this.renderReports();
+          break;
+        case 'settings':
+          await this.renderSettings();
+          break;
+        case 'search':
+          await this.renderSearch();
+          break;
+        default:
+          await this.renderDashboard();
+      }
+    } catch (error) {
+      console.error('Error in renderCurrentView:', error);
+      // Show error to user
+      const mainContent = document.getElementById('main-content');
+      if (mainContent) {
+        mainContent.innerHTML = `
+                    <div class="alert alert-danger">
+                        <h4>Error loading view</h4>
+                        <p>${this.escapeHtml(error.message)}</p>
+                    </div>
+                `;
+      }
+    }
+  }
+
+  // Detect bank format from CSV headers
+  detectBankFormat(headers) {
+    if (!headers || !headers.length) return null;
         
-        container.innerHTML = '';
-        container.appendChild(list);
+    const headerLine = headers.join(',').toLowerCase();
+        
+    for (const [_key, format] of Object.entries(BudgetApp.BANK_FORMATS)) {
+      const requiredFields = [format.date, format.description, format.amount]
+        .filter(Boolean)
+        .map(f => f.toLowerCase());
+                
+      if (requiredFields.every(field => headerLine.includes(field))) {
+        console.log(`Detected ${format.name} format`);
+        return format;
+      }
+    }
+        
+    return null;
+  }
+
+  // Handle file selection
+  handleCSVFile(e) {
+    const file = e.target.files[0];
+    if (file) {
+      this.processCSVFile(file);
+    }
+  }
+
+  // Process CSV file and extract transactions
+  processCSVFile(file) {
+    if (!file) return Promise.reject(new Error('No file provided'));
+        
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+            
+      reader.onload = (e) => {
+        try {
+          const text = e.target.result;
+          const allLines = text.split(/\r\n|\n/).filter(line => line.trim() !== '');
+                    
+          if (allLines.length < 2) {
+            throw new Error('CSV file is empty or has no data rows');
+          }
+                    
+          // Parse header row to detect column indices
+          const headers = this.parseCSVLine(allLines[0]);
+          const bankFormat = this.detectBankFormat(headers);
+          let _skipLines = 0;
+          let columnIndices = {
+            date: -1,
+            description: -1,
+            amount: -1,
+            category: -1,
+            account: -1,
+            notes: -1,
+            type: -1,
+            credit: -1
+          };
+                    
+          // If bank format detected, use its column mapping
+          if (bankFormat) {
+            _skipLines = bankFormat.skipLines || 0;
+            switch (bankFormat.name) {
+              // Special handling for Citi credit cards
+              case 'citi':
+                columnIndices.date = headers.findIndex(h => h === 'Transaction Date');
+                columnIndices.description = headers.findIndex(h => h === 'Description');
+                columnIndices.amount = headers.findIndex(h => h === 'Amount');
+                columnIndices.type = headers.findIndex(h => h === 'Type');
+                break;        
+              default:
+                columnIndices = {
+                  date: headers.findIndex(h => h.toLowerCase() === bankFormat.date.toLowerCase()),
+                  description: headers.findIndex(h => h.toLowerCase() === bankFormat.description.toLowerCase()),
+                  amount: headers.findIndex(h => h.toLowerCase() === bankFormat.amount.toLowerCase()),
+                  type: bankFormat.type ? 
+                    headers.findIndex(h => h.toLowerCase() === bankFormat.type.toLowerCase()) : -1,
+                  credit: bankFormat.credit ? 
+                    headers.findIndex(h => h.toLowerCase() === bankFormat.credit.toLowerCase()) : -1,
+                  category: -1,
+                  account: -1,
+                  notes: -1
+                };
+            }
+            console.log(`Using ${bankFormat.name} format with column mapping:`, columnIndices);
+          } else {
+            // Default column mapping (try to auto-detect)
+            headers.forEach((header, index) => {
+              const lowerHeader = header.toLowerCase();
+              if (lowerHeader.includes('date')) {
+                columnIndices.date = index;
+              } else if (lowerHeader.includes('desc') || lowerHeader.includes('memo') || lowerHeader.includes('note')) {
+                columnIndices.description = index;
+              } else if (lowerHeader.includes('amount') || lowerHeader.includes('value') || lowerHeader.includes('total')) {
+                columnIndices.amount = index;
+              } else if (lowerHeader.includes('type') || lowerHeader.includes('transaction type')) {
+                columnIndices.type = index;
+              } else if (lowerHeader.includes('category') || lowerHeader.includes('cat')) {
+                columnIndices.category = index;
+              } else if (lowerHeader.includes('account') || lowerHeader.includes('bank') || lowerHeader.includes('source')) {
+                columnIndices.account = index;
+              }
+            });
+          }
+                    
+          console.log('Detected column indices:', columnIndices);
+                    
+          // Process data rows
+          const transactions = [];
+          const skippedRows = [];
+                    
+          for (let i = 1; i < allLines.length; i++) {
+            try {
+              const values = this.parseCSVLine(allLines[i]);
+              if (values.length === 0) continue;
+                            
+              // Parse date with fallback to today
+              let transactionDate;
+              if (columnIndices.date >= 0 && values[columnIndices.date]) {
+                transactionDate = this.parseDate(values[columnIndices.date]);
+                if (!transactionDate || isNaN(new Date(transactionDate).getTime())) {
+                  console.warn(`Invalid date '${values[columnIndices.date]}' in row ${i + 1}, using today's date`);
+                  transactionDate = new Date().toISOString().split('T')[0];
+                }
+              } else {
+                console.warn(`No date column found in row ${i + 1}, using today's date`);
+                transactionDate = new Date().toISOString().split('T')[0];
+              }
+                            
+              // Parse amount with validation
+              let amount = 0;
+                            
+              if (columnIndices.amount >= 0 && values[columnIndices.amount]) {
+                // Clean and parse the amount
+                const amountStr = values[columnIndices.amount].toString().replace(/[^0-9.-]/g, '');
+                amount = parseFloat(amountStr) || 0;
+                                
+                // Determine if this is a credit or debit
+                if (columnIndices.type >= 0 && values[columnIndices.type]) {
+                  const typeValue = (values[columnIndices.type] || '').toString().toLowerCase().trim();
+                  const isCredit = ['credit', 'deposit', 'income', 'payment', 'refund', 'cr'].some(term => 
+                    typeValue.includes(term)
+                  );
+                                    
+                  // If type is 'debit' or similar, ensure amount is negative
+                  if (!isCredit && ['debit', 'withdrawal', 'purchase', 'dr'].some(term => 
+                    typeValue.includes(term)
+                  )) {
+                    amount = -Math.abs(amount);
+                  }
+                }
+                                
+                // If amount is 0, skip this row
+                if (amount === 0) {
+                  console.warn(`Skipping row ${i + 1}: Amount is 0`);
+                  skippedRows.push({ line: i + 1, reason: 'Zero amount' });
+                  continue;
+                }
+                                
+                // Create transaction object
+                const transaction = {
+                  id: `import-${Date.now()}-${i}`,
+                  date: transactionDate,
+                  description: columnIndices.description >= 0 && values[columnIndices.description] 
+                    ? values[columnIndices.description].trim() 
+                    : 'Imported Transaction',
+                  amount: amount,
+                  category: columnIndices.category >= 0 && values[columnIndices.category] 
+                    ? values[columnIndices.category].trim() 
+                    : 'Uncategorized',
+                  account: columnIndices.account >= 0 && values[columnIndices.account] 
+                    ? values[columnIndices.account].trim() 
+                    : 'Imported',
+                  type: amount >= 0 ? 'credit' : 'debit',
+                  status: 'cleared',
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString(),
+                  imported: true,
+                  originalRow: values.join(',')
+                };
+                                
+                transactions.push(transaction);
+              } else {
+                console.warn(`Skipping row ${i + 1}: No amount found`);
+                skippedRows.push({ line: i + 1, reason: 'No amount found' });
+              }
+                            
+            } catch (error) {
+              console.error(`Error processing row ${i + 1}:`, error);
+              skippedRows.push({ line: i + 1, reason: error.message || 'Error processing row' });
+            }
+          }
+                    
+          // Show preview of transactions
+          this.showCSVPreview(transactions, skippedRows);
+                    
+          // Store transactions for confirmation
+          this.pendingImport = transactions;
+                    
+          // Show success message
+          alert(`Successfully parsed ${transactions.length} transactions. ${skippedRows.length} rows were skipped.`);
+          resolve(transactions);
+                    
+        } catch (error) {
+          console.error('Error processing CSV file:', error);
+          alert(`Error processing CSV file: ${error.message}`);
+          // Reset the file input
+          const fileInput = document.getElementById('csv-file');
+          if (fileInput) fileInput.value = '';
+          reject(error);
+        }
+      };
+            
+      reader.onerror = (error) => {
+        console.error('Error reading file:', error);
+        alert('Error reading file. Please try again.');
+        reject(error);
+      };
+            
+      reader.readAsText(file);
+    });
+  }
+    
+  /**
+   * Escape HTML special characters to prevent XSS
+   * @param {string} unsafe - The string to escape
+   * @returns {string} Escaped string
+   */
+  escapeHtml(unsafe) {
+    if (typeof unsafe !== 'string') return '';
+    return unsafe
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  /**
+   * Parse CSV line with proper handling of quoted fields and escaped quotes
+   * @param {string} line - The CSV line to parse
+   * @returns {Array} Array of parsed fields
+   */
+  parseCSVLine(line) {
+    const pattern = /(?:^|,)(?:(?:(?:"((?:[^"]|"")*)")|([^",]*)))/g;
+    const fields = [];
+    let match;
+
+    while ((match = pattern.exec(line)) !== null) {
+      let field = match[1] !== undefined ? match[1] : match[2];
+      
+      // Handle escaped quotes within the field
+      if (field !== undefined) {
+        field = field.replace(/""/g, '"');
+        fields.push(field);
+      }
     }
     
-    // Update budget chart with Chart.js
-    updateBudgetChart(canvas, categories) {
-        const ctx = canvas.getContext('2d');
-        
-        // Destroy existing chart if it exists
-        if (canvas.chart) {
-            canvas.chart.destroy();
-        }
-        
-        // Create new chart
-        canvas.chart = new Chart(ctx, {
-            type: 'doughnut',
-            data: {
-                labels: categories.map(([category]) => category),
-                datasets: [{
-                    data: categories.map(([_, amount]) => amount),
-                    backgroundColor: [
-                        '#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b',
-                        '#5a5c69', '#858796', '#3a3b45', '#1cc88a', '#36b9cc'
-                    ],
-                    borderWidth: 0
-                }]
-            },
-            options: {
-                cutout: '70%',
-                plugins: {
-                    legend: {
-                        position: 'right',
-                        labels: {
-                            boxWidth: 12,
-                            padding: 20
-                        }
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                const label = context.label || '';
-                                const value = context.raw || 0;
-                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                                const percentage = Math.round((value / total) * 100);
-                                return `${label}: $${value.toFixed(2)} (${percentage}%)`;
-                            }
-                        }
-                    }
-                },
-                responsive: true,
-                maintainAspectRatio: false
-            }
-        });
-    }
+    // Trim whitespace and remove surrounding quotes
+    return fields.map(field => {
+      field = field.trim();
+      if (field.startsWith('"') && field.endsWith('"')) {
+        field = field.substring(1, field.length - 1);
+      }
+      return field;
+    });
+  }
     
-    // Update budget overview chart
-    updateBudgetOverview(transactions) {
-        // Group transactions by category
-        const categories = {};
+  /**
+     * Parse a date string into YYYY-MM-DD format
+     * @param {string} dateStr - The date string to parse
+     * @param {string} [format='auto'] - Optional format hint (e.g., 'MM/DD/YYYY', 'DD-MM-YYYY')
+     * @returns {string} Formatted date string (YYYY-MM-DD)
+     */
+  parseDate(dateStr, format = 'auto') {
+    if (!dateStr) return new Date().toISOString().split('T')[0];
         
-        transactions.forEach(transaction => {
-            if (transaction.type === 'expense' || transaction.amount < 0) {
-                const category = transaction.category || 'Uncategorized';
-                categories[category] = (categories[category] || 0) + Math.abs(transaction.amount);
-            }
-        });
+    // Try parsing with Date object first (handles ISO 8601 and other standard formats)
+    const date = new Date(dateStr);
+    if (!isNaN(date.getTime())) {
+      return date.toISOString().split('T')[0];
+    }
         
-        // Sort by amount (descending)
-        const sortedCategories = Object.entries(categories)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 5); // Top 5 categories
+    // Try common date formats
+    const formats = [
+      // MM/DD/YYYY or M/D/YYYY
+      /^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/,
+      // YYYY-MM-DD
+      /^(\d{4})-(\d{1,2})-(\d{1,2})$/,
+      // DD-MM-YYYY
+      /^(\d{1,2})-(\d{1,2})-(\d{4})$/,
+      // Month DD, YYYY (e.g., Jan 5, 2023)
+      /^([A-Za-z]{3,9})\s+(\d{1,2}),?\s*(\d{4})$/i
+    ];
         
-        // Update the chart or list
-        const container = document.getElementById('budget-overview-chart');
-        if (!container) {
-            console.warn('Budget overview chart container not found');
-            return;
+    for (const pattern of formats) {
+      const match = dateStr.match(pattern);
+      if (!match) continue;
+            
+      let day, month, year;
+            
+      // Handle different format patterns
+      if (pattern === formats[0]) { // MM/DD/YYYY or M/D/YYYY
+        if (format === 'DD-MM-YYYY' || format === 'DD/MM/YYYY') {
+          day = parseInt(match[1], 10);
+          month = parseInt(match[2], 10);
+        } else {
+          month = parseInt(match[1], 10);
+          day = parseInt(match[2], 10);
         }
+        year = parseInt(match[3], 10);
+      } else if (pattern === formats[1]) { // YYYY-MM-DD
+        year = parseInt(match[1], 10);
+        month = parseInt(match[2], 10);
+        day = parseInt(match[3], 10);
+      } else if (pattern === formats[2]) { // DD-MM-YYYY
+        day = parseInt(match[1], 10);
+        month = parseInt(match[2], 10);
+        year = parseInt(match[3], 10);
+      } else if (pattern === formats[3]) { // Month DD, YYYY
+        const monthNames = ['january', 'february', 'march', 'april', 'may', 'june',
+          'july', 'august', 'september', 'october', 'november', 'december'];
+        const monthName = match[1].toLowerCase();
+        month = monthNames.findIndex(m => monthName.startsWith(m.toLowerCase())) + 1;
+        if (month === 0) continue; // Month not found
+        day = parseInt(match[2], 10);
+        year = parseInt(match[3], 10);
+      }
+            
+      // Handle two-digit years
+      if (year < 100) {
+        year = 2000 + year;
+      }
+            
+      // Validate date components
+      if (month < 1 || month > 12) continue;
+      if (day < 1 || day > 31) continue;
+            
+      // Create date object (months are 0-indexed in JavaScript)
+      const parsedDate = new Date(year, month - 1, day);
+      if (!isNaN(parsedDate.getTime())) {
+        return parsedDate.toISOString().split('T')[0];
+      }
+    }
         
-        // If we have a canvas, update the chart
-        if (container.tagName === 'CANVAS') {
-            this.updateBudgetChart(container, sortedCategories);
-            return;
+    // If we get here, return today's date as fallback
+    console.warn(`Could not parse date: ${dateStr}, using today's date`);
+    return new Date().toISOString().split('T')[0];
+  }
+    
+  /**
+     * Parse an amount string into a number
+     * @param {string} amountStr - The amount string to parse
+     * @param {string} [format='auto'] - Optional format hint (e.g., 'US', 'EU')
+     * @returns {number} Parsed amount as a number
+     */
+  parseAmount(amountStr, _format = 'auto') {
+    if (typeof amountStr === 'number') return amountStr;
+    if (!amountStr || !amountStr.toString().trim()) return 0;
+        
+    // Clean the string
+    let cleanStr = amountStr.toString().trim();
+        
+    // Check if the amount is in parentheses (common accounting format for negatives)
+    const isNegative = cleanStr.startsWith('(') && cleanStr.endsWith(')');
+    if (isNegative) {
+      cleanStr = cleanStr.substring(1, cleanStr.length - 1);
+    }
+        
+    // Remove all non-numeric characters except decimal point and minus sign
+    cleanStr = cleanStr.replace(/[^0-9.-]/g, '');
+        
+    // Handle cases where there are multiple decimal points
+    const decimalPoints = cleanStr.split('.').length - 1;
+    if (decimalPoints > 1) {
+      // If there are multiple decimal points, keep only the first one
+      const parts = cleanStr.split('.');
+      cleanStr = parts[0] + '.' + parts.slice(1).join('');
+    }
+        
+    // Parse the number
+    let amount = parseFloat(cleanStr) || 0;
+        
+    // Apply negative if needed
+    if (isNegative || amountStr.startsWith('-')) {
+      amount = -Math.abs(amount);
+    }
+        
+    // Round to 2 decimal places to avoid floating point issues
+    return Math.round(amount * 100) / 100;
+  }
+    
+  /**
+     * Export skipped rows to a CSV file
+     * @param {Array} skippedRows - Array of skipped rows with errors
+     */
+  exportSkippedRows(skippedRows) {
+    if (!skippedRows || skippedRows.length === 0) {
+      this.showToast('info', 'No Errors', 'There are no errors to export.');
+      return;
+    }
+        
+    try {
+      // Create CSV header
+      let csvContent = 'Row,Error,Data\n';
+            
+      // Add each skipped row
+      skippedRows.forEach(row => {
+        const rowData = row.data ? 
+          (Array.isArray(row.data) ? `"${row.data.join(',')}"` : `"${String(row.data).replace(/"/g, '""')}"`) : 
+          '""';
+                
+        csvContent += `"${row.row || ''}",`;
+        csvContent += `"${(row.reason || 'Unknown error').replace(/"/g, '""')}",`;
+        csvContent += `${rowData}\n`;
+      });
+            
+      // Create download link
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `import_errors_${new Date().toISOString().slice(0, 10)}.csv`);
+      link.style.visibility = 'hidden';
+            
+      // Add to document, trigger download, and clean up
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+            
+      this.showToast('success', 'Export Complete', `Exported ${skippedRows.length} errors to CSV.`);
+            
+    } catch (error) {
+      console.error('Error exporting skipped rows:', error);
+      this.showToast('error', 'Export Failed', 'Failed to export error log. Check console for details.');
+    }
+  }
+    
+  /**
+     * Show a preview of the parsed CSV data before import
+     * @param {Array} transactions - Array of transaction objects
+     * @param {Array} skippedRows - Array of skipped rows with reasons
+     */
+  showCSVPreview(transactions = [], skippedRows = []) {
+    const preview = document.getElementById('csv-preview');
+    const confirmBtn = document.getElementById('import-csv-confirm');
+    const cancelBtn = document.getElementById('cancel-csv');
+        
+    if (!preview || !confirmBtn || !cancelBtn) {
+      console.error('Required preview elements not found');
+      return;
+    }
+        
+    try {
+      if (transactions.length === 0) {
+        preview.innerHTML = `
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                        No valid transactions found to import.
+                    </div>`;
+        preview.classList.remove('hidden');
+        confirmBtn.classList.add('hidden');
+        return;
+      }
+            
+      // Calculate summary stats
+      const totalAmount = transactions.reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
+      const incomeCount = transactions.filter(t => (parseFloat(t.amount) || 0) >= 0).length;
+      const expenseCount = transactions.length - incomeCount;
+      const categories = [...new Set(transactions.map(t => t.category || 'Uncategorized'))];
+            
+      // Build preview HTML
+      let html = `
+                <div class="preview-header">
+                    <h4>Preview Import</h4>
+                    <div class="preview-stats">
+                        ${transactions.length} transactions • ${this.formatCurrency(totalAmount)}
+                    </div>
+                </div>
+                <div class="preview-content">
+                    <div class="preview-summary">
+                        <div class="summary-item">
+                            <span class="summary-label">Total Amount:</span>
+                            <span class="summary-value ${totalAmount >= 0 ? 'text-success' : 'text-danger'}">
+                                ${this.formatCurrency(totalAmount)}
+                            </span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Income:</span>
+                            <span class="summary-value text-success">
+                                ${incomeCount} (${this.formatCurrency(
+  transactions
+    .filter(t => (parseFloat(t.amount) || 0) >= 0)
+    .reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0)
+)})
+                            </span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Expenses:</span>
+                            <span class="summary-value text-danger">
+                                ${expenseCount} (${this.formatCurrency(
+  Math.abs(transactions
+    .filter(t => (parseFloat(t.amount) || 0) < 0)
+    .reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0)
+  ))
+}}) 
+                            </span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Categories:</span>
+                            <span class="summary-value">
+                                ${categories.length}
+                                <span class="text-muted">${categories.length > 5 ? ' (first 5 shown)' : ''}</span>
+                            </span>
+                        </div>
+                        <div class="categories-preview">
+                            ${categories.slice(0, 5).map(cat => 
+    `<span class="category-tag">${cat}</span>`
+  ).join('')}
+                        </div>
+                    </div>
+                    
+                    <div class="table-responsive">
+                        <table class="preview-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Description</th>
+                                    <th class="text-end">Amount</th>
+                                    <th>Category</th>
+                                </tr>
+                            </thead>
+                            <tbody>`;
+            
+      // Add up to 10 sample rows
+      const sampleSize = Math.min(transactions.length, 10);
+            
+      for (let i = 0; i < sampleSize; i++) {
+        const t = transactions[i];
+        const amount = parseFloat(t.amount) || 0;
+                
+        html += `
+                    <tr>
+                        <td>${this.formatDate(t.date)}</td>
+                        <td class="description-cell" title="${this.escapeHtml(t.description || '')}">
+                            <div class="description-text">
+                                ${this.escapeHtml((t.description || '').substring(0, 40))}
+                                ${(t.description || '').length > 40 ? '...' : ''}
+                            </div>
+                        </td>
+                        <td class="text-end ${amount >= 0 ? 'text-success' : 'text-danger'}">
+                            ${this.formatCurrency(amount)}
+                        </td>
+                        <td>${this.escapeHtml(t.category || 'Uncategorized')}</td>
+                    </tr>`;
+      }
+            
+      // Add summary row
+      html += `
+                            </tbody>
+                            <tfoot>
+                                <tr class="summary-row">
+                                    <td colspan="4" class="text-end">
+                                        Showing ${sampleSize} of ${transactions.length} transactions
+                                    </td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>`;
+            
+      // Add skipped rows info if any
+      if (skippedRows && skippedRows.length > 0) {
+        const errorCount = skippedRows.length;
+        const errorSample = skippedRows.slice(0, 5);
+                
+        html += `
+                    <div class="skipped-rows">
+                        <div class="skipped-header">
+                            <i class="bi bi-exclamation-triangle-fill text-warning me-2"></i>
+                            <span>${errorCount} row${errorCount > 1 ? 's were' : ' was'} skipped due to errors</span>
+                        </div>`;
+                
+        if (errorSample.length > 0) {
+          html += `
+                        <div class="skipped-list">
+                            <table class="skipped-table">
+                                <thead>
+                                    <tr>
+                                        <th>Row</th>
+                                        <th>Error</th>
+                                        <th>Data</th>
+                                    </tr>
+                                </thead>
+                                <tbody>`;
+                    
+          errorSample.forEach((row, index) => {
+            const rowData = row.data ? 
+              (Array.isArray(row.data) ? row.data.join(', ') : String(row.data)) : 
+              'No data';
+                        
+            html += `
+                            <tr>
+                                <td>${row.row || (index + 1)}</td>
+                                <td>${this.escapeHtml(row.reason || 'Unknown error')}</td>
+                                <td class="skipped-data" title="${this.escapeHtml(rowData)}">
+                                    ${this.escapeHtml(rowData.length > 50 ? rowData.substring(0, 50) + '...' : rowData)}
+                                </td>
+                            </tr>`;
+          });
+                    
+          if (errorCount > 5) {
+            html += `
+                            <tr>
+                                <td colspan="3" class="text-center text-muted">
+                                    ... and ${errorCount - 5} more errors not shown
+                                </td>
+                            </tr>`;
+          }
+                    
+          html += `
+                                </tbody>
+                            </table>
+                        </div>`;
         }
+                
+        html += `
+                        <div class="skipped-actions">
+                            <button class="btn btn-sm btn-outline-secondary" id="export-errors-btn">
+                                <i class="bi bi-download me-1"></i> Export Errors
+                            </button>
+                        </div>
+                    </div>`;
+      }
+            
+      html += `
+                </div>`; // Close preview-content
+            
+      // Set the HTML and show the preview
+      preview.innerHTML = html;
+      preview.classList.remove('hidden');
+      confirmBtn.classList.remove('hidden');
+            
+      // Add event listeners for the export errors button
+      const exportBtn = document.getElementById('export-errors-btn');
+      if (exportBtn && skippedRows.length > 0) {
+        exportBtn.addEventListener('click', () => this.exportSkippedRows(skippedRows));
+      }
+            
+      // Scroll to preview
+      preview.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            
+    } catch (error) {
+      console.error('Error generating preview:', error);
+            
+      const errorHtml = `
+                <div class="alert alert-danger">
+                    <div class="d-flex align-items-center">
+                        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                        <div>
+                            <strong>Error generating preview</strong>
+                            <div class="small">${this.escapeHtml(error.message || 'Unknown error')}</div>
+                        </div>
+                    </div>
+                </div>`;
+                
+      if (preview) {
+        preview.innerHTML = errorHtml;
+        preview.classList.remove('hidden');
+      } else {
+        // If preview element doesn't exist, show an alert
+        alert(`Error generating preview: ${error.message}`);
+      }
+            
+      // Hide confirm button on error
+      if (confirmBtn) {
+        confirmBtn.classList.add('hidden');
+      }
+    }
+  }
+    
+  // Confirm and import the CSV data
+  async confirmCSVImport() {
+    if (!this.pendingImport || this.pendingImport.length === 0) {
+      alert('No transactions to import. Please upload a CSV file first.');
+      return;
+    }
         
-        if (sortedCategories.length === 0) {
-            container.innerHTML = '<div class="text-muted">No expense data available</div>';
-            return;
+    try {
+      const results = {
+        success: 0,
+        skipped: 0,
+        failed: 0,
+        errors: []
+      };
+            
+      // Add transactions to database
+      for (const [index, transaction] of this.pendingImport.entries()) {
+        try {
+          console.log(`Importing transaction ${index + 1}/${this.pendingImport.length}:`, transaction);
+          const success = await this.addTransaction(transaction);
+          if (success === true) {
+            results.success++;
+          } else if (success === false) {
+            // This is a duplicate that was skipped
+            results.skipped++;
+            results.errors.push(`Skipped duplicate transaction: ${transaction.description} (${transaction.date} - ${transaction.amount})`);
+          } else {
+            // This is an actual failure
+            results.failed++;
+            results.errors.push(`Failed to import transaction: ${JSON.stringify(transaction)}`);
+          }
+        } catch (error) {
+          console.error(`Error importing transaction ${index + 1}:`, error);
+          results.failed++;
+          results.errors.push(`Error importing transaction: ${error.message}`);
         }
+      }
+            
+      console.log('Import results:', results);
+            
+      // Reset form and show success
+      this.resetForms();
+            
+      // Build result message
+      const resultMessage = [];
+      if (results.success > 0) {
+        resultMessage.push(`✅ Successfully imported ${results.success} transactions`);
+      }
+      if (results.skipped > 0) {
+        resultMessage.push(`⏭️ Skipped ${results.skipped} duplicate transactions`);
+      }
+      if (results.failed > 0) {
+        resultMessage.push(`❌ Failed to import ${results.failed} transactions`);
+      }
+            
+      // Show results to user
+      if (resultMessage.length > 0) {
+        alert(resultMessage.join('\n\n'));
+      } else {
+        alert('No transactions were processed. Please check your file and try again.');
+      }
+            
+      // Log any errors
+      if (results.errors.length > 0) {
+        console.error('Import results:', results.errors);
+      }
+            
+      // Update UI
+      this.renderCurrentView();
+            
+    } catch (error) {
+      const errorMsg = `Error during import: ${error.message}`;
+      console.error(errorMsg, error);
+      alert(errorMsg);
+    } finally {
+      this.pendingImport = [];
+    }
+  }
+    
+  /**
+     * Shows the transaction modal for adding a new transaction
+     */
+  showTransactionModal() {
+    const form = document.getElementById('transaction-form');
+    if (form) {
+      // Reset the form
+      form.reset();
+            
+      // Clear any transaction ID from the form (in case it was in edit mode)
+      if (form.dataset.transactionId) {
+        delete form.dataset.transactionId;
+      }
+            
+      // Set default date to today
+      const today = new Date().toISOString().split('T')[0];
+      const dateInput = form.querySelector('[name="date"]');
+      if (dateInput) {
+        dateInput.value = today;
+      }
+            
+      // Update modal title
+      const modalTitle = document.querySelector('#add-transaction-modal .modal-title');
+      if (modalTitle) {
+        modalTitle.textContent = 'Add Transaction';
+      }
+            
+      // Show the modal
+      this.showModal('add-transaction-modal');
+    } else {
+      console.error('Transaction form not found');
+    }
+  }
+    
+  // Reset all forms
+  resetForms() {
+    const form = document.getElementById('transaction-form');
+    if (form) {
+      form.reset();
+      form.dataset.transactionId = '';
+      const modalTitle = document.querySelector('#add-transaction-modal .modal-title');
+      if (modalTitle) {
+        modalTitle.textContent = 'Add Transaction';
+      }
+    }
+    document.getElementById('category-form')?.reset();
+    document.getElementById('csv-preview').innerHTML = '';
+    document.getElementById('csv-preview').classList.add('hidden');
+    document.getElementById('import-csv-confirm').classList.add('hidden');
+    document.getElementById('csv-import-modal').classList.remove('modal--active');
+    document.body.classList.remove('modal-open');
+  }
+
+  renderSearch() {
+    console.log('Rendering search view');
+    try {
+      // Ensure search manager is initialized
+      if (!this.searchManager) {
+        console.log('Initializing new SearchManager');
+        this.searchManager = new SearchManager(this);
+      } else {
+        console.log('Using existing SearchManager instance');
+      }
+            
+      const resultsBody = document.getElementById('search-results-body');
+      const insights = document.getElementById('search-insights');
+            
+      if (resultsBody) {
+        resultsBody.innerHTML = '<tr><td colspan="5" class="text-center">Enter a search term to find transactions</td></tr>';
+      }
+            
+      if (insights) {
+        insights.innerHTML = '';
+      }
+            
+      // Clear any existing charts
+      if (this.charts.searchTrend) {
+        this.charts.searchTrend.destroy();
+        delete this.charts.searchTrend;
+      }
+            
+      if (this.charts.searchCategory) {
+        this.charts.searchCategory.destroy();
+        delete this.charts.searchCategory;
+      }
+    } catch (error) {
+      console.error('Error in renderSearch:', error);
+    }
+  }
+
+  formatCurrency(amount) {
+    if (typeof amount !== 'number') return '$0.00';
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(amount);
+  }
+
+  parseCurrency(currencyString) {
+    if (!currencyString) return 0;
+    // Remove any non-numeric characters except decimal point and minus sign
+    const numberString = currencyString.replace(/[^0-9.-]+/g, '');
+    return parseFloat(numberString) || 0;
+  }
+
+  formatDate(dateString) {
+    if (!dateString) return '';
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return dateString; // Return original string if date parsing fails
+    }
+  }
+    
+  /**
+     * Show transactions for a specific date
+     * @param {Date} date - The date to show transactions for
+     */
+  showTransactionsForDate(date) {
+    const dayTransactions = this.transactions.filter(t => {
+      const transactionDate = new Date(t.date);
+      return transactionDate.toDateString() === date.toDateString();
+    });
         
-        const list = document.createElement('div');
-        list.className = 'list-group list-group-flush';
+    if (dayTransactions.length === 0) {
+      this.showToast('info', 'No Transactions', `No transactions found for ${date.toLocaleDateString()}`);
+      return;
+    }
         
-        sortedCategories.forEach(([category, amount]) => {
-            const item = document.createElement('div');
-            item.className = 'list-group-item d-flex justify-content-between align-items-center';
-            item.innerHTML = `
-                <div>${category}</div>
-                <div>
-                    <span class="fw-medium">$${amount.toFixed(2)}</span>
-                    <div class="progress mt-1" style="height: 4px; width: 100px;">
-                        <div class="progress-bar bg-primary" role="progressbar" 
-                             style="width: ${Math.min(100, (amount / 1000) * 100)}%" 
-                             aria-valuenow="${amount}" 
-                             aria-valuemin="0" 
-                             aria-valuemax="1000">
+    // Create modal content
+    const modalContent = `
+            <div class="modal-header">
+                <h3>Transactions for ${date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</h3>
+                <button class="modal-close" id="close-transaction-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="transaction-list">
+                    ${dayTransactions.map(t => `
+                        <div class="transaction-item ${t.amount < 0 ? 'expense' : 'income'}">
+                            <div class="transaction-main">
+                                <div class="transaction-category">${t.category || 'Uncategorized'}</div>
+                                <div class="transaction-amount">${this.formatCurrency(t.amount)}</div>
+                            </div>
+                            ${t.description ? `<div class="transaction-description">${t.description}</div>` : ''}
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+        
+    // Show modal
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.id = 'day-transactions-modal';
+    modal.innerHTML = `
+            <div class="modal-content">
+                ${modalContent}
+            </div>
+        `;
+        
+    document.body.appendChild(modal);
+        
+    // Add close handler
+    modal.querySelector('.modal-close, .modal').addEventListener('click', (e) => {
+      if (e.target.classList.contains('modal-close') || e.target.classList.contains('modal')) {
+        modal.remove();
+      }
+    });
+        
+    // Prevent modal from closing when clicking inside content
+    modal.querySelector('.modal-content').addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
+  }
+    
+  // Render the dashboard view
+  async renderDashboard() {
+    try {
+      // Get the dashboard container
+      const dashboardEl = document.getElementById('dashboard');
+      if (!dashboardEl) return;
+            
+      // Get transactions for the current month
+      const now = new Date();
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+            
+      const transactions = await this.localDB.getTransactions({
+        startDate: firstDay,
+        endDate: lastDay
+      });
+            
+      // Calculate totals
+      const totals = transactions.reduce((acc, t) => {
+        const amount = parseFloat(t.amount) || 0;
+        if (amount > 0) {
+          acc.income += amount;
+        } else {
+          acc.expenses += Math.abs(amount);
+        }
+        return acc;
+      }, { income: 0, expenses: 0 });
+            
+      // Update the dashboard HTML
+      dashboardEl.innerHTML = `
+                <div class="dashboard-summary">
+                    <div class="dashboard-card">
+                        <h3>Income</h3>
+                        <div class="amount income">${this.formatCurrency(totals.income)}</div>
+                    </div>
+                    <div class="dashboard-card">
+                        <h3>Expenses</h3>
+                        <div class="amount expense">${this.formatCurrency(totals.expenses)}</div>
+                    </div>
+                    <div class="dashboard-card">
+                        <h3>Balance</h3>
+                        <div class="amount ${totals.income - totals.expenses >= 0 ? 'income' : 'expense'}">
+                            ${this.formatCurrency(totals.income - totals.expenses)}
                         </div>
                     </div>
                 </div>
+                <div class="recent-transactions">
+                    <h3>Recent Transactions</h3>
+                    ${this.renderTransactionList(transactions.slice(0, 5))}
+                </div>
             `;
             
-            list.appendChild(item);
-        });
-        
-        container.innerHTML = '';
-        container.appendChild(list);
+    } catch (error) {
+      console.error('Error rendering dashboard:', error);
     }
+  }
     
-    // Initialize tooltips
-    initializeTooltips() {
-        // Check if Bootstrap is available
-        if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
-            const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-            tooltipTriggerList.map(function (tooltipTriggerEl) {
-                return new bootstrap.Tooltip(tooltipTriggerEl);
-            });
-        }
-    }
+  // Update the dashboard with fresh data
+  async updateDashboard() {
+    await this.renderDashboard();
+  }
     
-    // Initialize analytics toggle
-    initializeAnalyticsToggle() {
-        const toggleBtn = document.getElementById('toggle-analytics');
-        const analyticsContent = document.getElementById('analytics-content');
-        
-        if (toggleBtn && analyticsContent) {
-            // Set initial state (hidden by default)
-            const isHidden = window.localStorage.getItem('analyticsHidden') !== 'false';
-            analyticsContent.style.display = isHidden ? 'none' : 'block';
-            this.updateToggleButton(toggleBtn, !isHidden);
+  // Helper method to get category color
+  getCategoryColor(categoryName) {
+    if (!categoryName || !Array.isArray(this.budgetCategories)) return '#cccccc';
+    const category = this.budgetCategories.find(c => c && c.name === categoryName);
+    return category && category.color ? category.color : '#cccccc';
+  }
+
+  /**
+     * Edit a transaction by ID
+     * @param {string} id - The ID of the transaction to edit
+     */
+  async editTransaction(id) {
+    try {
+      // Ensure transactions are loaded
+      await this.loadTransactions();
             
-            // Add click event listener
-            toggleBtn.addEventListener('click', () => {
-                const isNowHidden = analyticsContent.style.display === 'none';
-                analyticsContent.style.display = isNowHidden ? 'block' : 'none';
-                this.updateToggleButton(toggleBtn, isNowHidden);
+      // Find the transaction
+      const transaction = this.transactions.find(t => t.id.toString() === id.toString());
+      if (!transaction) {
+        console.error('Transaction not found:', id);
+        this.showNotification('Transaction not found', 'error');
+        return;
+      }
+
+      // Pre-fill the form with existing data
+      const form = document.getElementById('transaction-form');
+      if (form) {
+        // Convert the date to YYYY-MM-DD format
+        const transactionDate = new Date(transaction.date);
+        const formattedDate = transactionDate.toISOString().split('T')[0];
                 
-                // Save preference to localStorage
-                window.localStorage.setItem('analyticsHidden', !isNowHidden);
+        form.querySelector('[name="date"]').value = formattedDate;
+        form.querySelector('[name="description"]').value = transaction.description || '';
+        form.querySelector('[name="amount"]').value = Math.abs(parseFloat(transaction.amount)) || '';
+        form.querySelector('[name="type"]').value = transaction.amount >= 0 ? 'income' : 'expense';
+        form.querySelector('[name="category"]').value = transaction.category || '';
                 
-                // Trigger window resize to ensure charts render correctly
-                setTimeout(() => window.dispatchEvent(new Event('resize')), 100);
-            });
+        // Show the form
+        this.showModal('add-transaction-modal');
+                
+        // Store the transaction ID in the form for updating
+        form.dataset.transactionId = id;
+                
+        // Change the form title to indicate edit mode
+        const modalTitle = document.querySelector('#add-transaction-modal .modal-title');
+        if (modalTitle) {
+          modalTitle.textContent = 'Edit Transaction';
         }
+      }
+    } catch (error) {
+      console.error('Error editing transaction:', error);
+      this.showNotification('Failed to edit transaction: ' + error.message, 'error');
     }
+  }
+
+  /**
+     * Confirm and delete a transaction
+     * @param {string} transactionId - The ID of the transaction to delete
+     * @param {Date} currentDate - The current date being viewed (for refreshing the view)
+     */
+  async confirmAndDeleteTransaction(transactionId, currentDate) {
+    try {
+      // Ensure transactions are loaded
+      await this.loadTransactions();
+            
+      // Find the transaction to show details in confirmation
+      const transaction = this.transactions.find(t => t.id.toString() === transactionId.toString());
+      if (!transaction) {
+        console.error('Transaction not found:', transactionId);
+        console.log('Available transaction IDs:', this.transactions.map(t => t.id));
+        this.showNotification('Transaction not found', 'error');
+        return;
+      }
+
+      // Show confirmation dialog
+      const confirmDelete = confirm('Are you sure you want to delete this transaction?\n\n' +
+                `Amount: ${this.formatCurrency(transaction.amount)}\n` +
+                `Category: ${transaction.category || 'Uncategorized'}\n` +
+                `${transaction.description ? `Description: ${transaction.description}\n` : ''}`);
+
+      if (!confirmDelete) return;
+
+      // Delete from IndexedDB
+      await this.db.deleteTransaction(transactionId);
+            
+      // Update in-memory transactions
+      this.transactions = this.transactions.filter(t => t.id.toString() !== transactionId.toString());
+            
+      // Update UI
+      if (currentDate) {
+        await this.showTransactionsForDate(currentDate);
+        this.renderCalendar(currentDate); // Refresh calendar to update transaction counts
+      }
+            
+      // Show success message
+      this.showNotification('Transaction deleted successfully', 'success');
+    } catch (error) {
+      console.error('Error deleting transaction:', error);
+      this.showNotification('Failed to delete transaction: ' + error.message, 'error');
+    }
+  }
     
-    // Update toggle button icon and text
-    updateToggleButton(button, isExpanded) {
-        const icon = button.querySelector('i');
-        if (isExpanded) {
-            icon.classList.remove('fa-chevron-down');
-            icon.classList.add('fa-chevron-up');
-            button.innerHTML = '<i class="fas fa-chevron-up"></i> Hide Analytics';
-        } else {
-            icon.classList.remove('fa-chevron-up');
-            icon.classList.add('fa-chevron-down');
-            button.innerHTML = '<i class="fas fa-chevron-down"></i> Show Analytics';
+  /**
+     * Handle transaction form submission
+     * @param {Event} e - Form submit event
+     */
+  async handleTransactionSubmit(e) {
+    e.preventDefault();
+        
+    const form = e.target;
+    const formData = new FormData(form);
+    const transactionData = {
+      description: formData.get('description'),
+      amount: parseFloat(formData.get('amount')),
+      type: formData.get('type'),
+      category: formData.get('category'),
+      date: formData.get('date'),
+      account: formData.get('account'),
+      recurring: formData.get('recurring') === 'on',
+      notes: formData.get('notes')
+    };
+        
+    try {
+      const isEditMode = !!form.dataset.transactionId;
+            
+      if (isEditMode) {
+        // Update existing transaction
+        await this.updateTransaction(form.dataset.transactionId, transactionData);
+        this.showNotification('Transaction updated successfully', 'success');
+      } else {
+        // Add new transaction
+        await this.addTransaction(transactionData);
+        this.showNotification('Transaction added successfully', 'success');
+      }
+            
+      // Reset form and close modal
+      this.resetForms();
+      this.closeModal('add-transaction-modal');
+            
+      // Refresh UI
+      await this.loadTransactions();
+      this.renderCurrentView();
+            
+      // If in calendar view, update the selected date's transactions
+      if (this.currentView === 'calendar') {
+        const selectedDate = document.querySelector('.calendar-day.selected');
+        if (selectedDate) {
+          const date = new Date(selectedDate.dataset.date);
+          await this.showTransactionsForDate(date);
         }
+      }
+            
+    } catch (error) {
+      console.error('Error saving transaction:', error);
+      this.showNotification(`Failed to save transaction: ${error.message}`, 'error');
     }
+  }
     
-    showToast(message, type = 'info') {
-        const toastContainer = document.getElementById('toast-container');
-        if (!toastContainer) return;
-        
-        const toast = document.createElement('div');
-        toast.className = `toast toast--${type}`;
-        toast.textContent = message;
-        
-        toastContainer.appendChild(toast);
-        
-        // Auto-remove toast after 5 seconds
-        setTimeout(() => {
-            toast.remove();
-        }, 5000);
+  /**
+     * Show a notification to the user
+     * @param {string} message - The message to display
+     * @param {string} type - The type of notification (success, error, info)
+     */
+  showNotification(message, type = 'info') {
+    // Check if notification container exists, create it if not
+    let notificationContainer = document.getElementById('notification-container');
+    if (!notificationContainer) {
+      notificationContainer = document.createElement('div');
+      notificationContainer.id = 'notification-container';
+      notificationContainer.style.position = 'fixed';
+      notificationContainer.style.top = '20px';
+      notificationContainer.style.right = '20px';
+      notificationContainer.style.zIndex = '1000';
+      document.body.appendChild(notificationContainer);
     }
+
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.style.padding = '10px 15px';
+    notification.style.marginBottom = '10px';
+    notification.style.borderRadius = '4px';
+    notification.style.color = 'white';
+    notification.style.backgroundColor = type === 'error' ? '#f44336' : 
+      type === 'success' ? '#4caf50' : '#2196f3';
+    notification.style.boxShadow = '0 2px 5px rgba(0,0,0,0.2)';
+    notification.style.transform = 'translateX(120%)';
+    notification.style.transition = 'transform 0.3s ease-in-out';
+    notification.textContent = message;
+
+    // Add to container
+    notificationContainer.appendChild(notification);
+
+    // Trigger animation
+    setTimeout(() => {
+      notification.style.transform = 'translateX(0)';
+    }, 10);
+
+    // Remove after delay
+    setTimeout(() => {
+      notification.style.transform = 'translateX(120%)';
+      setTimeout(() => {
+        notification.remove();
+      }, 300);
+    }, 3000);
+  }
 }
 
-// Export the BudgetApp class for use in other modules
+// Export the BudgetApp class
 export { BudgetApp };
 
 // Initialize the app when the DOM is fully loaded
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-        window.app = new BudgetApp();
-    });
-} else {
+  document.addEventListener('DOMContentLoaded', () => {
     window.app = new BudgetApp();
+  });
+} else {
+  window.app = new BudgetApp();
 }

@@ -44,7 +44,7 @@
         
         // Import the app
         try {
-            import('./src/app.js')
+            import('@/app.js')
                 .then(module => {
                     console.log('App module loaded successfully');
                     // Initialize the app when the DOM is fully loaded
@@ -114,6 +114,9 @@
                 <button class="nav__link" data-view="calendar">Calendar</button>
                 <button class="nav__link" data-view="analytics">Analytics</button>
                 <button class="nav__link" data-view="search">Search & Insights</button>
+                <button id="unlock-app-btn" class="btn btn--secondary btn--sm" style="margin-left: auto;">
+                    <i class="fas fa-lock"></i> Unlock App
+                </button>
             </div>
         </nav>
 
@@ -646,7 +649,7 @@
         </main>
     </div>
 
-    <!-- Vite entry point -->
+    <!-- Main app script -->
     <script type="module" src="/src/app.js"></script>
 
     <!-- Modals -->
