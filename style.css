@@ -682,6 +682,39 @@ select.form-control {
 .nav__links {
   display: flex;
   gap: var(--space-8);
+  align-items: center;
+  flex-grow: 1;
+}
+
+/* Unlock button styles */
+#unlock-app-btn {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+#unlock-app-btn i {
+  font-size: 12px;
+}
+
+#unlock-app-btn.btn--success {
+  background-color: #28a745;
+  border-color: #28a745;
+  color: white;
+}
+
+#unlock-app-btn.btn--success:hover {
+  background-color: #218838;
+  border-color: #1e7e34;
+}
+
+#unlock-app-btn:disabled {
+  opacity: 0.8;
+  cursor: not-allowed;
 }
 
 .nav__link {

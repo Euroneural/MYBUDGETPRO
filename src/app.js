@@ -1107,15 +1107,16 @@ class BudgetApp {
   async initializeApp() {
     try {
       console.log('Initializing app...');
-            
+
       // Initialize the database first
-      await this.db.initializeDB();
+      await this.db.init();
       this.dbInitialized = true;
-            
+
       // Load initial data
       await this.loadTransactions();
       await this.loadBudgetCategories();
       await this.loadAccounts();
+
             
       // Set up real-time listeners
       this.setupRealtimeListeners();

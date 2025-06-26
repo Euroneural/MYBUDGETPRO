@@ -2,7 +2,7 @@ Make sure to keep all existing features, styling and functionality of the app, o
 
 commit git
 
-make the import csv file feature work; it doesn't let me select a file
+make the import csv file feature work; it doesn't let me select a file. I have imports from different banks that look different, and have different column names. make sure to make it work for all of them and is flexiable.
 
 create a universal semantic and exact search for transactions, that show matching transactions, 
 each transaction amount, the total of all the transactions in the search result,

@@ -2,10 +2,16 @@ import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
-  base: './', // Ensures relative paths work when deployed to subdirectories
+  base: '/', // Use root-relative paths for development
   publicDir: 'public',
+  resolve: {
+    alias: [
+      { find: '@', replacement: '/src' }
+    ]
+  },
   server: {
-    port: 8080, // Use port 8080
+    port: 3001, // Use port 3001
+    host: '0.0.0.0', // Allow connections from any host
     open: true, // Automatically open the browser
     strictPort: true, // Exit if port is already in use
   },
