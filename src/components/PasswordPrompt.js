@@ -11,7 +11,7 @@ export class PasswordPrompt {
                 <div class="modal__body">
                     <p>Please enter your password to unlock your secure data.</p>
                     <div class="form-group">
-                        <input type="password" id="password-input" class="form-control" placeholder="Enter your password" autocomplete="current-password">
+                        <input type="password" id="password-input-modal" class="form-control" placeholder="Enter your password" autocomplete="current-password">
                         <div class="form-text text-muted">This password is only used locally to encrypt your data.</div>
                     </div>
                     <div id="password-error" class="text-danger mt-2" style="display: none;">
@@ -28,7 +28,7 @@ export class PasswordPrompt {
         
         document.body.appendChild(this.modal);
         
-        this.passwordInput = document.getElementById('password-input');
+        this.passwordInput = document.getElementById('password-input-modal');
         this.unlockBtn = document.getElementById('unlock-btn');
         this.errorElement = document.getElementById('password-error');
         
@@ -72,6 +72,8 @@ export class PasswordPrompt {
         try {
             if (this.resolvePromise) {
                 this.resolvePromise(password);
+                this.resolvePromise = null;
+                this.rejectPromise = null;
             }
         } catch (error) {
             console.error('Error during unlock:', error);

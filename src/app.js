@@ -239,81 +239,73 @@ class SearchManager {
           startDate,
           endDate
         });
-                
         if (!Array.isArray(transactions)) {
           throw new Error('Invalid transactions data received from database');
         }
-                
         console.log(`Found ${transactions.length} transactions in date range`);
       } catch (error) {
         console.error('Error fetching transactions:', error);
         throw new Error('Could not load transactions. Please try again.');
       }
-            
-      // Process search terms
-      const searchTerms = searchTerm.toLowerCase()
-        .split(' ')
+
+      // --- PIPE-SEPARATED SEMANTIC SEARCH SUPPORT ---
+      // Split search terms by pipe (|), trim, and match any term (case-insensitive)
+      const searchTerms = searchTerm
+        .toLowerCase()
+        .split('|')
         .map(term => term.trim())
         .filter(term => term.length > 0);
-                
+
       if (searchTerms.length === 0) {
         console.log('No valid search terms after processing');
         this.searchResults = [];
         return;
       }
-            
-      console.log('Searching with terms:', searchTerms);
-            
-      // Filter transactions based on search term with detailed logging
+
+      console.log('Searching with pipe-separated terms:', searchTerms);
+
+      // Filter transactions: match if ANY term matches (OR logic)
       this.searchResults = transactions.filter(transaction => {
         try {
           if (!transaction) {
             console.warn('Encountered undefined transaction in search');
             return false;
           }
-                    
           // Build searchable text
           const searchText = [
             String(transaction.description || '').toLowerCase(),
             String(transaction.category || '').toLowerCase()
           ];
-                    
           if (includeNotes && transaction.notes) {
             searchText.push(String(transaction.notes).toLowerCase());
           }
-                    
           const searchTextStr = searchText.join(' ');
-                    
-          // Apply search logic
           if (exactMatch) {
-            // All search terms must be present
+            // All pipe-separated terms must be present
             return searchTerms.every(term => searchTextStr.includes(term));
-          } 
-          // Any search term can match (OR logic)
+          }
+          // Any pipe-separated term can match
           return searchTerms.some(term => searchTextStr.includes(term));
-                    
         } catch (error) {
           console.error('Error processing transaction during search:', error, transaction);
-          return false; // Skip this transaction if there's an error
+          return false;
         }
       });
-            
+
       console.log(`Found ${this.searchResults.length} matching transactions`);
-            
+
       // Calculate search statistics
       this.calculateSearchStats();
-            
+
       // Debug: Log before rendering
       console.log('About to render search results');
-            
+
       // Render results with error handling for each step
       try {
         this.renderSearchResults();
         console.log('Search results rendered');
-                
         this.renderSearchCharts();
         console.log('Search charts rendered');
-                
         this.generateSearchInsights();
         console.log('Search insights generated');
       } catch (renderError) {
@@ -1419,33 +1411,6 @@ let calendarHTML = `
   this.setupCalendarEventListeners();
 }
 
-async loadBudgetCategories() {
-  try {
-    this.budgetCategories = await this.db.getAllItems('categories') || [];
-    console.log(`Loaded ${this.budgetCategories.length} budget categories`);
-      return this.budgetCategories;
-    } catch (error) {
-      console.error('Error loading budget categories:', error);
-      this.budgetCategories = [];
-      return [];
-    }
-  }
-  
-  async loadAccounts() {
-    try {
-      this.accounts = await this.db.getAllItems('accounts') || [];
-      console.log(`Loaded ${this.accounts.length} accounts`);
-      return this.accounts;
-    } catch (error) {
-      console.error('Error loading accounts:', error);
-      this.accounts = [];
-      return [];
-    }
-  }
-  
-  /**
-   * Set up real-time listeners for data changes
-   */
   setupRealtimeListeners() {
     console.log('Setting up real-time listeners');
     // This is a placeholder for real-time functionality
@@ -1764,6 +1729,7 @@ setupCalendarEventListeners() {
     searchElements.forEach(item => {
       const element = document.getElementById(item.id);
       if (element) {
+        element.removeEventListener(item.event, item.handler); // Prevent duplicate bindings
         element.addEventListener(item.event, item.handler);
       }
     });
@@ -1874,6 +1840,8 @@ setupCalendarEventListeners() {
     this.pendingImport = [];
     const preview = document.getElementById('csv-preview');
     if (preview) preview.innerHTML = '';
+    const csvFileInput = document.getElementById('csv-file-input');
+    if (csvFileInput) csvFileInput.value = '';
     this.closeModal('csv-import-modal');
   }
 
@@ -1957,11 +1925,11 @@ setupCalendarEventListeners() {
       transactionsTable.innerHTML = '<div class="loading">Loading transactions...</div>';
       console.log('Fetching transactions from database...');
             
+      let transactions = [];
       try {
-        // Get all transactions from the database
-        const transactions = await this.db.getAllItems('transactions');
+        transactions = await this.db.getAllItems('transactions');
         console.log('Retrieved transactions:', transactions);
-                
+              
         if (!transactions || transactions.length === 0) {
           console.log('No transactions found in the database');
           transactionsTable.innerHTML = `
@@ -1973,13 +1941,6 @@ setupCalendarEventListeners() {
           document.getElementById('add-sample-data')?.addEventListener('click', () => this.loadSampleData());
           return;
         }
-            
-        // Sort by date descending (newest first)
-        transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
-                
-        // Render the transactions list
-        transactionsTable.innerHTML = this.renderTransactionList(transactions);
-                
       } catch (error) {
         console.error('Error loading transactions:', error);
         transactionsTable.innerHTML = `
@@ -1987,7 +1948,145 @@ setupCalendarEventListeners() {
                         Error loading transactions: ${error.message}
                     </div>
                 `;
+        return;
       }
+          
+      // Sort by date descending (newest first)
+      transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+              
+      // Render the analytics toggle and chart containers above the transaction list
+      let analyticsHtml = `
+        <div id="transactions-analytics-section" class="mb-3">
+          <button class="btn btn-outline-secondary mb-2" id="toggle-transactions-analytics">
+            <i class="bi bi-bar-chart"></i> Show Analytics
+          </button>
+          <div id="transactions-analytics-charts" style="display:none;">
+            <div class="card mb-3">
+              <div class="card-header">Trend Over Time</div>
+              <div class="card-body" style="height:250px;">
+                <canvas id="transactions-trend-chart"></canvas>
+              </div>
+            </div>
+            <div class="card mb-3">
+              <div class="card-header">By Category</div>
+              <div class="card-body" style="height:250px;">
+                <canvas id="transactions-category-chart"></canvas>
+              </div>
+            </div>
+            <div class="card mb-3">
+              <div class="card-header">Seasonality</div>
+              <div class="card-body" style="height:250px;">
+                <canvas id="transactions-seasonality-chart"></canvas>
+              </div>
+            </div>
+            <div class="card mb-3">
+              <div class="card-header">Forecast</div>
+              <div class="card-body" style="height:250px;">
+                <canvas id="transactions-forecast-chart"></canvas>
+              </div>
+            </div>
+            <div class="card mb-3">
+              <div class="card-header">Distribution</div>
+              <div class="card-body" style="height:250px;">
+                <canvas id="transactions-distribution-chart"></canvas>
+              </div>
+            </div>
+            <div class="card mb-3">
+              <div class="card-header">Box Plot</div>
+              <div class="card-body" style="height:250px;">
+                <canvas id="transactions-boxplot-chart"></canvas>
+              </div>
+            </div>
+            <div class="card mb-3">
+              <div class="card-header">Price Trend</div>
+              <div class="card-body" style="height:250px;">
+                <canvas id="transactions-price-trend-chart"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+      transactionsTable.innerHTML = analyticsHtml + this.renderTransactionList(transactions);
+
+      // Add analytics toggle logic
+      const toggleBtn = document.getElementById('toggle-transactions-analytics');
+      const chartsSection = document.getElementById('transactions-analytics-charts');
+      let analyticsVisible = false;
+      if (toggleBtn && chartsSection) {
+        toggleBtn.addEventListener('click', () => {
+          analyticsVisible = !analyticsVisible;
+          chartsSection.style.display = analyticsVisible ? '' : 'none';
+          toggleBtn.innerHTML = analyticsVisible
+            ? '<i class="bi bi-bar-chart-fill"></i> Hide Analytics'
+            : '<i class="bi bi-bar-chart"></i> Show Analytics';
+          if (analyticsVisible) {
+            window.app.renderTransactionsAnalyticsCharts();
+          }
+        });
+      }
+      // Ensure charts update after filtering/searching
+      window.app.renderTransactionsAnalyticsCharts = async function() {
+        // Get currently displayed transactions
+        const rows = document.querySelectorAll('#transactions-table tbody tr');
+        let filtered = [];
+        rows.forEach(row => {
+          if (row.dataset && row.dataset.transaction) {
+            try {
+              filtered.push(JSON.parse(row.dataset.transaction));
+            } catch {}
+          }
+        });
+        // Fallback: if no data-transaction, use all from memory
+        if (filtered.length === 0 && window.app.transactions) filtered = window.app.transactions;
+
+        // Show friendly message if no data
+        const showNoData = (id, message) => {
+          const canvas = document.getElementById(id);
+          if (canvas) {
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
+              ctx.font = '16px sans-serif';
+              ctx.fillStyle = '#888';
+              ctx.textAlign = 'center';
+              ctx.fillText(message, canvas.width / 2, canvas.height / 2);
+            }
+          }
+        };
+        if (!filtered || filtered.length === 0) {
+          [
+            'transactions-trend-chart',
+            'transactions-category-chart',
+            'transactions-seasonality-chart',
+            'transactions-forecast-chart',
+            'transactions-distribution-chart',
+            'transactions-boxplot-chart',
+            'transactions-price-trend-chart'
+          ].forEach(id => showNoData(id, 'No transactions to display'));
+          return;
+        }
+        try {
+          const { transactionAnalytics } = await import('./analytics.js');
+          // Render all supported analytics charts
+          transactionAnalytics.renderTrendChart(filtered, 'transactions-trend-chart');
+transactionAnalytics.renderSeasonalityChart(filtered, 'transactions-seasonality-chart');
+transactionAnalytics.renderForecastChart(filtered, 'transactions-forecast-chart');
+transactionAnalytics.renderDistributionChart(filtered, 'transactions-distribution-chart');
+transactionAnalytics.renderBoxPlot(filtered, 'transactions-boxplot-chart');
+transactionAnalytics.renderPriceTrendChart(filtered, 'transactions-price-trend-chart');
+        } catch (err) {
+          console.error('Error rendering analytics charts:', err);
+          [
+            'transactions-trend-chart',
+            'transactions-category-chart',
+            'transactions-seasonality-chart',
+            'transactions-forecast-chart',
+            'transactions-distribution-chart',
+            'transactions-boxplot-chart',
+            'transactions-price-trend-chart'
+          ].forEach(id => showNoData(id, 'Error rendering chart'));
+        }
+      };
     } catch (error) {
       console.error('Error in renderTransactions:', error);
       const transactionsView = document.getElementById('transactions-view');
@@ -2000,7 +2099,7 @@ setupCalendarEventListeners() {
       }
     }
   }
-    
+
   async filterTransactions() {
     try {
       const searchInput = document.getElementById('transaction-search');
@@ -2029,61 +2128,65 @@ setupCalendarEventListeners() {
       }
             
       // Sort by date (newest first)
-      filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
-            
-      // Update the transactions list
-      const transactionsTable = document.getElementById('transactions-table');
-      if (transactionsTable) {
-        transactionsTable.innerHTML = this.renderTransactionList(filtered);
+    filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    // Update the transactions list
+    const transactionsTable = document.getElementById('transactions-table');
+    if (transactionsTable) {
+      // Only re-render the transaction table body, not the analytics section
+      // Find analytics section if it exists
+      const analyticsSection = document.getElementById('transactions-analytics-section');
+      let analyticsHtml = '';
+      if (analyticsSection) {
+        analyticsHtml = analyticsSection.outerHTML;
       }
-            
-    } catch (error) {
-      console.error('Error filtering transactions:', error);
+      transactionsTable.innerHTML =
+        analyticsHtml + this.renderTransactionList(filtered);
     }
+    // Update analytics charts if visible
+    const chartsSection = document.getElementById('transactions-analytics-charts');
+    if (chartsSection && chartsSection.style.display !== 'none' && window.app.renderTransactionsAnalyticsCharts) {
+      window.app.renderTransactionsAnalyticsCharts();
+    }
+  } catch (error) {
+    console.error('Error filtering transactions:', error);
   }
-    
-  renderTransactionList(transactions = []) {
-    if (!transactions || transactions.length === 0) {
-      return '<div class="no-transactions">No transactions found</div>';
-    }
-        
+}
+
+  renderTransactionList(transactions) {
     return `
-            <div class="transactions-container">
-                <table class="transactions-table">
-                    <thead>
-                        <tr>
-                            <th style="width: 100px;">Date</th>
-                            <th>Description</th>
-                            <th>Category</th>
-                            <th class="amount-col" style="width: 120px;">Amount</th>
-                            <th style="width: 180px; text-align: right;">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${transactions.map(transaction => `
-                            <tr data-id="${transaction.id}">
-                                <td>${new Date(transaction.date).toLocaleDateString()}</td>
-                                <td>${this.escapeHtml(transaction.description || '')}</td>
-                                <td>${this.escapeHtml(transaction.category || 'Uncategorized')}</td>
-                                <td class="amount-col ${transaction.amount < 0 ? 'expense' : 'income'}">
-                                    ${transaction.amount < 0 ? '-' : ''}${this.formatCurrency(Math.abs(transaction.amount))}
-                                </td>
-                                <td class="transaction-actions">
-                                    <button class="btn-edit" data-id="${transaction.id}">
-                                        Edit
-                                    </button>
-                                    <button class="btn-delete" data-id="${transaction.id}">
-                                        Delete
-                                    </button>
-                                </td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
-        `;
+      <div class="transactions-container">
+        <table class="transactions-table">
+          <thead>
+            <tr>
+              <th style="width: 100px;">Date</th>
+              <th>Description</th>
+              <th>Category</th>
+              <th class="amount-col" style="width: 120px;">Amount</th>
+              <th style="width: 180px; text-align: right;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${transactions.map(transaction => `
+              <tr data-id="${transaction.id}">
+                <td>${new Date(transaction.date).toLocaleDateString()}</td>
+                <td>${this.escapeHtml(transaction.description || '')}</td>
+                <td>${this.escapeHtml(transaction.category || 'Uncategorized')}</td>
+                <td class="amount-col ${transaction.amount < 0 ? 'expense' : 'income'}">
+                  ${transaction.amount < 0 ? '-' : ''}${this.formatCurrency(Math.abs(transaction.amount))}
+                </td>
+                <td class="transaction-actions">
+                  <button class="btn-edit" data-id="${transaction.id}">Edit</button>
+                  <button class="btn-delete" data-id="${transaction.id}">Delete</button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
   }
-    
+
   async renderBudget() {
     try {
       const budgetEl = document.getElementById('budget');
@@ -2398,7 +2501,7 @@ setupCalendarEventListeners() {
           console.error('Error processing CSV file:', error);
           alert(`Error processing CSV file: ${error.message}`);
           // Reset the file input
-          const fileInput = document.getElementById('csv-file');
+          const fileInput = document.getElementById('csv-file-input');
           if (fileInput) fileInput.value = '';
           reject(error);
         }
@@ -2636,233 +2739,226 @@ setupCalendarEventListeners() {
     const preview = document.getElementById('csv-preview');
     const confirmBtn = document.getElementById('import-csv-confirm');
     const cancelBtn = document.getElementById('cancel-csv');
-        
-    if (!preview || !confirmBtn || !cancelBtn) {
+    const importCount = document.getElementById('import-count');
+    const dropzone = document.getElementById('csv-dropzone');
+    const fileInput = document.getElementById('csv-file-input');
+    
+    if (!preview || !confirmBtn || !cancelBtn || !importCount || !dropzone) {
       console.error('Required preview elements not found');
       return;
     }
-        
+    
     try {
+      // Hide dropzone and show preview
+      dropzone.style.display = 'none';
+      preview.classList.remove('hidden');
+      
       if (transactions.length === 0) {
         preview.innerHTML = `
-                    <div class="alert alert-warning">
-                        <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                        No valid transactions found to import.
-                    </div>`;
-        preview.classList.remove('hidden');
+          <div class="alert alert-warning">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            No valid transactions found to import.
+          </div>`;
         confirmBtn.classList.add('hidden');
         return;
       }
-            
+      
+      // Update import count in the confirm button
+      importCount.textContent = transactions.length;
+      
       // Calculate summary stats
       const totalAmount = transactions.reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
       const incomeCount = transactions.filter(t => (parseFloat(t.amount) || 0) >= 0).length;
       const expenseCount = transactions.length - incomeCount;
       const categories = [...new Set(transactions.map(t => t.category || 'Uncategorized'))];
-            
+      
       // Build preview HTML
       let html = `
-                <div class="preview-header">
-                    <h4>Preview Import</h4>
-                    <div class="preview-stats">
-                        ${transactions.length} transactions • ${this.formatCurrency(totalAmount)}
-                    </div>
-                </div>
-                <div class="preview-content">
-                    <div class="preview-summary">
-                        <div class="summary-item">
-                            <span class="summary-label">Total Amount:</span>
-                            <span class="summary-value ${totalAmount >= 0 ? 'text-success' : 'text-danger'}">
-                                ${this.formatCurrency(totalAmount)}
-                            </span>
-                        </div>
-                        <div class="summary-item">
-                            <span class="summary-label">Income:</span>
-                            <span class="summary-value text-success">
-                                ${incomeCount} (${this.formatCurrency(
-  transactions
-    .filter(t => (parseFloat(t.amount) || 0) >= 0)
-    .reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0)
-)})
-                            </span>
-                        </div>
-                        <div class="summary-item">
-                            <span class="summary-label">Expenses:</span>
-                            <span class="summary-value text-danger">
-                                ${expenseCount} (${this.formatCurrency(
-  Math.abs(transactions
-    .filter(t => (parseFloat(t.amount) || 0) < 0)
-    .reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0)
-  ))
-}}) 
-                            </span>
-                        </div>
-                        <div class="summary-item">
-                            <span class="summary-label">Categories:</span>
-                            <span class="summary-value">
-                                ${categories.length}
-                                <span class="text-muted">${categories.length > 5 ? ' (first 5 shown)' : ''}</span>
-                            </span>
-                        </div>
-                        <div class="categories-preview">
-                            ${categories.slice(0, 5).map(cat => 
-    `<span class="category-tag">${cat}</span>`
-  ).join('')}
-                        </div>
-                    </div>
-                    
-                    <div class="table-responsive">
-                        <table class="preview-table">
-                            <thead>
-                                <tr>
-                                    <th>Date</th>
-                                    <th>Description</th>
-                                    <th class="text-end">Amount</th>
-                                    <th>Category</th>
-                                </tr>
-                            </thead>
-                            <tbody>`;
-            
+        <div class="preview-header">
+          <h4>Preview Import</h4>
+          <div class="preview-stats">
+            ${transactions.length} transactions • ${this.formatCurrency(totalAmount)}
+          </div>
+        </div>
+        <div class="preview-content">
+          <div class="preview-summary">
+            <div class="summary-item">
+              <span class="summary-label">Total Amount:</span>
+              <span class="summary-value ${totalAmount >= 0 ? 'text-success' : 'text-danger'}">
+                ${this.formatCurrency(totalAmount)}
+              </span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">Income:</span>
+              <span class="summary-value text-success">
+                ${incomeCount} (${this.formatCurrency(
+                  transactions
+                    .filter(t => (parseFloat(t.amount) || 0) >= 0)
+                    .reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0)
+                )})
+              </span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">Expenses:</span>
+              <span class="summary-value text-danger">
+                ${expenseCount} (${this.formatCurrency(
+                  Math.abs(transactions
+                    .filter(t => (parseFloat(t.amount) || 0) < 0)
+                    .reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0)
+                  ))
+                })
+              </span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">Categories:</span>
+              <span class="summary-value">
+                ${categories.length}
+                <span class="text-muted">${categories.length > 5 ? ' (first 5 shown)' : ''}</span>
+              </span>
+            </div>
+            <div class="categories-preview">
+              ${categories.slice(0, 5).map(cat => 
+                `<span class="badge bg-secondary me-1">${this.escapeHtml(cat)}</span>`
+              ).join('')}
+            </div>
+          </div>
+          
+          <div class="table-responsive mt-3">
+            <table class="table table-sm table-hover">
+              <thead class="table-light">
+                <tr>
+                  <th>Date</th>
+                  <th>Description</th>
+                  <th class="text-end">Amount</th>
+                  <th>Category</th>
+                  <th>Account</th>
+                </tr>
+              </thead>
+              <tbody>`;
+      
       // Add up to 10 sample rows
       const sampleSize = Math.min(transactions.length, 10);
-            
+      
       for (let i = 0; i < sampleSize; i++) {
         const t = transactions[i];
         const amount = parseFloat(t.amount) || 0;
-                
+        
         html += `
-                    <tr>
-                        <td>${this.formatDate(t.date)}</td>
-                        <td class="description-cell" title="${this.escapeHtml(t.description || '')}">
-                            <div class="description-text">
-                                ${this.escapeHtml((t.description || '').substring(0, 40))}
-                                ${(t.description || '').length > 40 ? '...' : ''}
-                            </div>
-                        </td>
-                        <td class="text-end ${amount >= 0 ? 'text-success' : 'text-danger'}">
-                            ${this.formatCurrency(amount)}
-                        </td>
-                        <td>${this.escapeHtml(t.category || 'Uncategorized')}</td>
-                    </tr>`;
-      }
-            
-      // Add summary row
-      html += `
-                            </tbody>
-                            <tfoot>
-                                <tr class="summary-row">
-                                    <td colspan="4" class="text-end">
-                                        Showing ${sampleSize} of ${transactions.length} transactions
-                                    </td>
-                                </tr>
-                            </tfoot>
-                        </table>
-                    </div>`;
-            
-      // Add skipped rows info if any
-      if (skippedRows && skippedRows.length > 0) {
-        const errorCount = skippedRows.length;
-        const errorSample = skippedRows.slice(0, 5);
-                
-        html += `
-                    <div class="skipped-rows">
-                        <div class="skipped-header">
-                            <i class="bi bi-exclamation-triangle-fill text-warning me-2"></i>
-                            <span>${errorCount} row${errorCount > 1 ? 's were' : ' was'} skipped due to errors</span>
-                        </div>`;
-                
-        if (errorSample.length > 0) {
-          html += `
-                        <div class="skipped-list">
-                            <table class="skipped-table">
-                                <thead>
-                                    <tr>
-                                        <th>Row</th>
-                                        <th>Error</th>
-                                        <th>Data</th>
-                                    </tr>
-                                </thead>
-                                <tbody>`;
-                    
-          errorSample.forEach((row, index) => {
-            const rowData = row.data ? 
-              (Array.isArray(row.data) ? row.data.join(', ') : String(row.data)) : 
-              'No data';
-                        
-            html += `
-                            <tr>
-                                <td>${row.row || (index + 1)}</td>
-                                <td>${this.escapeHtml(row.reason || 'Unknown error')}</td>
-                                <td class="skipped-data" title="${this.escapeHtml(rowData)}">
-                                    ${this.escapeHtml(rowData.length > 50 ? rowData.substring(0, 50) + '...' : rowData)}
-                                </td>
-                            </tr>`;
-          });
-                    
-          if (errorCount > 5) {
-            html += `
-                            <tr>
-                                <td colspan="3" class="text-center text-muted">
-                                    ... and ${errorCount - 5} more errors not shown
-                                </td>
-                            </tr>`;
-          }
-                    
-          html += `
-                                </tbody>
-                            </table>
-                        </div>`;
-        }
-                
-        html += `
-                        <div class="skipped-actions">
-                            <button class="btn btn-sm btn-outline-secondary" id="export-errors-btn">
-                                <i class="bi bi-download me-1"></i> Export Errors
-                            </button>
-                        </div>
-                    </div>`;
-      }
-            
-      html += `
-                </div>`; // Close preview-content
-            
-      // Set the HTML and show the preview
-      preview.innerHTML = html;
-      preview.classList.remove('hidden');
-      confirmBtn.classList.remove('hidden');
-            
-      // Add event listeners for the export errors button
-      const exportBtn = document.getElementById('export-errors-btn');
-      if (exportBtn && skippedRows.length > 0) {
-        exportBtn.addEventListener('click', () => this.exportSkippedRows(skippedRows));
-      }
-            
-      // Scroll to preview
-      preview.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            
-    } catch (error) {
-      console.error('Error generating preview:', error);
-            
-      const errorHtml = `
-                <div class="alert alert-danger">
-                    <div class="d-flex align-items-center">
-                        <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                        <div>
-                            <strong>Error generating preview</strong>
-                            <div class="small">${this.escapeHtml(error.message || 'Unknown error')}</div>
-                        </div>
+                <tr>
+                  <td>${this.formatDate(t.date)}</td>
+                  <td class="description-cell" title="${this.escapeHtml(t.description || '')}">
+                    <div class="description-text text-truncate" style="max-width: 200px">
+                      ${this.escapeHtml(t.description || '')}
                     </div>
-                </div>`;
-                
+                  </td>
+                  <td class="text-end ${amount >= 0 ? 'text-success' : 'text-danger'}">
+                    ${this.formatCurrency(amount)}
+                  </td>
+                  <td>${this.escapeHtml(t.category || 'Uncategorized')}</td>
+                  <td>${this.escapeHtml(t.account || '')}</td>
+                </tr>`;
+      }
+      
+      // Add summary row if there are more transactions
+      if (transactions.length > 10) {
+        html += `
+                <tr class="table-info">
+                  <td colspan="2" class="text-end fw-bold">And ${transactions.length - 10} more transactions...</td>
+                  <td class="text-end fw-bold">${this.formatCurrency(totalAmount)}</td>
+                  <td colspan="2"></td>
+                </tr>`;
+      }
+      
+      // Close table and preview content
+      html += `
+              </tbody>
+            </table>
+          </div>`;
+      
+      // Add skipped rows section if any
+      if (skippedRows.length > 0) {
+        html += `
+          <div class="alert alert-warning mt-3">
+            <div class="d-flex justify-content-between align-items-center">
+              <div>
+                <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                ${skippedRows.length} rows were skipped due to errors
+              </div>
+              <button class="btn btn-sm btn-outline-warning" id="show-skipped-rows">
+                Show Details
+              </button>
+            </div>
+            <div id="skipped-rows-details" class="mt-2" style="display: none;">
+              <table class="table table-sm table-bordered mt-2">
+                <thead>
+                  <tr>
+                    <th>Row #</th>
+                    <th>Reason</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${skippedRows.map(row => `
+                    <tr>
+                      <td>${row.line}</td>
+                      <td>${this.escapeHtml(row.reason)}</td>
+                    </tr>`
+                  ).join('')}
+                </tbody>
+              </table>
+              <button class="btn btn-sm btn-outline-secondary" id="export-skipped-rows">
+                <i class="bi bi-download me-1"></i> Export Skipped Rows
+              </button>
+            </div>
+          </div>`;
+      }
+      
+      // Close preview content div
+      html += `
+        </div>`;
+      
+      // Set the HTML content
+      preview.innerHTML = html;
+      
+      // Show the confirm button
+      confirmBtn.classList.remove('hidden');
+      
+      // Add event listeners for show/hide skipped rows
+      const showSkippedBtn = document.getElementById('show-skipped-rows');
+      if (showSkippedBtn) {
+        showSkippedBtn.addEventListener('click', (e) => {
+          const details = document.getElementById('skipped-rows-details');
+          if (details) {
+            const isVisible = details.style.display !== 'none';
+            details.style.display = isVisible ? 'none' : 'block';
+            e.target.textContent = isVisible ? 'Show Details' : 'Hide Details';
+          }
+        });
+      }
+      
+      // Add event listener for export skipped rows
+      const exportSkippedBtn = document.getElementById('export-skipped-rows');
+      if (exportSkippedBtn) {
+        exportSkippedBtn.addEventListener('click', () => {
+          this.exportSkippedRows(skippedRows);
+        });
+      }
+      
+      // Store transactions for confirmation
+      this.pendingImport = transactions;
+      this.skippedImportRows = skippedRows;
+      
+    } catch (error) {
+      console.error('Error showing CSV preview:', error);
       if (preview) {
-        preview.innerHTML = errorHtml;
+        preview.innerHTML = `
+          <div class="alert alert-danger">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            Error showing preview: ${error.message}
+          </div>`;
         preview.classList.remove('hidden');
       } else {
-        // If preview element doesn't exist, show an alert
         alert(`Error generating preview: ${error.message}`);
       }
-            
-      // Hide confirm button on error
       if (confirmBtn) {
         confirmBtn.classList.add('hidden');
       }
@@ -2926,9 +3022,9 @@ setupCalendarEventListeners() {
             
       // Show results to user
       if (resultMessage.length > 0) {
-        alert(resultMessage.join('\n\n'));
+        this.showNotification(resultMessage.join('\n'), results.failed > 0 ? 'error' : 'success');
       } else {
-        alert('No transactions were processed. Please check your file and try again.');
+        this.showNotification('No transactions were processed. Please check your file and try again.', 'info');
       }
             
       // Log any errors
@@ -2937,6 +3033,16 @@ setupCalendarEventListeners() {
       }
             
       // Update UI
+      await this.loadTransactions();
+      await this.loadBudgetCategories();
+      await this.loadAccounts();
+      if (typeof this.renderDashboard === 'function') await this.renderDashboard();
+      if (typeof this.renderCalendar === 'function') await this.renderCalendar();
+      await this.updateAnalytics();
+      // If currently in search view, refresh search results
+      if (this.currentView === 'search' && this.searchManager) {
+        this.searchManager.filterTransactions && this.searchManager.filterTransactions();
+      }
       this.renderCurrentView();
             
     } catch (error) {
@@ -3131,6 +3237,29 @@ setupCalendarEventListeners() {
     });
   }
     
+  // Update analytics (charts, stats, etc.)
+  async updateAnalytics() {
+    try {
+      // Example: update charts/stats for dashboard and analytics views
+      if (window.Chart && this.transactions && Array.isArray(this.transactions)) {
+        // (Assume you have chart instances stored in this.charts)
+        if (this.charts && this.charts.dashboard) {
+          // Update dashboard chart with latest transactions
+          this.charts.dashboard.data = this.transactions;
+          this.charts.dashboard.update();
+        }
+        if (this.charts && this.charts.analytics) {
+          // Update analytics chart with latest transactions
+          this.charts.analytics.data = this.transactions;
+          this.charts.analytics.update();
+        }
+      }
+      // Optionally, update custom analytics summary UI here
+    } catch (error) {
+      console.error('Error updating analytics:', error);
+    }
+  }
+
   // Render the dashboard view
   async renderDashboard() {
     try {
@@ -3296,6 +3425,25 @@ setupCalendarEventListeners() {
   }
     
   /**
+   * Add a transaction to the database
+   * @param {Object} transaction - Transaction object to add
+   * @returns {Promise<boolean>} - True if successful
+   */
+  async addTransaction(transaction) {
+    try {
+      // Generate a unique ID if not present
+      if (!transaction.id) {
+        transaction.id = Date.now().toString() + Math.floor(Math.random() * 10000);
+      }
+      await this.db.addItem('transactions', transaction);
+      return true;
+    } catch (error) {
+      console.error('Error adding transaction:', error, transaction);
+      return false;
+    }
+  }
+
+  /**
      * Handle transaction form submission
      * @param {Event} e - Form submit event
      */
@@ -3392,16 +3540,10 @@ setupCalendarEventListeners() {
     }, 10);
 
     // Remove after delay
-    setTimeout(() => {
-      notification.style.transform = 'translateX(120%)';
-      setTimeout(() => {
-        notification.remove();
-      }, 300);
-    }, 3000);
   }
-}
 
 // Export the BudgetApp class
+}
 export { BudgetApp };
 
 // Initialize the app when the DOM is fully loaded
