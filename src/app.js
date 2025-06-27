@@ -1,4 +1,5 @@
-import { localDB } from './local-db.js';
+import { secureDB } from './secure-db.js';
+import PasswordPrompt from './components/PasswordPrompt.js';
 
 // Chart.js is available globally via CDN in index.html
 
@@ -16,8 +17,17 @@ class SearchManager {
       firstTransactionDate: null,
       lastTransactionDate: null
     };
-    console.log('SearchManager: Calling init()');
-    this.init();
+    this.initialized = false;
+    console.log('SearchManager: Ready to initialize when search view is active');
+  }
+  
+  // Call this when search view becomes active
+  initialize() {
+    if (this.initialized) return;
+    console.log('SearchManager: Initializing search functionality');
+    this.bindEvents();
+    this.initialized = true;
+    console.log('SearchManager: Initialization complete');
   }
     
   // Helper method to escape HTML to prevent XSS
@@ -31,28 +41,39 @@ class SearchManager {
       .replace(/'/g, '&#039;');
   }
 
+  // Kept for backward compatibility
   init() {
-    console.log('SearchManager: Initializing search functionality');
-    try {
-      this.bindEvents();
-      console.log('SearchManager: Event binding completed');
-    } catch (error) {
-      console.error('SearchManager: Error during initialization:', error);
-    }
+    console.warn('SearchManager.init() is deprecated. Use initialize() instead.');
+    this.initialize();
   }
 
   bindEvents() {
     console.log('Binding search events...');
-        
+    
     // Store reference to 'this' for use in callbacks
     const self = this;
-        
+    
+    // Get elements - search might be in a modal or hidden initially
     const searchBtn = document.getElementById('search-btn');
     const searchInput = document.getElementById('transaction-search');
-        
-    if (!searchBtn) console.warn('Search button not found');
-    if (!searchInput) console.warn('Search input not found');
-        
+    const exactMatch = document.getElementById('exact-match');
+    const includeNotes = document.getElementById('include-notes');
+    const timeRange = document.getElementById('time-range');
+    
+    if (!searchBtn) {
+      console.warn('Search button not found - will retry when search view is active');
+      return false;
+    }
+    
+    if (!searchInput) {
+      console.warn('Search input not found - will retry when search view is active');
+      return false;
+    }
+    
+    // Remove any existing event listeners to prevent duplicates
+    const newSearchBtn = searchBtn.cloneNode(true);
+    searchBtn.parentNode.replaceChild(newSearchBtn, searchBtn);
+    
     // Helper function to safely perform search
     const safeSearch = async () => {
       try {
@@ -74,61 +95,56 @@ class SearchManager {
     // Helper function to safely render results
     const safeRenderResults = () => {
       try {
-        self.renderSearchResults();
+        if (self.renderSearchResults) {
+          self.renderSearchResults();
+        }
       } catch (error) {
         console.error('Error rendering search results:', error);
       }
     };
         
-    if (searchBtn) {
-      searchBtn.removeEventListener('click', safeSearch);
-      searchBtn.addEventListener('click', safeSearch);
-      console.log('Search button event listener added');
-    }
-        
-    if (searchInput) {
-      // Remove any existing event listeners to prevent duplicates
-      searchInput.removeEventListener('keypress', this.handleSearchKeyPress);
-            
-      // Add debounced search on input
-      let searchTimeout;
-      searchInput.addEventListener('input', (e) => {
-        clearTimeout(searchTimeout);
-        searchTimeout = setTimeout(() => {
-          const searchTerm = e.target.value.trim();
-          if (searchTerm.length >= 2) {
-            console.log('Input changed, performing search for:', searchTerm);
-            safeSearch();
-          } else if (searchTerm.length === 0) {
-            // Clear results if search is empty
-            console.log('Search input cleared');
-            self.searchResults = [];
-            safeRenderResults();
-            self.renderSearchCharts();
-            self.generateSearchInsights();
-          }
-        }, 500); // 500ms debounce delay
-      });
-            
-      // Also search on Enter key
-      searchInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-          console.log('Enter key pressed in search input');
-          clearTimeout(searchTimeout); // Clear any pending debounced search
+    // Add click event to search button
+    newSearchBtn.addEventListener('click', safeSearch);
+    console.log('Search button event listener added');
+    
+    // Setup input event with debounce
+    let searchTimeout;
+    searchInput.addEventListener('input', (e) => {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => {
+        const searchTerm = e.target.value.trim();
+        if (searchTerm.length >= 2) {
+          console.log('Input changed, performing search for:', searchTerm);
           safeSearch();
+        } else if (searchTerm.length === 0) {
+          // Clear results if search is empty
+          console.log('Search input cleared');
+          self.searchResults = [];
+          safeRenderResults();
+          if (self.renderSearchCharts) self.renderSearchCharts();
+          if (self.generateSearchInsights) self.generateSearchInsights();
         }
-      });
+      }, 500); // 500ms debounce delay
+    });
             
-      console.log('Search input event listeners added');
+    // Also search on Enter key
+    searchInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        console.log('Enter key pressed in search input');
+        clearTimeout(searchTimeout); // Clear any pending debounced search
+        safeSearch();
+      }
+    });
+            
+    console.log('Search input event listeners added');
+    
+    // Only proceed if all required elements are found
+    if (!exactMatch || !includeNotes || !timeRange) {
+      if (!exactMatch) console.warn('Exact match checkbox not found');
+      if (!includeNotes) console.warn('Include notes checkbox not found');
+      if (!timeRange) console.warn('Time range select not found');
+      return false;
     }
-        
-    const exactMatch = document.getElementById('exact-match');
-    const includeNotes = document.getElementById('include-notes');
-    const timeRange = document.getElementById('time-range');
-        
-    if (!exactMatch) console.warn('Exact match checkbox not found');
-    if (!includeNotes) console.warn('Include notes checkbox not found');
-    if (!timeRange) console.warn('Time range select not found');
         
     if (exactMatch) {
       exactMatch.removeEventListener('change', safeRenderResults);
@@ -153,6 +169,8 @@ class SearchManager {
         safeSearch();
       });
     }
+    
+    return true;
   }
 
   async performSearch() {
@@ -1036,6 +1054,63 @@ class SearchManager {
 }
 
 class BudgetApp {
+  /**
+   * Show the CSV import modal
+   */
+  showCSVModal() {
+    const modal = document.getElementById('csv-import-modal');
+    if (modal) {
+      modal.classList.add('modal--active');
+      document.body.classList.add('modal-open');
+    } else {
+      console.error('CSV Import Modal not found');
+    }
+  }
+
+  constructor() {
+    this.db = secureDB; 
+    this.transactions = [];
+    this.budgetCategories = [];
+    this.accounts = [];
+    this.currentView = 'dashboard';
+    this.currentMonth = new Date().getMonth();
+    this.currentYear = new Date().getFullYear();
+    this.dbInitialized = false;
+    this.searchManager = new SearchManager(this);
+    this.passwordPrompt = new PasswordPrompt();
+
+    // Show password prompt and initialize
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => this.initializeWithPassword());
+    } else {
+      setTimeout(() => this.initializeWithPassword(), 100);
+    }
+
+    // Wire up Unlock App button
+    setTimeout(() => {
+      const unlockBtn = document.getElementById('unlock-app-btn');
+      if (unlockBtn) {
+        unlockBtn.addEventListener('click', () => this.initializeWithPassword());
+      }
+    }, 500);
+  }
+
+  async initializeWithPassword() {
+    try {
+      const password = await this.passwordPrompt.prompt();
+      if (!password) {
+        this.passwordPrompt.showError('Password is required to access the secure database');
+        throw new Error('Password is required to access the secure database');
+      }
+      await this.db.initialize(password);
+      this.passwordPrompt.close();
+      this.initializeApp(); // Continue normal app initialization
+    } catch (error) {
+      this.passwordPrompt.showError(error.message || 'Failed to initialize secure storage');
+      setTimeout(() => this.initializeWithPassword(), 100);
+    }
+  }
+
   // Static getter for bank format configurations
   static get BANK_FORMATS() {
     return {
@@ -1079,62 +1154,70 @@ class BudgetApp {
     };
   }
 
-  constructor() {
-    this.transactions = [];
-    this.charts = {}; // Initialize charts object
-    this.budgetCategories = [];
-    this.accounts = [];
-    this.merchantCategories = {};
-    this.currentView = 'dashboard';
-    this.currentMonth = new Date().getMonth();
-    this.currentYear = new Date().getFullYear();
-    this.db = localDB;
-    this.dbInitialized = false;
-    this.unsubscribeCallbacks = [];
-    this.pendingImport = []; // Initialize pending import array
-        
-    // Initialize search manager
-    this.searchManager = new SearchManager(this);
-        
-    // Initialize the app when DOM is ready
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', () => this.initializeApp());
-    } else {
-      this.initializeApp();
-    }
-  }
-    
+
   async initializeApp() {
     try {
       console.log('Initializing app...');
 
-      // Initialize the database first
-      await this.db.init();
       this.dbInitialized = true;
+      console.log('Secure database initialized');
 
       // Load initial data
-      await this.loadTransactions();
-      await this.loadBudgetCategories();
-      await this.loadAccounts();
-
-            
-      // Set up real-time listeners
-      this.setupRealtimeListeners();
-            
+      console.log('Loading initial data...');
+      await Promise.all([
+        this.loadTransactions(),
+        this.loadBudgetCategories(),
+        this.loadAccounts()
+      ]);
+      
       // Initial render
-      this.renderCurrentView();
-            
+      console.log('Rendering initial view...');
+      await this.renderCurrentView();
+      
+      // Initial event binding
+      console.log('Binding event listeners...');
+      this.bindEventListeners();
+      
+      // Set up real-time listeners
+      console.log('Setting up real-time listeners...');
+      await this.setupRealtimeListeners();
+      
+      // Force a re-render after a short delay to ensure all elements are present
+      console.log('Scheduling final render...');
+      setTimeout(() => {
+        console.log('Performing final render...');
+        this.renderCurrentView().then(() => {
+          console.log('Final render complete, binding event listeners...');
+          this.bindEventListeners();
+          console.log('App fully initialized');
+        });
+      }, 500);
+
       console.log('App initialized successfully');
     } catch (error) {
       console.error('Failed to initialize app:', error);
+      // Show error to user
+      const mainContent = document.getElementById('main-content');
+      if (mainContent) {
+        mainContent.innerHTML = `
+          <div class="alert alert-danger">
+            <h4>Error initializing application</h4>
+            <p>${this.escapeHtml(error.message)}</p>
+            <p>Check the console for more details.</p>
+          </div>
+        `;
+      }
     }
   }
 
   async loadTransactions() {
     try {
+      // Load transactions from the database
       this.transactions = await this.db.getAllItems('transactions') || [];
+      
       // Sort by date (newest first)
       this.transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+      
       console.log(`Loaded ${this.transactions.length} transactions into memory`);
       return this.transactions;
     } catch (error) {
@@ -1142,6 +1225,240 @@ class BudgetApp {
       this.transactions = [];
       return [];
     }
+}
+
+async loadBudgetCategories() {
+try {
+this.budgetCategories = await this.db.getAllItems('categories') || [];
+console.log(`Loaded ${this.budgetCategories.length} budget categories`);
+return this.budgetCategories;
+} catch (error) {
+console.error('Error loading budget categories:', error);
+this.budgetCategories = [];
+return [];
+}
+}
+
+async loadAccounts() {
+try {
+this.accounts = await this.db.getAllItems('accounts') || [];
+console.log(`Loaded ${this.accounts.length} accounts`);
+return this.accounts;
+} catch (error) {
+console.error('Error loading accounts:', error);
+this.accounts = [];
+return [];
+}
+}
+
+/**
+* Set up real-time listeners for data changes
+*/
+setupRealtimeListeners() {
+console.log('Setting up real-time listeners');
+// This is a placeholder for real-time functionality
+// In a real app, this would set up listeners for database changes
+// For now, we'll just log that it was called
+
+// Example of what this might look like with a real-time database:
+// this.db.on('transactions:changed', () => this.loadTransactions());
+// this.db.on('categories:changed', () => this.loadBudgetCategories());
+// this.db.on('accounts:changed', () => this.loadAccounts());
+
+// For now, we'll just return a resolved promise
+return Promise.resolve();
+}
+
+/**
+* Get transactions for a specific date range
+* @param {Date} startDate - Start date
+* @param {Date} endDate - End date
+* @returns {Array} Filtered transactions
+*/
+getTransactionsByDateRange(startDate, endDate) {
+console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+
+const filtered = this.transactions.filter(t => {
+const transactionDate = new Date(t.date);
+const isInRange = transactionDate >= startDate && transactionDate <= endDate;
+
+if (isInRange) {
+console.log('Transaction in range:', {
+id: t.id,
+date: t.date,
+amount: t.amount,
+description: t.description
+});
+}
+
+return isInRange;
+});
+
+console.log('getTransactionsByDateRange - Total transactions in range:', filtered.length);
+return filtered;
+}
+
+/**
+* Get transactions for a specific date
+* @param {Date} date - The date to get transactions for
+* @returns {Array} Filtered transactions
+*/
+getTransactionsByDate(date) {
+const startOfDay = new Date(date);
+startOfDay.setHours(0, 0, 0, 0);
+
+const endOfDay = new Date(date);
+endOfDay.setHours(23, 59, 59, 999);
+
+console.log('getTransactionsByDate - Date range:', {
+start: startOfDay,
+end: endOfDay,
+inputDate: date
+});
+
+const transactions = this.getTransactionsByDateRange(startOfDay, endOfDay);
+console.log('getTransactionsByDate - Found transactions:', transactions);
+
+return transactions;
+}
+
+/**
+* Format date as YYYY-MM-DD
+* @param {Date} date - The date to format
+* @returns {string} Formatted date string
+*/
+formatDateKey(date) {
+return date.toISOString().split('T')[0];
+}
+
+/**
+* Render the calendar view
+* @param {Date} [date] - The date to display (defaults to current month)
+*/
+renderCalendar(date = new Date()) {
+// Update current month and year
+this.currentMonth = date.getMonth();
+this.currentYear = date.getFullYear();
+
+const calendarEl = document.getElementById('calendar');
+if (!calendarEl) return;
+
+const month = date.getMonth();
+const year = date.getFullYear();
+const today = new Date();
+
+// Get first day of month (0-6, where 0 is Sunday)
+const firstDay = new Date(year, month, 1).getDay();
+// Get number of days in month
+const daysInMonth = new Date(year, month + 1, 0).getDate();
+// Get number of days in previous month
+const daysInPrevMonth = new Date(year, month, 0).getDate();
+
+// Get transactions for the current month
+const startDate = new Date(year, month, 1);
+const endDate = new Date(year, month + 1, 0);
+const monthlyTransactions = this.getTransactionsByDateRange(startDate, endDate);
+
+// Group transactions by day with proper month/year validation
+const transactionsByDay = {};
+console.log('Grouping ' + monthlyTransactions.length + ' transactions for ' + (month + 1) + '/' + year);
+
+monthlyTransactions.forEach(t => {
+const transactionDate = new Date(t.date);
+const day = transactionDate.getDate();
+const transactionMonth = transactionDate.getMonth();
+const transactionYear = transactionDate.getFullYear();
+
+// Only include if it's in the current month we're displaying
+if (transactionMonth === month && transactionYear === year) {
+if (!transactionsByDay[day]) {
+transactionsByDay[day] = [];
+}
+transactionsByDay[day].push(t);
+console.log('Added transaction to day ' + day + ':', t);
+} else {
+console.log('Skipping transaction not in current month:', t);
+}
+});
+
+console.log('Transactions grouped by day:', transactionsByDay);
+
+// Generate calendar HTML
+const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'];
+
+let calendarHTML = `
+  <div class="calendar-controls">
+    <button id="prev-month" class="btn btn--icon">
+      <i class="bi bi-chevron-left"></i>
+    </button>
+    <h2>${monthNames[month]} ${year}</h2>
+    <button id="next-month" class="btn btn--icon">
+      <i class="bi bi-chevron-right"></i>
+    </button>
+  </div>
+  <div class="calendar">
+    <div class="calendar__header">
+      <div class="calendar__day">Sun</div>
+      <div class="calendar__day">Mon</div>
+      <div class="calendar__day">Tue</div>
+      <div class="calendar__day">Wed</div>
+      <div class="calendar__day">Thu</div>
+      <div class="calendar__day">Fri</div>
+      <div class="calendar__day">Sat</div>
+    </div>
+    <div class="calendar__body">
+      <!-- Calendar days will be inserted here -->
+    </div>
+  </div>`;
+  
+  // Set the calendar HTML
+  calendarEl.innerHTML = calendarHTML;
+  
+  // Set up event listeners for the calendar
+  this.setupCalendarEventListeners();
+}
+
+async loadBudgetCategories() {
+  try {
+    this.budgetCategories = await this.db.getAllItems('categories') || [];
+    console.log(`Loaded ${this.budgetCategories.length} budget categories`);
+      return this.budgetCategories;
+    } catch (error) {
+      console.error('Error loading budget categories:', error);
+      this.budgetCategories = [];
+      return [];
+    }
+  }
+  
+  async loadAccounts() {
+    try {
+      this.accounts = await this.db.getAllItems('accounts') || [];
+      console.log(`Loaded ${this.accounts.length} accounts`);
+      return this.accounts;
+    } catch (error) {
+      console.error('Error loading accounts:', error);
+      this.accounts = [];
+      return [];
+    }
+  }
+  
+  /**
+   * Set up real-time listeners for data changes
+   */
+  setupRealtimeListeners() {
+    console.log('Setting up real-time listeners');
+    // This is a placeholder for real-time functionality
+    // In a real app, this would set up listeners for database changes
+    // For now, we'll just log that it was called
+    
+    // Example of what this might look like with a real-time database:
+    // this.db.on('transactions:changed', () => this.loadTransactions());
+    // this.db.on('categories:changed', () => this.loadBudgetCategories());
+    // this.db.on('accounts:changed', () => this.loadAccounts());
+    
+    // For now, we'll just return a resolved promise
+    return Promise.resolve();
   }
     
   /**
@@ -1181,274 +1498,56 @@ class BudgetApp {
   getTransactionsByDate(date) {
     const startOfDay = new Date(date);
     startOfDay.setHours(0, 0, 0, 0);
-        
-    const endOfDay = new Date(date);
+    const endOfDay = new Date(startOfDay);
     endOfDay.setHours(23, 59, 59, 999);
-        
-    console.log('getTransactionsByDate - Date range:', {
-      start: startOfDay,
-      end: endOfDay,
-      inputDate: date
+    
+    return this.transactions.filter(transaction => {
+      const transactionDate = new Date(transaction.date);
+      return transactionDate >= startOfDay && transactionDate <= endOfDay;
     });
-        
-    const transactions = this.getTransactionsByDateRange(startOfDay, endOfDay);
-    console.log('getTransactionsByDate - Found transactions:', transactions);
-        
-    return transactions;
   }
-    
-  /**
-     * Format date as YYYY-MM-DD
-     * @param {Date} date - The date to format
-     * @returns {string} Formatted date string
-     */
-  formatDateKey(date) {
-    return date.toISOString().split('T')[0];
-  }
-    
-  /**
-     * Render the calendar view
-     * @param {Date} [date] - The date to display (defaults to current month)
-     */
-  renderCalendar(date = new Date()) {
-    // Update current month and year
-    this.currentMonth = date.getMonth();
-    this.currentYear = date.getFullYear();
-        
-    const calendarEl = document.getElementById('calendar');
-    if (!calendarEl) return;
-        
-    const month = date.getMonth();
-    const year = date.getFullYear();
-    const today = new Date();
-        
-    // Get first day of month (0-6, where 0 is Sunday)
-    const firstDay = new Date(year, month, 1).getDay();
-    // Get number of days in month
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    // Get number of days in previous month
-    const daysInPrevMonth = new Date(year, month, 0).getDate();
-        
-    // Get transactions for the current month
-    const startDate = new Date(year, month, 1);
-    const endDate = new Date(year, month + 1, 0);
-    const monthlyTransactions = this.getTransactionsByDateRange(startDate, endDate);
-        
-    // Group transactions by day with proper month/year validation
-    const transactionsByDay = {};
-    console.log('Grouping ' + monthlyTransactions.length + ' transactions for ' + (month + 1) + '/' + year);
-        
-    monthlyTransactions.forEach(t => {
-      const transactionDate = new Date(t.date);
-      const day = transactionDate.getDate();
-      const transactionMonth = transactionDate.getMonth();
-      const transactionYear = transactionDate.getFullYear();
-            
-      // Only include if it's in the current month we're displaying
-      if (transactionMonth === month && transactionYear === year) {
-        if (!transactionsByDay[day]) {
-          transactionsByDay[day] = [];
+
+/**
+ * Set up event listeners for the calendar
+ */
+setupCalendarEventListeners() {
+  const calendarEl = document.getElementById('calendar');
+  if (!calendarEl) return;
+      
+  // Day click handler
+  calendarEl.querySelectorAll('.calendar__day').forEach(dayEl => {
+    dayEl.addEventListener('click', async () => {
+      const dateStr = dayEl.getAttribute('data-date');
+      if (dateStr) {
+        const [year, month, day] = dateStr.split('-').map(Number);
+        try {
+          await this.selectDate(new Date(year, month - 1, day));
+          // Update active day styling
+          calendarEl.querySelectorAll('.calendar__day').forEach(el => {
+            el.classList.remove('calendar__day--selected');
+          });
+          dayEl.classList.add('calendar__day--selected');
+        } catch (error) {
+          console.error('Error selecting date:', error);
         }
-        transactionsByDay[day].push(t);
-        console.log('Added transaction to day ' + day + ':', t);
-      } else {
-        console.log('Skipping transaction not in current month:', t);
       }
     });
-        
-    console.log('Transactions grouped by day:', transactionsByDay);
-        
-    // Generate calendar HTML
-    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'];
-        
-    let calendarHTML = `
-            <div class="calendar-controls">
-                <button id="prev-month" class="btn btn--icon">
-                    <i class="bi bi-chevron-left"></i>
-                </button>
-                <h2>${monthNames[month]} ${year}</h2>
-                <button id="next-month" class="btn btn--icon">
-                    <i class="bi bi-chevron-right"></i>
-                </button>
-            </div>
-            <div class="calendar">
-                <div class="calendar__header">
-                    <div class="calendar__day">Sun</div>
-                    <div class="calendar__day">Mon</div>
-                    <div class="calendar__day">Tue</div>
-                    <div class="calendar__day">Wed</div>
-                    <div class="calendar__day">Thu</div>
-                    <div class="calendar__day">Fri</div>
-                    <div class="calendar__day">Sat</div>
-                </div>
-                <div class="calendar__body">
-        `;
-        
-    // Calculate the previous month and year
-    let prevMonth = month - 1;
-    let prevYear = year;
-    if (prevMonth < 0) {
-      prevMonth = 11;
-      prevYear--;
-    }
-        
-    // Add empty cells for days from previous month
-    for (let i = 0; i < firstDay; i++) {
-      const day = daysInPrevMonth - firstDay + i + 1;
-      const dayOfWeek = new Date(prevYear, prevMonth, day).getDay();
-      const dayName = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dayOfWeek];
-            
-      calendarHTML += `
-                <div class="calendar__day calendar__day--other-month" 
-                     data-date="${prevYear}-${String(prevMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}">
-                    <div class="calendar__day-number">${day}</div>
-                    <div class="calendar__day-name">${dayName}</div>
-                </div>`;
-    }
-        
-    // Add days of current month
-    const isCurrentMonth = today.getMonth() === month && today.getFullYear() === year;
-        
-    for (let day = 1; day <= daysInMonth; day++) {
-      const currentDate = new Date(year, month, day);
-      const dayOfWeek = currentDate.getDay();
-      const _dayName = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dayOfWeek];
-      const isToday = isCurrentMonth && day === today.getDate();
-      const isSelected = this.selectedDate && 
-                             currentDate.getDate() === this.selectedDate.getDate() &&
-                             currentDate.getMonth() === this.selectedDate.getMonth() &&
-                             currentDate.getFullYear() === this.selectedDate.getFullYear();
-            
-      const dayTransactions = transactionsByDay[day] || [];
-      const _hasTransactions = dayTransactions.length > 0;
-      const income = dayTransactions
-        .filter(t => parseFloat(t.amount) > 0)
-        .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount)), 0);
-      const expenses = dayTransactions
-        .filter(t => parseFloat(t.amount) < 0)
-        .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount)), 0);
-            
-      calendarHTML += `
-                <div class="calendar__day ${isToday ? 'calendar__day--today' : ''} ${isSelected ? 'calendar__day--selected' : ''}" 
-                     data-date="${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}">
-                    <div class="calendar__day-number">${day}</div>
-                    <div class="calendar__day-name">${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date(year, month, day).getDay()]}</div>`;
-            
-      if (dayTransactions.length > 0) {
-        calendarHTML += `
-                    <div class="calendar__transactions">`;
+  });
+}
 
-        // Show up to 2 transactions per day in the calendar
-        dayTransactions.slice(0, 2).forEach(transaction => {
-          const isIncome = parseFloat(transaction.amount) > 0;
-          calendarHTML += `
-                        <div class="calendar__transaction ${isIncome ? 'income' : 'expense'}">
-                            <span class="transaction-description">${transaction.description || 'No description'}</span>
-                            <span class="transaction-amount">${this.formatCurrency(transaction.amount)}</span>
-                        </div>`;
-        });
-
-        // Show indicator if there are more transactions
-        if (dayTransactions.length > 2) {
-          calendarHTML += `
-                        <div class="calendar__transaction-more">+${dayTransactions.length - 2} more</div>`;
-        }
-                
-        calendarHTML += `
-                    </div>`;
-      }
-            
-      // Show daily total if there are transactions
-      if (dayTransactions.length > 0) {
-        const net = income - expenses;
-        calendarHTML += `
-                    <div class="calendar__total ${net >= 0 ? 'calendar__total--positive' : 'calendar__total--negative'}">
-                        ${net >= 0 ? '+' : ''}${this.formatCurrency(net)}
-                    </div>`;
-      }
-            
-      calendarHTML += `
-                </div>`;
-    }
-        
-    // Add empty cells for days from next month to complete the grid
-    const totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
-    const remainingCells = totalCells - (firstDay + daysInMonth);
-        
-    // Calculate the next month and year
-    let nextMonth = month + 1;
-    let nextYear = year;
-    if (nextMonth > 11) {
-      nextMonth = 0;
-      nextYear++;
-    }
-        
-    // Add days from next month
-    for (let i = 1; i <= remainingCells; i++) {
-      const dayOfWeek = (firstDay + daysInMonth + i - 1) % 7;
-      const dayName = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dayOfWeek];
-            
-      calendarHTML += `
-                <div class="calendar__day calendar__day--other-month" 
-                     data-date="${nextYear}-${String(nextMonth + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}">
-                    <div class="calendar__day-number">${i}</div>
-                    <div class="calendar__day-name">${dayName}</div>
-                </div>`;
-    }
-        
-    calendarHTML += `
-                </div>
-            </div>`;
-        
-    // Update the calendar element
-    calendarEl.innerHTML = calendarHTML;
-        
-    // Set up event listeners
-    this.setupCalendarEventListeners();
-        
-    // Update the calendar summary
-    this.updateCalendarSummary(date);
-        
-    // Update month/year display
-    const monthYearEl = document.getElementById('calendar-month-year');
-    if (monthYearEl) {
-      monthYearEl.textContent = new Intl.DateTimeFormat('en-US', { 
-        year: 'numeric', 
-        month: 'long' 
-      }).format(new Date(year, month, 1));
-    }
-        
-    // Close calendar days div
-    calendarHTML += '</div>';
-        
-    // Update the DOM
-    calendarEl.innerHTML = calendarHTML;
-        
-    // Add event listeners
-    this.setupCalendarEventListeners();
-        
-    // Update mini calendar
-    this.renderMiniCalendar(new Date(year, month, 1));
-        
-    // Update summary
-    this.updateCalendarSummary(new Date(year, month, 1));
-  }
-    
   /**
-     * Render the mini calendar in the sidebar
-     * @param {Date} date - The date to display
-     */
-  renderMiniCalendar(date) {
+   * Render the mini calendar
+   * @param {Date} date - The date to display in the mini calendar
+   */
+  renderMiniCalendar(date = new Date()) {
     const miniCalendarEl = document.getElementById('mini-calendar');
     if (!miniCalendarEl) return;
-        
-    const month = date.getMonth();
-    const year = date.getFullYear();
+    
     const today = new Date();
-        
-    // Get first day of month (0-6, where 0 is Sunday)
+    const year = date.getFullYear();
+    const month = date.getMonth();
     const firstDay = new Date(year, month, 1).getDay();
+    
     // Get number of days in month
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     // Get number of days in previous month
@@ -1468,115 +1567,114 @@ class BudgetApp {
       }
       transactionsByDay[day].push(t);
     });
-        
+    
     const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'];
-    const dayNames = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
-        
-    let html = `
-            <div class="mini-calendar-header">
-                <button id="mini-prev-month" class="btn btn--icon btn--sm" title="Previous month">
-                    <i class="bi bi-chevron-left"></i>
-                </button>
-                <h4>${monthNames[month].substring(0, 3)} ${year}</h4>
-                <button id="mini-next-month" class="btn btn--icon btn--sm" title="Next month">
-                    <i class="bi bi-chevron-right"></i>
-                </button>
-            </div>
-            <div class="mini-calendar-grid">
-                ${dayNames.map(day => `<div class="mini-calendar-day-header">${day}</div>`).join('')}
-        `;
-        
-    // Calculate previous month and year
-    let prevMonth = month - 1;
-    let prevYear = year;
-    if (prevMonth < 0) {
-      prevMonth = 11;
-      prevYear--;
-    }
-        
-    // Add empty cells for days from previous month
-    for (let i = 0; i < firstDay; i++) {
-      const day = daysInPrevMonth - firstDay + i + 1;
-      const dateStr = `${prevYear}-${String(prevMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      html += `
-                <div class="mini-calendar-day mini-calendar-day--other-month" data-date="${dateStr}">
-                    <span class="mini-calendar-day-number">${day}</span>
-                </div>`;
-    }
-        
-    // Add days of current month
-    for (let day = 1; day <= daysInMonth; day++) {
-      const _currentDate = new Date(year, month, day);
-      const isToday = today.getDate() === day && 
-                          today.getMonth() === month && 
-                          today.getFullYear() === year;
-      const isSelected = this.selectedDate && 
-                             this.selectedDate.getDate() === day &&
-                             this.selectedDate.getMonth() === month &&
-                             this.selectedDate.getFullYear() === year;
-            
-      const hasTransactions = transactionsByDay[day]?.length > 0;
-      const dayClass = [
-        'mini-calendar-day',
-        isToday ? 'mini-calendar-day--today' : '',
-        isSelected ? 'mini-calendar-day--selected' : '',
-        hasTransactions ? 'has-transactions' : ''
-      ].filter(Boolean).join(' ');
-            
-      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      html += `
-                <div class="${dayClass}" data-date="${dateStr}">
-                    <span class="mini-calendar-day-number">${day}</span>
-                    ${hasTransactions ? '<span class="mini-calendar-day-dot"></span>' : ''}
-                </div>`;
-    }
-        
-    // Calculate next month and year
-    let nextMonth = month + 1;
-    let nextYear = year;
-    if (nextMonth > 11) {
-      nextMonth = 0;
-      nextYear++;
-    }
-        
-    // Add empty cells for days from next month to complete the grid
-    const totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
-    const remainingCells = totalCells - (firstDay + daysInMonth);
-        
-    for (let i = 1; i <= remainingCells; i++) {
-      const dateStr = `${nextYear}-${String(nextMonth + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
-      html += `
-                <div class="mini-calendar-day mini-calendar-day--other-month" data-date="${dateStr}">
-                    <span class="mini-calendar-day-number">${i}</span>
-                </div>`;
-    }
-        
-    html += '</div>';
-    miniCalendarEl.innerHTML = html;
-        
-    // Add event listeners
-    miniCalendarEl.querySelectorAll('.mini-calendar-day').forEach(dayEl => {
-      dayEl.addEventListener('click', () => {
-        const dateStr = dayEl.dataset.date;
-        if (dateStr) {
-          const [y, m, d] = dateStr.split('-').map(Number);
-          const selectedDate = new Date(y, m - 1, d);
-          this.selectDate(selectedDate);
-          this.renderCalendar(selectedDate);
-        }
+        'July', 'August', 'September', 'October', 'November', 'December'];
+      const dayNames = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+          
+      let html = `
+              <div class="mini-calendar-header">
+                  <button id="mini-prev-month" class="btn btn--icon btn--sm" title="Previous month">
+                      <i class="bi bi-chevron-left"></i>
+                  </button>
+                  <h4>${monthNames[month].substring(0, 3)} ${year}</h4>
+                  <button id="mini-next-month" class="btn btn--icon btn--sm" title="Next month">
+                      <i class="bi bi-chevron-right"></i>
+                  </button>
+              </div>
+              <div class="mini-calendar-grid">
+                  ${dayNames.map(day => `<div class="mini-calendar-day-header">${day}</div>`).join('')}
+          `;
+          
+      // Calculate previous month and year
+      let prevMonth = month - 1;
+      let prevYear = year;
+      if (prevMonth < 0) {
+        prevMonth = 11;
+        prevYear--;
+      }
+          
+      // Add empty cells for days from previous month
+      for (let i = 0; i < firstDay; i++) {
+        const day = daysInPrevMonth - firstDay + i + 1;
+        const dateStr = `${prevYear}-${String(prevMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        html += `
+                  <div class="mini-calendar-day mini-calendar-day--other-month" data-date="${dateStr}">
+                      <span class="mini-calendar-day-number">${day}</span>
+                  </div>`;
+      }
+          
+      // Add days of current month
+      for (let day = 1; day <= daysInMonth; day++) {
+        const isToday = today.getDate() === day && 
+                            today.getMonth() === month && 
+                            today.getFullYear() === year;
+        const isSelected = this.selectedDate && 
+                               this.selectedDate.getDate() === day &&
+                               this.selectedDate.getMonth() === month &&
+                               this.selectedDate.getFullYear() === year;
+              
+        const hasTransactions = transactionsByDay[day]?.length > 0;
+        const dayClass = [
+          'mini-calendar-day',
+          isToday ? 'mini-calendar-day--today' : '',
+          isSelected ? 'mini-calendar-day--selected' : '',
+          hasTransactions ? 'has-transactions' : ''
+        ].filter(Boolean).join(' ');
+              
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        html += `
+                  <div class="${dayClass}" data-date="${dateStr}">
+                      <span class="mini-calendar-day-number">${day}</span>
+                      ${hasTransactions ? '<span class="mini-calendar-day-dot"></span>' : ''}
+                  </div>`;
+      }
+          
+      // Calculate next month and year
+      let nextMonth = month + 1;
+      let nextYear = year;
+      if (nextMonth > 11) {
+        nextMonth = 0;
+        nextYear++;
+      }
+          
+      // Add empty cells for days from next month to complete the grid
+      const totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
+      const remainingCells = totalCells - (firstDay + daysInMonth);
+          
+      for (let i = 1; i <= remainingCells; i++) {
+        const dateStr = `${nextYear}-${String(nextMonth + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+        html += `
+                  <div class="mini-calendar-day mini-calendar-day--other-month" data-date="${dateStr}">
+                      <span class="mini-calendar-day-number">${i}</span>
+                  </div>`;
+      }
+          
+      html += '</div>';
+      miniCalendarEl.innerHTML = html;
+          
+      // Add event listeners
+      miniCalendarEl.querySelectorAll('.mini-calendar-day').forEach(dayEl => {
+        dayEl.addEventListener('click', () => {
+          const dateStr = dayEl.dataset.date;
+          if (dateStr) {
+            const [y, m, d] = dateStr.split('-').map(Number);
+            const selectedDate = new Date(y, m - 1, d);
+            this.selectDate(selectedDate);
+            this.renderCalendar(selectedDate);
+          }
+        });
       });
-    });
-        
-    document.getElementById('mini-prev-month')?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.renderCalendar(new Date(year, month - 1, 1));
-    });
-        
-    document.getElementById('mini-next-month')?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.renderCalendar(new Date(year, month + 1, 1));
-    });
+          
+      document.getElementById('mini-prev-month')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.renderCalendar(new Date(year, month - 1, 1));
+      });
+          
+      document.getElementById('mini-next-month')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.renderCalendar(new Date(year, month + 1, 1));
+      });
   }
     
   /**
@@ -1609,33 +1707,39 @@ class BudgetApp {
 
   // Add event listeners for the app
   bindEventListeners() {
-    // Navigation buttons
-    const navButtons = [
-      { id: 'add-transaction-btn', handler: () => this.showTransactionModal() },
-      { id: 'add-transaction-btn-2', handler: () => this.showTransactionModal() },
-      { id: 'add-category-btn', handler: () => this.showCategoryModal() },
-      { id: 'import-csv-btn', handler: () => this.showCSVModal() },
-      { id: 'export-csv-btn', handler: () => this.exportToCSV() },
-      { id: 'search-btn', handler: () => this.switchView('search') },
-      { id: 'budget-btn', handler: () => this.switchView('budget') },
-      { id: 'transactions-btn', handler: () => this.switchView('transactions') },
-      { id: 'calendar-btn', handler: () => this.switchView('calendar') },
-      { id: 'dashboard-btn', handler: () => this.switchView('dashboard') },
-      { id: 'close-transaction-modal', handler: () => this.closeModal('add-transaction-modal') },
-      { id: 'close-category-modal', handler: () => this.closeModal('add-category-modal') },
-      { id: 'close-budget-modal', handler: () => this.closeModal('set-budget-modal') },
-      { id: 'close-csv-modal', handler: () => this.closeModal('csv-import-modal') },
-      { id: 'import-csv-confirm', handler: () => this.confirmCSVImport() },
-      { id: 'cancel-csv', handler: () => this.cancelCSVImport() }
-    ];
+    // Navigation buttons (Add Transaction, Import CSV, etc.)
+  const navButtons = [
+    { id: 'add-transaction-btn', handler: () => this.showTransactionModal() },
+    { id: 'add-transaction-btn-2', handler: () => this.showTransactionModal() },
+    { id: 'add-category-btn', handler: () => this.showCategoryModal() },
+    { id: 'csv-import-btn', handler: () => this.showCSVModal() },
+    { id: 'export-csv-btn', handler: () => this.exportToCSV() },
+    { id: 'close-transaction-modal', handler: () => this.closeModal('add-transaction-modal') },
+    { id: 'close-category-modal', handler: () => this.closeModal('add-category-modal') },
+    { id: 'close-budget-modal', handler: () => this.closeModal('set-budget-modal') },
+    { id: 'close-csv-modal', handler: () => this.closeModal('csv-import-modal') },
+    { id: 'import-csv-confirm', handler: () => this.confirmCSVImport() },
+    { id: 'cancel-csv', handler: () => this.cancelCSVImport() }
+  ];
 
-    // Add event listeners for navigation buttons
-    navButtons.forEach(button => {
-      const element = document.getElementById(button.id);
-      if (element) {
-        element.addEventListener('click', button.handler);
+  // Add event listeners for navigation/action buttons by ID
+  navButtons.forEach(button => {
+    const element = document.getElementById(button.id);
+    if (element) {
+      element.addEventListener('click', button.handler);
+    }
+  });
+
+  // Add event listeners for navigation links by class/data-view
+  const navLinks = document.querySelectorAll('.nav__link[data-view]');
+  navLinks.forEach(link => {
+    link.addEventListener('click', (e) => {
+      const view = link.getAttribute('data-view');
+      if (view) {
+        this.switchView(view);
       }
     });
+  });
 
     // Form submissions
     const forms = [
@@ -1707,7 +1811,6 @@ class BudgetApp {
     this.initializeAdditionalEventListeners();
   }
 
-  // Method to initialize any additional event listeners
   initializeAdditionalEventListeners() {
     // Initialize CSV dropzone
     const dropzone = document.getElementById('csv-dropzone');
@@ -1716,11 +1819,11 @@ class BudgetApp {
         e.preventDefault();
         dropzone.classList.add('csv-upload__dropzone--dragover');
       });
-            
+
       dropzone.addEventListener('dragleave', () => {
         dropzone.classList.remove('csv-upload__dropzone--dragover');
       });
-            
+
       dropzone.addEventListener('drop', (e) => {
         e.preventDefault();
         dropzone.classList.remove('csv-upload__dropzone--dragover');
@@ -1729,56 +1832,109 @@ class BudgetApp {
           this.processCSVFile(files[0]);
         }
       });
-            
-      dropzone.addEventListener('click', () => {
+    }
+
+    // Select File button triggers file input
+    const selectFileBtn = document.getElementById('select-file-btn');
+    if (selectFileBtn) {
+      selectFileBtn.onclick = () => {
         const fileInput = document.getElementById('csv-file-input');
         if (fileInput) {
           fileInput.click();
         }
-      });
+      };
     }
-        
+
     // Initialize search manager if not already initialized
     if (!this.searchManager) {
       this.searchManager = new SearchManager(this);
     }
   }
 
-  switchView(view) {
-    // Update navigation
-    document.querySelectorAll('.nav__link').forEach(link => {
-      link.classList.remove('nav__link--active');
-    });
-        
-    const activeNav = document.querySelector(`[data-view="${view}"]`);
-    if (activeNav) {
-      activeNav.classList.add('nav__link--active');
-    }
+  showToast(type, title, message) {
+    // Simple fallback: use alert for now
+    alert(`${title ? title + ': ' : ''}${message}`);
+  }
 
-    // Update views
-    document.querySelectorAll('.view').forEach(v => {
-      v.classList.remove('view--active');
-    });
-        
-    const activeView = document.getElementById(`${view}-view`);
-    if (activeView) {
-      activeView.classList.add('view--active');
+  /**
+   * Close a modal by ID and remove modal-open from body
+   */
+  closeModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+      modal.classList.remove('modal--active');
+      document.body.classList.remove('modal-open');
     }
-        
-    // If switching to calendar view, initialize it with today's date
-    if (view === 'calendar' && !this.selectedDate) {
-      this.selectedDate = new Date();
-      this.renderCalendar(this.selectedDate);
+  }
+
+  /**
+   * Cancel CSV import, reset preview, and close modal
+   */
+  cancelCSVImport() {
+    this.pendingImport = [];
+    const preview = document.getElementById('csv-preview');
+    if (preview) preview.innerHTML = '';
+    this.closeModal('csv-import-modal');
+  }
+
+  async switchView(view) {
+    try {
+      console.log(`Switching to view: ${view}`);
+      
+      // Update navigation
+      const navLinks = document.querySelectorAll('.nav__link');
+      if (navLinks && navLinks.length > 0) {
+        navLinks.forEach(link => {
+          link.classList.remove('nav__link--active');
+        });
+      }
+      
+      const activeNav = document.querySelector(`[data-view="${view}"]`);
+      if (activeNav) {
+        activeNav.classList.add('nav__link--active');
+      }
+
+      // Update views
+      const views = document.querySelectorAll('.view');
+      if (views && views.length > 0) {
+        views.forEach(v => {
+          v.classList.remove('view--active');
+        });
+      }
+      
+      const activeView = document.getElementById(`${view}-view`);
+      if (activeView) {
+        activeView.classList.add('view--active');
+      }
+      
+      // If switching to calendar view, initialize it with today's date
+      if (view === 'calendar') {
+        if (!this.selectedDate) {
+          this.selectedDate = new Date();
+        }
+        await this.renderCalendar(this.selectedDate);
+      } 
+      // If switching to search view, ensure search UI is properly initialized
+      else if (view === 'search' && this.searchManager) {
+        console.log('Initializing search view...');
+        try {
+          this.searchManager.initialize();
+          console.log('Search manager initialized successfully');
+        } catch (error) {
+          console.error('Error initializing search manager:', error);
+        }
+      }
+      
+      this.currentView = view;
+      await this.renderCurrentView();
+      this.bindEventListeners(); // Ensure buttons are always responsive after view switch
+      console.log(`Successfully switched to ${view} view`);
+      return true;
+    } catch (error) {
+      console.error(`Error switching to ${view} view:`, error);
+      this.showToast(`Error loading ${view} view`, 'error');
+      return false;
     }
-        
-    // If switching to search view, ensure search UI is properly initialized
-    if (view === 'search' && this.searchManager) {
-      // Re-bind events in case the search tab was not loaded when the page first loaded
-      this.searchManager.bindEvents();
-    }
-        
-    this.currentView = view;
-    this.renderCurrentView();
   }
 
   async renderTransactions() {

@@ -10,8 +10,8 @@ export default defineConfig({
     ]
   },
   server: {
-    port: 3001, // Use port 3001
-    host: '0.0.0.0', // Allow connections from any host
+    port: 3002, // Use port 3002
+    host: 'localhost', // Only allow localhost connections
     open: true, // Automatically open the browser
     strictPort: true, // Exit if port is already in use
   },

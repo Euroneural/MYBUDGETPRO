@@ -39,6 +39,11 @@ class LocalDB {
                     const store = db.createObjectStore('budgets', { keyPath: 'id', autoIncrement: true });
                     store.createIndex('month', 'month', { unique: true });
                 }
+                
+                if (!db.objectStoreNames.contains('accounts')) {
+                    const store = db.createObjectStore('accounts', { keyPath: 'id', autoIncrement: true });
+                    store.createIndex('name', 'name', { unique: true });
+                }
             };
         });
     }
