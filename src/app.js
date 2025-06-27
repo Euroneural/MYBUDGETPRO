@@ -1695,6 +1695,30 @@ setupCalendarEventListeners() {
     }
   });
 
+  // Add event listeners for transaction search and filter controls
+  const searchInput = document.getElementById('transaction-search');
+  const filterSelect = document.getElementById('transaction-filter');
+  const exactMatchCheckbox = document.getElementById('exact-match');
+  const includeNotesCheckbox = document.getElementById('include-notes');
+  const searchButton = document.getElementById('search-button');
+
+  // Add input event listener for search
+  if (searchInput) {
+    searchInput.addEventListener('input', () => this.filterTransactions());
+  }
+
+  // Add change event listeners for filter controls
+  [filterSelect, exactMatchCheckbox, includeNotesCheckbox].forEach(control => {
+    if (control) {
+      control.addEventListener('change', () => this.filterTransactions());
+    }
+  });
+
+  // Add click event listener for search button (if exists)
+  if (searchButton) {
+    searchButton.addEventListener('click', () => this.filterTransactions());
+  }
+
   // Add event listeners for navigation links by class/data-view
   const navLinks = document.querySelectorAll('.nav__link[data-view]');
   navLinks.forEach(link => {
@@ -2104,50 +2128,85 @@ transactionAnalytics.renderPriceTrendChart(filtered, 'transactions-price-trend-c
     try {
       const searchInput = document.getElementById('transaction-search');
       const filterSelect = document.getElementById('transaction-filter');
-      const searchTerm = (searchInput?.value || '').toLowerCase();
+      const searchTerm = (searchInput?.value || '').trim();
       const filterValue = filterSelect?.value || '';
+      const exactMatch = document.getElementById('exact-match')?.checked || false;
+      const includeNotes = document.getElementById('include-notes')?.checked || false;
             
       // Get all transactions
       const transactions = await this.db.getAllItems('transactions');
+      if (!Array.isArray(transactions)) {
+        throw new Error('Failed to load transactions');
+      }
             
       // Apply filters
       let filtered = [...transactions];
             
-      // Apply search term filter
+      // Apply semantic search filter if search term exists
       if (searchTerm) {
-        filtered = filtered.filter(t => 
-          (t.description && t.description.toLowerCase().includes(searchTerm)) ||
-                    (t.notes && t.notes.toLowerCase().includes(searchTerm)) ||
-                    (t.category && t.category.toLowerCase().includes(searchTerm))
-        );
+        // Split search terms by pipe (|), trim, and filter out empty terms
+        const searchTerms = searchTerm
+          .toLowerCase()
+          .split('|')
+          .map(term => term.trim())
+          .filter(term => term.length > 0);
+
+        if (searchTerms.length > 0) {
+          filtered = filtered.filter(transaction => {
+            if (!transaction) return false;
+            
+            // Build searchable text from relevant fields
+            const searchText = [
+              String(transaction.description || '').toLowerCase(),
+              String(transaction.category || '').toLowerCase(),
+              String(transaction.merchant || '').toLowerCase()
+            ];
+            
+            // Include notes if specified
+            if (includeNotes && transaction.notes) {
+              searchText.push(String(transaction.notes).toLowerCase());
+            }
+            
+            const searchTextStr = searchText.join(' ');
+            
+            // Apply exact or partial match based on exactMatch flag
+            if (exactMatch) {
+              // All pipe-separated terms must be present for exact match
+              return searchTerms.every(term => searchTextStr.includes(term));
+            } else {
+              // Any pipe-separated term can match for partial search
+              return searchTerms.some(term => searchTextStr.includes(term));
+            }
+          });
+        }
       }
             
-      // Apply category filter
+      // Apply category filter if specified
       if (filterValue) {
         filtered = filtered.filter(t => t.category === filterValue);
       }
             
       // Sort by date (newest first)
-    filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
+      filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-    // Update the transactions list
-    const transactionsTable = document.getElementById('transactions-table');
-    if (transactionsTable) {
-      // Only re-render the transaction table body, not the analytics section
-      // Find analytics section if it exists
-      const analyticsSection = document.getElementById('transactions-analytics-section');
-      let analyticsHtml = '';
-      if (analyticsSection) {
-        analyticsHtml = analyticsSection.outerHTML;
+      // Update the transactions list with analytics
+      const transactionsTable = document.getElementById('transactions-table');
+      if (transactionsTable) {
+        // Store filtered transactions in data attribute for analytics
+        transactionsTable.setAttribute('data-filtered-transactions', JSON.stringify(filtered));
+        
+        // Only re-render the transaction table body, not the analytics section
+        const analyticsSection = document.getElementById('transactions-analytics-section');
+        let analyticsHtml = '';
+        if (analyticsSection) {
+          analyticsHtml = analyticsSection.outerHTML;
+        }
+        
+        transactionsTable.innerHTML = analyticsHtml + this.renderTransactionList(filtered);
+        
+        // Initialize or update analytics
+        this.initializeOrUpdateAnalytics(filtered);
       }
-      transactionsTable.innerHTML =
-        analyticsHtml + this.renderTransactionList(filtered);
-    }
-    // Update analytics charts if visible
-    const chartsSection = document.getElementById('transactions-analytics-charts');
-    if (chartsSection && chartsSection.style.display !== 'none' && window.app.renderTransactionsAnalyticsCharts) {
-      window.app.renderTransactionsAnalyticsCharts();
-    }
   } catch (error) {
     console.error('Error filtering transactions:', error);
   }
