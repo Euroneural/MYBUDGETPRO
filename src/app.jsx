@@ -3298,6 +3298,9 @@ setupCalendarEventListeners() {
   /**
    * Render the transactions view – lightweight implementation to list transactions
    */
+  /**
+   * Render Transactions view with search and date filtering controls
+   */
   async renderTransactions() {
     const viewEl = document.getElementById('transactions-view');
     if (!viewEl) {
@@ -3323,17 +3326,127 @@ setupCalendarEventListeners() {
         </tr>`).join('');
 
       viewEl.innerHTML = `
+        <div id="transactions-search-controls" class="d-flex flex-wrap gap-2 mb-3">
+          <input type="search" class="form-control" id="txn-search-input" style="max-width:260px" placeholder="Search (use | between terms)">
+          <select class="form-select" id="txn-date-range-select" style="max-width:160px">
+            <option value="all">All Time</option>
+            <option value="today">Today</option>
+            <option value="week">This Week</option>
+            <option value="month">This Month</option>
+            <option value="last30">Last 30 Days</option>
+            <option value="custom">Custom…</option>
+          </select>
+          <input type="date" class="form-control d-none" id="txn-custom-start">
+          <input type="date" class="form-control d-none" id="txn-custom-end">
+        </div>
         <div class="table-responsive">
           <table class="table table-striped" id="transactions-table">
             <thead><tr><th>Date</th><th>Description</th><th>Category</th><th class="text-end">Amount</th></tr></thead>
-            <tbody>${rowsHtml}</tbody>
+            <tbody id="transactions-table-body">${rowsHtml}</tbody>
           </table>
         </div>`;
+
+      // initialize search & filter controls
+      this.setupTransactionsSearchControls();
 
     } catch (err) {
       console.error('Error rendering transactions view:', err);
       viewEl.innerHTML = `<div class="alert alert-danger">Failed to load transactions: ${this.escapeHtml(err.message)}</div>`;
     }
+  }
+
+  /**
+   * Setup event listeners for transactions search and date range filters
+   */
+  setupTransactionsSearchControls() {
+    const searchInput = document.getElementById('txn-search-input');
+    const rangeSelect = document.getElementById('txn-date-range-select');
+    const customStart = document.getElementById('txn-custom-start');
+    const customEnd = document.getElementById('txn-custom-end');
+    const tbody = document.getElementById('transactions-table-body');
+
+    if (!searchInput || !rangeSelect || !tbody) return;
+
+    const filterAndRender = () => {
+      const terms = searchInput.value
+        .split('|')
+        .map(t => t.trim().toLowerCase())
+        .filter(t => t.length > 0);
+
+      // Determine date range
+      let startDate = null;
+      let endDate = null;
+      const today = new Date();
+      switch (rangeSelect.value) {
+        case 'today':
+          startDate = endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+          break;
+        case 'week': {
+          const first = new Date(today);
+          first.setDate(today.getDate() - today.getDay()); // Sunday
+          startDate = first;
+          endDate = today;
+          break;
+        }
+        case 'month':
+          startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+          endDate = today;
+          break;
+        case 'last30': {
+          const past = new Date(today);
+          past.setDate(today.getDate() - 29);
+          startDate = past;
+          endDate = today;
+          break;
+        }
+        case 'custom':
+          if (customStart.value) startDate = new Date(customStart.value);
+          if (customEnd.value) endDate = new Date(customEnd.value);
+          break;
+        default:
+          break; // 'all' – no date filtering
+      }
+
+      const filtered = this.transactions.filter(t => {
+        const d = new Date(t.date);
+        if (startDate && d < startDate) return false;
+        if (endDate && d > endDate) return false;
+
+        if (terms.length === 0) return true;
+        const haystack = `${(t.description || '')} ${(t.category || '')} ${(t.notes || '')}`.toLowerCase();
+        return terms.every(term => haystack.includes(term));
+      }).sort((a, b) => new Date(b.date) - new Date(a.date));
+
+      tbody.innerHTML = filtered.map(t => `
+        <tr data-id="${this.escapeHtml(t.id)}">
+          <td>${new Date(t.date).toLocaleDateString()}</td>
+          <td>${this.escapeHtml(t.description || '')}</td>
+          <td>${this.escapeHtml(t.category || 'Uncategorised')}</td>
+          <td class="${t.amount < 0 ? 'text-danger' : 'text-success'}">${this.formatCurrency(Math.abs(t.amount))}</td>
+        </tr>`).join('');
+    };
+
+    // Show/hide custom date inputs
+    const toggleCustomDates = () => {
+      const show = rangeSelect.value === 'custom';
+      customStart.classList.toggle('d-none', !show);
+      customEnd.classList.toggle('d-none', !show);
+    };
+
+    searchInput.addEventListener('input', () => {
+      clearTimeout(this._txnSearchTimeout);
+      this._txnSearchTimeout = setTimeout(filterAndRender, 300);
+    });
+
+    rangeSelect.addEventListener('change', () => {
+      toggleCustomDates();
+      filterAndRender();
+    });
+
+    customStart.addEventListener('change', filterAndRender);
+    customEnd.addEventListener('change', filterAndRender);
+
+    toggleCustomDates();
   }
 
   /**
