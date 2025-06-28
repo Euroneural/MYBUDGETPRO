@@ -7,7 +7,7 @@ APP_NAME="BudgetPro"
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PID_FILE="$APP_DIR/app.pid"
 LOG_FILE="$APP_DIR/app.log"
-PORT=8003
+PORT=3002
 
 # Colors for output
 GREEN='\033[0;32m'

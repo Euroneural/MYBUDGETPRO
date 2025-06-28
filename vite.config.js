@@ -6,8 +6,14 @@ export default defineConfig({
   publicDir: 'public',
   resolve: {
     alias: [
-      { find: '@', replacement: '/src' }
-    ]
+      { find: '@', replacement: '/src' },
+      { find: '@/app.js', replacement: '/src/app.jsx' },
+      { find: '@/app.jsx', replacement: '/src/app.jsx' }
+    ],
+    extensions: ['.js', '.jsx', '.json']
+  },
+  esbuild: {
+    jsx: 'automatic',
   },
   server: {
     port: 3002, // Use port 3002

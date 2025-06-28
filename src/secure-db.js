@@ -115,6 +115,12 @@ class SecureDB {
         return Promise.all(items.map(item => this.decryptItem(storeName, item)));
     }
 
+    // Transaction-specific helper to support existing SearchManager & other code
+    async getTransactions(filters = {}) {
+        const transactions = await localDB.getTransactions(filters);
+        return Promise.all(transactions.map(txn => this.decryptItem('transactions', txn)));
+    }
+
     // Add other methods from localDB as needed...
 }
 

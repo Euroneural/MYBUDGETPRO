@@ -248,51 +248,17 @@ class SearchManager {
         throw new Error('Could not load transactions. Please try again.');
       }
 
-      // --- PIPE-SEPARATED SEMANTIC SEARCH SUPPORT ---
-      // Split search terms by pipe (|), trim, and match any term (case-insensitive)
-      const searchTerms = searchTerm
-        .toLowerCase()
-        .split('|')
-        .map(term => term.trim())
-        .filter(term => term.length > 0);
+      // Track the last search state to prevent unnecessary updates
+      this._lastSearchState = this._lastSearchState || {
+        searchTerm: '',
+        filterValue: '',
+        exactMatch: false,
+        includeNotes: false,
+        resultCount: 0
+      };
 
-      if (searchTerms.length === 0) {
-        console.log('No valid search terms after processing');
-        this.searchResults = [];
-        return;
-      }
-
-      console.log('Searching with pipe-separated terms:', searchTerms);
-
-      // Filter transactions: match if ANY term matches (OR logic)
-      this.searchResults = transactions.filter(transaction => {
-        try {
-          if (!transaction) {
-            console.warn('Encountered undefined transaction in search');
-            return false;
-          }
-          // Build searchable text
-          const searchText = [
-            String(transaction.description || '').toLowerCase(),
-            String(transaction.category || '').toLowerCase()
-          ];
-          if (includeNotes && transaction.notes) {
-            searchText.push(String(transaction.notes).toLowerCase());
-          }
-          const searchTextStr = searchText.join(' ');
-          if (exactMatch) {
-            // All pipe-separated terms must be present
-            return searchTerms.every(term => searchTextStr.includes(term));
-          }
-          // Any pipe-separated term can match
-          return searchTerms.some(term => searchTextStr.includes(term));
-        } catch (error) {
-          console.error('Error processing transaction during search:', error, transaction);
-          return false;
-        }
-      });
-
-      console.log(`Found ${this.searchResults.length} matching transactions`);
+      // Call filterTransactions to filter the transactions
+      await this.filterTransactions(true, startDate, endDate);
 
       // Calculate search statistics
       this.calculateSearchStats();
@@ -333,6 +299,141 @@ class SearchManager {
     }
   }
     
+  async filterTransactions(forceUpdate = false, startDate = null, endDate = null) {
+    try {
+      // Get search input element (only using transactions-search now)
+      const searchInput = document.getElementById('transactions-search') || document.getElementById('transaction-search');
+      
+      // Get values with null checks
+      const searchTerm = (searchInput?.value || '').trim();
+      
+      // Get filter controls
+      const filterSelect = document.getElementById('transaction-filter');
+      const exactMatchCheckbox = document.getElementById('exact-match');
+      const includeNotesCheckbox = document.getElementById('include-notes');
+      
+      // Get filter values with null checks
+      const filterValue = filterSelect?.value || '';
+      const exactMatch = exactMatchCheckbox?.checked || false;
+      const includeNotes = includeNotesCheckbox?.checked || false;
+      
+      // Initialize last search state if it doesn't exist
+      if (!this._lastSearchState) {
+        this._lastSearchState = {
+          searchTerm: '',
+          filterValue: '',
+          exactMatch: false,
+          includeNotes: false,
+          resultCount: 0
+        };
+      }
+      
+      // Check if search state has changed
+      const searchState = { searchTerm, filterValue, exactMatch, includeNotes };
+      const searchStateChanged = 
+        this._lastSearchState.searchTerm !== searchTerm ||
+        this._lastSearchState.filterValue !== filterValue ||
+        this._lastSearchState.exactMatch !== exactMatch ||
+        this._lastSearchState.includeNotes !== includeNotes;
+      
+      // Skip processing if search state hasn't changed and we're not forcing an update
+      if (!searchStateChanged && !forceUpdate) {
+        console.log('Search state unchanged, skipping filter');
+        return this._lastFilteredTransactions || [];
+      }
+      
+      console.log('Filtering transactions with:', searchState);
+      
+      // Get all transactions
+      const transactions = await this.app.db.getTransactions({
+        startDate,
+        endDate
+      });
+      if (!Array.isArray(transactions)) {
+        throw new Error('Failed to load transactions');
+      }
+      
+      // Apply filters
+      let filtered = [...transactions];
+      
+      // Apply search filter if search term exists
+      if (searchTerm) {
+        // Split search terms by pipe (|), trim, and filter out empty terms
+        const searchTerms = searchTerm
+          .split('|')
+          .map(term => term.trim())
+          .filter(term => term.length > 0);
+
+        if (searchTerms.length > 0) {
+          filtered = filtered.filter(transaction => {
+            if (!transaction) return false;
+            
+            // Build searchable text from relevant fields
+            const searchText = [
+              String(transaction.description || '').toLowerCase(),
+              String(transaction.category || '').toLowerCase()
+            ];
+            
+            // Include notes if specified
+            if (includeNotes && transaction.notes) {
+              searchText.push(String(transaction.notes).toLowerCase());
+            }
+            
+            const searchTextStr = searchText.join(' ').toLowerCase();
+            
+            // Apply exact or partial match based on exactMatch flag
+            if (exactMatch) {
+              // All pipe-separated terms must be present for exact match
+              return searchTerms.every(term => 
+                searchTextStr.includes(term.toLowerCase())
+              );
+            } else {
+              // Any pipe-separated term can match for partial search
+              return searchTerms.some(term => 
+                searchTextStr.includes(term.toLowerCase())
+              );
+            }
+          });
+        }
+      }
+      
+      // Store the filtered transactions and update last search state
+      this.searchResults = filtered;
+      this._lastSearchState = {
+        ...searchState,
+        resultCount: filtered.length
+      };
+      this._lastFilteredTransactions = filtered;
+      
+      console.log(`Filtered to ${filtered.length} transactions`);
+      
+      // Only update UI if this is not an initial load or if forced
+      if (searchStateChanged || forceUpdate) {
+        // Update search results in the transactions view if we're not in the search view
+        const searchView = document.getElementById('search-view');
+        if (!searchView || searchView.style.display === 'none') {
+          // We're in the transactions view, update the transactions table and analytics
+          if (typeof this.app.updateTransactionsUI === 'function') {
+            this.app.updateTransactionsUI(filtered);
+          }
+          
+          // Update analytics charts
+          if (typeof this.app.renderTransactionsAnalyticsCharts === 'function') {
+            this.app.renderTransactionsAnalyticsCharts(filtered);
+          }
+        } else {
+          // We're in the search view, update search results
+          await this.renderSearchResults();
+        }
+      }
+      
+      return filtered;
+    } catch (error) {
+      console.error('Error filtering transactions:', error);
+      throw error;
+    }
+  }
+
   calculateSearchStats() {
     console.log('Calculating search statistics...');
         
@@ -1070,6 +1171,7 @@ class BudgetApp {
     this.dbInitialized = false;
     this.searchManager = new SearchManager(this);
     this.passwordPrompt = new PasswordPrompt();
+    this.charts = {}; // Initialize charts object
 
     // Show password prompt and initialize
     if (document.readyState === 'loading') {
@@ -1673,62 +1775,62 @@ setupCalendarEventListeners() {
   // Add event listeners for the app
   bindEventListeners() {
     // Navigation buttons (Add Transaction, Import CSV, etc.)
-  const navButtons = [
-    { id: 'add-transaction-btn', handler: () => this.showTransactionModal() },
-    { id: 'add-transaction-btn-2', handler: () => this.showTransactionModal() },
-    { id: 'add-category-btn', handler: () => this.showCategoryModal() },
-    { id: 'csv-import-btn', handler: () => this.showCSVModal() },
-    { id: 'export-csv-btn', handler: () => this.exportToCSV() },
-    { id: 'close-transaction-modal', handler: () => this.closeModal('add-transaction-modal') },
-    { id: 'close-category-modal', handler: () => this.closeModal('add-category-modal') },
-    { id: 'close-budget-modal', handler: () => this.closeModal('set-budget-modal') },
-    { id: 'close-csv-modal', handler: () => this.closeModal('csv-import-modal') },
-    { id: 'import-csv-confirm', handler: () => this.confirmCSVImport() },
-    { id: 'cancel-csv', handler: () => this.cancelCSVImport() }
-  ];
+    const navButtons = [
+      { id: 'add-transaction-btn', handler: () => this.showTransactionModal() },
+      { id: 'add-transaction-btn-2', handler: () => this.showTransactionModal() },
+      { id: 'add-category-btn', handler: () => this.showCategoryModal() },
+      { id: 'csv-import-btn', handler: () => this.showCSVModal() },
+      { id: 'export-csv-btn', handler: () => this.exportToCSV() },
+      { id: 'close-transaction-modal', handler: () => this.closeModal('add-transaction-modal') },
+      { id: 'close-category-modal', handler: () => this.closeModal('add-category-modal') },
+      { id: 'close-budget-modal', handler: () => this.closeModal('set-budget-modal') },
+      { id: 'close-csv-modal', handler: () => this.closeModal('csv-import-modal') },
+      { id: 'import-csv-confirm', handler: () => this.confirmCSVImport() },
+      { id: 'cancel-csv', handler: () => this.cancelCSVImport() }
+    ];
 
-  // Add event listeners for navigation/action buttons by ID
-  navButtons.forEach(button => {
-    const element = document.getElementById(button.id);
-    if (element) {
-      element.addEventListener('click', button.handler);
-    }
-  });
-
-  // Add event listeners for transaction search and filter controls
-  const searchInput = document.getElementById('transaction-search');
-  const filterSelect = document.getElementById('transaction-filter');
-  const exactMatchCheckbox = document.getElementById('exact-match');
-  const includeNotesCheckbox = document.getElementById('include-notes');
-  const searchButton = document.getElementById('search-button');
-
-  // Add input event listener for search
-  if (searchInput) {
-    searchInput.addEventListener('input', () => this.filterTransactions());
-  }
-
-  // Add change event listeners for filter controls
-  [filterSelect, exactMatchCheckbox, includeNotesCheckbox].forEach(control => {
-    if (control) {
-      control.addEventListener('change', () => this.filterTransactions());
-    }
-  });
-
-  // Add click event listener for search button (if exists)
-  if (searchButton) {
-    searchButton.addEventListener('click', () => this.filterTransactions());
-  }
-
-  // Add event listeners for navigation links by class/data-view
-  const navLinks = document.querySelectorAll('.nav__link[data-view]');
-  navLinks.forEach(link => {
-    link.addEventListener('click', (e) => {
-      const view = link.getAttribute('data-view');
-      if (view) {
-        this.switchView(view);
+    // Add event listeners for navigation/action buttons by ID
+    navButtons.forEach(button => {
+      const element = document.getElementById(button.id);
+      if (element) {
+        // Remove any existing listeners to prevent duplicates
+        const newElement = element.cloneNode(true);
+        element.parentNode.replaceChild(newElement, element);
+        newElement.addEventListener('click', button.handler);
       }
     });
-  });
+
+    // Search and filter controls - only using transactions-search now
+    const searchInput = document.getElementById('transactions-search');
+  
+    // Debounce function to prevent too many rapid searches
+    const debounce = (func, delay) => {
+      let timeoutId;
+      return function(...args) {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => func.apply(this, args), delay);
+      };
+    };
+  
+    // Debounced filter function
+    const debouncedFilter = debounce(() => this.filterTransactions(), 300);
+
+    // Add input event listener for search with debouncing
+    if (searchInput) {
+      searchInput.removeEventListener('input', debouncedFilter); // Remove existing to prevent duplicates
+      searchInput.addEventListener('input', debouncedFilter);
+    }
+
+    // Add event listeners for navigation links by class/data-view
+    const navLinks = document.querySelectorAll('.nav__link[data-view]');
+    navLinks.forEach(link => {
+      link.addEventListener('click', (e) => {
+        const view = link.getAttribute('data-view');
+        if (view) {
+          this.switchView(view);
+        }
+      });
+    });
 
     // Form submissions
     const forms = [
@@ -1736,6 +1838,28 @@ setupCalendarEventListeners() {
       { id: 'category-form', handler: (e) => this.handleCategorySubmit(e) },
       { id: 'budget-form', handler: (e) => this.handleBudgetSubmit(e) }
     ];
+
+    forms.forEach(form => {
+      const element = document.getElementById(form.id);
+      if (element) {
+        element.addEventListener('submit', form.handler);
+      }
+    });
+
+    // Filter controls (category filter, exact match, include notes)
+    const filterControls = [
+      { id: 'transaction-filter', event: 'change' },
+      { id: 'exact-match', event: 'change' },
+      { id: 'include-notes', event: 'change' }
+    ];
+
+    filterControls.forEach(control => {
+      const element = document.getElementById(control.id);
+      if (element) {
+        element.removeEventListener(control.event, debouncedFilter);
+        element.addEventListener(control.event, debouncedFilter);
+      }
+    });
 
     forms.forEach(form => {
       const element = document.getElementById(form.id);
@@ -1930,21 +2054,21 @@ setupCalendarEventListeners() {
   }
 
   async renderTransactions() {
+    // Get the transactions view container
+    const transactionsView = document.getElementById('transactions-view');
+    if (!transactionsView) {
+      console.error('Transactions view not found');
+      return;
+    }
+            
+    // Get the transactions table container
+    const transactionsTable = document.getElementById('transactions-table');
+    if (!transactionsTable) {
+      console.error('Transactions table not found');
+      return;
+    }
+    
     try {
-      // Get the transactions view container
-      const transactionsView = document.getElementById('transactions-view');
-      if (!transactionsView) {
-        console.error('Transactions view not found');
-        return;
-      }
-            
-      // Get the transactions table container
-      const transactionsTable = document.getElementById('transactions-table');
-      if (!transactionsTable) {
-        console.error('Transactions table not found');
-        return;
-      }
-            
       // Show loading state
       transactionsTable.innerHTML = '<div class="loading">Loading transactions...</div>';
       console.log('Fetching transactions from database...');
@@ -1957,21 +2081,19 @@ setupCalendarEventListeners() {
         if (!transactions || transactions.length === 0) {
           console.log('No transactions found in the database');
           transactionsTable.innerHTML = `
-                        <div class="no-transactions">
-                            <p>No transactions found.</p>
-                            <button class="btn btn--primary" id="add-sample-data">Add Sample Data</button>
-                        </div>
-                    `;
+            <div class="no-transactions">
+              <p>No transactions found.</p>
+              <button class="btn btn--primary" id="add-sample-data">Add Sample Data</button>
+            </div>`;
           document.getElementById('add-sample-data')?.addEventListener('click', () => this.loadSampleData());
           return;
         }
       } catch (error) {
         console.error('Error loading transactions:', error);
         transactionsTable.innerHTML = `
-                    <div class="error">
-                        Error loading transactions: ${error.message}
-                    </div>
-                `;
+          <div class="error">
+            Error loading transactions: ${error.message}
+          </div>`;
         return;
       }
           
@@ -2049,19 +2171,28 @@ setupCalendarEventListeners() {
         });
       }
       // Ensure charts update after filtering/searching
-      window.app.renderTransactionsAnalyticsCharts = async function() {
-        // Get currently displayed transactions
-        const rows = document.querySelectorAll('#transactions-table tbody tr');
+      window.app.renderTransactionsAnalyticsCharts = async function(transactionsToUse) {
+        // Use provided transactions if available, otherwise get from DOM or memory
         let filtered = [];
-        rows.forEach(row => {
-          if (row.dataset && row.dataset.transaction) {
-            try {
-              filtered.push(JSON.parse(row.dataset.transaction));
-            } catch {}
+        
+        if (transactionsToUse && transactionsToUse.length > 0) {
+          filtered = transactionsToUse;
+        } else {
+          // Fallback: get transactions from DOM data attributes
+          const rows = document.querySelectorAll('#transactions-table tbody tr');
+          rows.forEach(row => {
+            if (row.dataset && row.dataset.transaction) {
+              try {
+                filtered.push(JSON.parse(row.dataset.transaction));
+              } catch {}
+            }
+          });
+          
+          // Final fallback: use all transactions from memory
+          if (filtered.length === 0 && window.app.transactions) {
+            filtered = window.app.transactions;
           }
-        });
-        // Fallback: if no data-transaction, use all from memory
-        if (filtered.length === 0 && window.app.transactions) filtered = window.app.transactions;
+        }
 
         // Show friendly message if no data
         const showNoData = (id, message) => {
@@ -2119,98 +2250,91 @@ transactionAnalytics.renderPriceTrendChart(filtered, 'transactions-price-trend-c
                     <div class="error">
                         An error occurred while loading transactions. Please try again.
                     </div>
-                `;
+    }
+
+    // Apply category filter if specified
+    if (filterValue) {
+      filtered = filtered.filter(t => t.category === filterValue);
+    }
+
+    // Sort by date (newest first)
+    filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    // Store the filtered transactions and update last search state
+    this._lastFilteredTransactions = filtered;
+    this._lastSearchState = {
+      ...searchState,
+      resultCount: filtered.length
+    };
+
+    console.log(`Filtered to ${filtered.length} transactions`);
+
+    // Only update UI if this is not an initial load
+    if (searchStateChanged) {
+      await this.updateTransactionsUI(filtered);
+    }
+  }
+  
+  // Helper method to update the transactions UI and analytics
+  async updateTransactionsUI(transactions) {
+    try {
+      const transactionsContainer = document.querySelector('.transactions-container');
+      if (!transactionsContainer) return;
+      
+      console.log(`Updating UI with ${transactions.length} transactions`);
+      
+      // Update the transactions list
+      const transactionsList = transactionsContainer.querySelector('tbody');
+      if (transactionsList) {
+        transactionsList.innerHTML = transactions.length > 0 ? 
+          transactions.map(transaction => `
+            <tr data-id="${transaction.id}" data-transaction='${JSON.stringify(transaction).replace(/'/g, '&#39;')}'>
+              <td>${new Date(transaction.date).toLocaleDateString()}</td>
+              <td>${this.escapeHtml(transaction.description || '')}</td>
+              <td>${this.escapeHtml(transaction.category || 'Uncategorized')}</td>
+              <td class="amount-col ${transaction.amount < 0 ? 'expense' : 'income'}">
+                ${transaction.amount < 0 ? '-' : ''}${this.formatCurrency(Math.abs(transaction.amount))}
+              </td>
+              <td class="transaction-actions">
+                <button class="btn-edit" data-id="${transaction.id}">Edit</button>
+                <button class="btn-delete" data-id="${transaction.id}">Delete</button>
+              </td>
+            </tr>
+          `).join('') : 
+          '<tr><td colspan="5" class="text-center py-4">No transactions found matching your criteria</td></tr>';
+      }
+      
+      // Update the "no transactions" message visibility
+      const noTransactions = document.getElementById('transactions-empty');
+      if (noTransactions) {
+        noTransactions.style.display = transactions.length ? 'none' : 'block';
+      }
+      
+      // Update analytics with the filtered transactions
+      console.log('Updating analytics with filtered transactions');
+      try {
+        await this.initializeOrUpdateAnalytics(transactions);
+      } catch (error) {
+        console.error('Error updating analytics:', error);
+      }
+      
+      // Re-bind event listeners
+      this.bindEventListeners();
+      
+    } catch (error) {
+      console.error('Error updating transactions UI:', error);
+      // Show error to user
+      const transactionsList = document.querySelector('.transactions-container tbody');
+      if (transactionsList) {
+        transactionsList.innerHTML = `
+          <tr>
+            <td colspan="5" class="text-center text-danger py-4">
+              Error loading transactions. Please try again.
+            </td>
+          </tr>`;
       }
     }
   }
-
-  async filterTransactions() {
-    try {
-      const searchInput = document.getElementById('transaction-search');
-      const filterSelect = document.getElementById('transaction-filter');
-      const searchTerm = (searchInput?.value || '').trim();
-      const filterValue = filterSelect?.value || '';
-      const exactMatch = document.getElementById('exact-match')?.checked || false;
-      const includeNotes = document.getElementById('include-notes')?.checked || false;
-            
-      // Get all transactions
-      const transactions = await this.db.getAllItems('transactions');
-      if (!Array.isArray(transactions)) {
-        throw new Error('Failed to load transactions');
-      }
-            
-      // Apply filters
-      let filtered = [...transactions];
-            
-      // Apply semantic search filter if search term exists
-      if (searchTerm) {
-        // Split search terms by pipe (|), trim, and filter out empty terms
-        const searchTerms = searchTerm
-          .toLowerCase()
-          .split('|')
-          .map(term => term.trim())
-          .filter(term => term.length > 0);
-
-        if (searchTerms.length > 0) {
-          filtered = filtered.filter(transaction => {
-            if (!transaction) return false;
-            
-            // Build searchable text from relevant fields
-            const searchText = [
-              String(transaction.description || '').toLowerCase(),
-              String(transaction.category || '').toLowerCase(),
-              String(transaction.merchant || '').toLowerCase()
-            ];
-            
-            // Include notes if specified
-            if (includeNotes && transaction.notes) {
-              searchText.push(String(transaction.notes).toLowerCase());
-            }
-            
-            const searchTextStr = searchText.join(' ');
-            
-            // Apply exact or partial match based on exactMatch flag
-            if (exactMatch) {
-              // All pipe-separated terms must be present for exact match
-              return searchTerms.every(term => searchTextStr.includes(term));
-            } else {
-              // Any pipe-separated term can match for partial search
-              return searchTerms.some(term => searchTextStr.includes(term));
-            }
-          });
-        }
-      }
-            
-      // Apply category filter if specified
-      if (filterValue) {
-        filtered = filtered.filter(t => t.category === filterValue);
-      }
-            
-      // Sort by date (newest first)
-      filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
-
-      // Update the transactions list with analytics
-      const transactionsTable = document.getElementById('transactions-table');
-      if (transactionsTable) {
-        // Store filtered transactions in data attribute for analytics
-        transactionsTable.setAttribute('data-filtered-transactions', JSON.stringify(filtered));
-        
-        // Only re-render the transaction table body, not the analytics section
-        const analyticsSection = document.getElementById('transactions-analytics-section');
-        let analyticsHtml = '';
-        if (analyticsSection) {
-          analyticsHtml = analyticsSection.outerHTML;
-        }
-        
-        transactionsTable.innerHTML = analyticsHtml + this.renderTransactionList(filtered);
-        
-        // Initialize or update analytics
-        this.initializeOrUpdateAnalytics(filtered);
-      }
-  } catch (error) {
-    console.error('Error filtering transactions:', error);
-  }
-}
 
   renderTransactionList(transactions) {
     return `
@@ -3316,6 +3440,231 @@ transactionAnalytics.renderPriceTrendChart(filtered, 'transactions-price-trend-c
       // Optionally, update custom analytics summary UI here
     } catch (error) {
       console.error('Error updating analytics:', error);
+    }
+  }
+
+  // Initialize or update analytics charts based on current view
+  initializeOrUpdateAnalytics(transactions) {
+    try {
+      if (this.currentView === 'transactions') {
+        // If transactions are provided, use them; otherwise, let the method fetch them
+        this.renderTransactionsAnalyticsCharts(transactions);
+      } else if (this.currentView === 'dashboard') {
+        this.renderDashboard();
+      } else if (this.currentView === 'search' && this.searchManager) {
+        // Use the renderSearchResults method instead of safeRenderResults
+        if (typeof this.searchManager.renderSearchResults === 'function') {
+          this.searchManager.renderSearchResults();
+        } else if (this.searchManager.performSearch) {
+          this.searchManager.performSearch();
+        }
+      }
+    } catch (error) {
+      console.error('Error in initializeOrUpdateAnalytics:', error);
+    }
+  }
+  
+  /**
+   * Render analytics charts for transactions
+   * @param {Array} [transactions] - Optional transactions to use for analytics
+   */
+  async renderTransactionsAnalyticsCharts(transactionsToUse) {
+    try {
+      console.log('Rendering transactions analytics charts');
+      
+      // Use provided transactions or get all transactions if not provided
+      const transactions = transactionsToUse || await this.loadTransactions();
+      
+      if (!transactions || transactions.length === 0) {
+        console.log('No transactions to render analytics for');
+        // Hide or clear any existing charts
+        const analyticsContainer = document.getElementById('transactions-analytics-container');
+        if (analyticsContainer) {
+          analyticsContainer.innerHTML = '<p class="text-muted">No transaction data available for analytics.</p>';
+        }
+        return;
+      }
+      
+      // Group transactions by category for category breakdown
+      const categoryTotals = {};
+      transactions.forEach(transaction => {
+        const category = transaction.category || 'Uncategorized';
+        const amount = Math.abs(parseFloat(transaction.amount) || 0);
+        
+        if (!categoryTotals[category]) {
+          categoryTotals[category] = 0;
+        }
+        categoryTotals[category] += amount;
+      });
+      
+      // Sort categories by total amount (descending)
+      const sortedCategories = Object.entries(categoryTotals)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10); // Limit to top 10 categories
+      
+      // Prepare data for charts
+      const categoryLabels = sortedCategories.map(([category]) => category);
+      const categoryData = sortedCategories.map(([_, total]) => total);
+      
+      // Get or create chart containers
+      const analyticsContainer = document.getElementById('transactions-analytics-container');
+      if (!analyticsContainer) {
+        console.error('Analytics container not found');
+        return;
+      }
+      
+      // Clear previous content
+      analyticsContainer.innerHTML = `
+        <div class="row">
+          <div class="col-md-6">
+            <div class="card mb-4">
+              <div class="card-header">Spending by Category</div>
+              <div class="card-body">
+                <canvas id="category-chart"></canvas>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="card mb-4">
+              <div class="card-header">Monthly Spending Trend</div>
+              <div class="card-body">
+                <canvas id="monthly-trend-chart"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+      
+      // 1. Category Pie Chart
+      const categoryCtx = document.getElementById('category-chart').getContext('2d');
+      if (this.charts.categoryChart) {
+        this.charts.categoryChart.destroy();
+      }
+      
+      this.charts.categoryChart = new Chart(categoryCtx, {
+        type: 'doughnut',
+        data: {
+          labels: categoryLabels,
+          datasets: [{
+            data: categoryData,
+            backgroundColor: [
+              '#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b',
+              '#5a5c69', '#858796', '#a6aab8', '#b7b9cc', '#d1d3e2'
+            ],
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'right',
+            },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  const label = context.label || '';
+                  const value = context.raw || 0;
+                  const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                  const percentage = Math.round((value / total) * 100);
+                  return `${label}: ${value.toFixed(2)} (${percentage}%)`;
+                }
+              }
+            }
+          }
+        }
+      });
+      
+      // 2. Monthly Trend Chart
+      // Group transactions by month
+      const monthlyData = {};
+      transactions.forEach(transaction => {
+        if (!transaction.date) return;
+        
+        const date = new Date(transaction.date);
+        const monthYear = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        const amount = parseFloat(transaction.amount) || 0;
+        
+        if (!monthlyData[monthYear]) {
+          monthlyData[monthYear] = 0;
+        }
+        monthlyData[monthYear] += amount;
+      });
+      
+      // Sort months chronologically
+      const sortedMonths = Object.keys(monthlyData).sort();
+      const monthlyLabels = sortedMonths.map(monthYear => {
+        const [year, monthNum] = monthYear.split('-');
+        return new Date(year, monthNum - 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+      });
+      
+      const monthlyAmounts = sortedMonths.map(monthKey => Math.abs(monthlyData[monthKey]));
+      
+      const trendCtx = document.getElementById('monthly-trend-chart').getContext('2d');
+      if (this.charts.trendChart) {
+        this.charts.trendChart.destroy();
+      }
+      
+      this.charts.trendChart = new Chart(trendCtx, {
+        type: 'line',
+        data: {
+          labels: monthlyLabels,
+          datasets: [{
+            label: 'Monthly Spending',
+            data: monthlyAmounts,
+            borderColor: '#4e73df',
+            backgroundColor: 'rgba(78, 115, 223, 0.05)',
+            fill: true,
+            tension: 0.3,
+            borderWidth: 2,
+            pointRadius: 3,
+            pointBackgroundColor: '#4e73df',
+            pointBorderColor: '#fff',
+            pointHoverRadius: 5,
+            pointHoverBackgroundColor: '#4e73df',
+            pointHoverBorderColor: '#fff',
+            pointHitRadius: 10,
+            pointBorderWidth: 2
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: {
+                callback: function(value) {
+                  return '$' + value.toLocaleString();
+                }
+              }
+            }
+          },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  return '$' + context.raw.toLocaleString(undefined, { minimumFractionDigits: 2 });
+                }
+              }
+            }
+          }
+        }
+      });
+      
+      console.log('Successfully rendered transactions analytics charts');
+      
+    } catch (error) {
+      console.error('Error rendering transactions analytics charts:', error);
+      const analyticsContainer = document.getElementById('transactions-analytics-container');
+      if (analyticsContainer) {
+        analyticsContainer.innerHTML = `
+          <div class="alert alert-danger">
+            Error loading analytics: ${error.message}
+          </div>
+        `;
+      }
     }
   }
 

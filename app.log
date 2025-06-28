@@ -1,8 +1,784 @@
 
-  VITE v4.5.14  ready in 423 ms
+  VITE v4.5.14  ready in 450 ms
 
-  ➜  Local:   http://localhost:8003/
-9:16:30 AM [vite] page reload src/app.js
-9:33:36 AM [vite] page reload src/app.js
-9:33:54 AM [vite] page reload src/app.js
-10:21:26 AM [vite] page reload src/app.js
+  ➜  Local:   http://localhost:3002/
+10:07:59 PM [vite] warning: Duplicate member "setupRealtimeListeners" in class body
+1514|  }
+1515|  
+1516|    setupRealtimeListeners() {
+   |    ^
+1517|      console.log('Setting up real-time listeners');
+1518|      // This is a placeholder for real-time functionality
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:07:59 PM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1535|       * @returns {Array} Filtered transactions
+1536|       */
+1537|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1538|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1539|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:07:59 PM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1563|       * @returns {Array} Filtered transactions
+1564|       */
+1565|    getTransactionsByDate(date) {
+   |    ^
+1566|      const startOfDay = new Date(date);
+1567|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:07:59 PM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1748|       * Set up event listeners for the calendar
+1749|       */
+1750|    setupCalendarEventListeners() {
+   |    ^
+1751|      const calendarEl = document.getElementById('calendar');
+1752|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:07:59 PM [vite] warning: Duplicate member "renderTransactions" in class body
+2244|  
+2245|      // Render transactions to the UI
+2246|      async renderTransactions() {
+   |            ^
+2247|        try {
+2248|          // Get the transactions view container
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:12:44 PM [vite] page reload src/app.jsx
+10:12:44 PM [vite] warning: Duplicate member "setupRealtimeListeners" in class body
+1514|  }
+1515|  
+1516|    setupRealtimeListeners() {
+   |    ^
+1517|      console.log('Setting up real-time listeners');
+1518|      // This is a placeholder for real-time functionality
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:12:44 PM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1535|       * @returns {Array} Filtered transactions
+1536|       */
+1537|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1538|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1539|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:12:44 PM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1563|       * @returns {Array} Filtered transactions
+1564|       */
+1565|    getTransactionsByDate(date) {
+   |    ^
+1566|      const startOfDay = new Date(date);
+1567|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:12:44 PM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1748|       * Set up event listeners for the calendar
+1749|       */
+1750|    setupCalendarEventListeners() {
+   |    ^
+1751|      const calendarEl = document.getElementById('calendar');
+1752|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:12:44 PM [vite] warning: Duplicate member "renderTransactions" in class body
+2244|  
+2245|      // Render transactions to the UI
+2246|      async renderTransactions() {
+   |            ^
+2247|        try {
+2248|          // Get the transactions view container
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:15:25 PM [vite] page reload src/app.jsx
+10:15:25 PM [vite] warning: Duplicate member "setupRealtimeListeners" in class body
+1514|  }
+1515|  
+1516|    setupRealtimeListeners() {
+   |    ^
+1517|      console.log('Setting up real-time listeners');
+1518|      // This is a placeholder for real-time functionality
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:15:25 PM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1535|       * @returns {Array} Filtered transactions
+1536|       */
+1537|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1538|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1539|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:15:25 PM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1563|       * @returns {Array} Filtered transactions
+1564|       */
+1565|    getTransactionsByDate(date) {
+   |    ^
+1566|      const startOfDay = new Date(date);
+1567|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:15:25 PM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1748|       * Set up event listeners for the calendar
+1749|       */
+1750|    setupCalendarEventListeners() {
+   |    ^
+1751|      const calendarEl = document.getElementById('calendar');
+1752|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:15:25 PM [vite] warning: Duplicate member "renderTransactions" in class body
+2244|  
+2245|      // Render transactions to the UI
+2246|      async renderTransactions() {
+   |            ^
+2247|        try {
+2248|          // Get the transactions view container
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:33:11 PM [vite] page reload src/secure-db.js
+10:33:12 PM [vite] warning: Duplicate member "setupRealtimeListeners" in class body
+1514|  }
+1515|  
+1516|    setupRealtimeListeners() {
+   |    ^
+1517|      console.log('Setting up real-time listeners');
+1518|      // This is a placeholder for real-time functionality
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:33:12 PM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1535|       * @returns {Array} Filtered transactions
+1536|       */
+1537|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1538|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1539|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:33:12 PM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1563|       * @returns {Array} Filtered transactions
+1564|       */
+1565|    getTransactionsByDate(date) {
+   |    ^
+1566|      const startOfDay = new Date(date);
+1567|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:33:12 PM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1748|       * Set up event listeners for the calendar
+1749|       */
+1750|    setupCalendarEventListeners() {
+   |    ^
+1751|      const calendarEl = document.getElementById('calendar');
+1752|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:33:12 PM [vite] warning: Duplicate member "renderTransactions" in class body
+2244|  
+2245|      // Render transactions to the UI
+2246|      async renderTransactions() {
+   |            ^
+2247|        try {
+2248|          // Get the transactions view container
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+11:05:29 PM [vite] page reload src/app.jsx
+11:05:31 PM [vite] Internal server error: Transform failed with 1 error:
+/Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx:2416:10: ERROR: Expected ";" but found "toggleBtn"
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx:2416:10
+  
+  Expected ";" but found "toggleBtn"
+  2414|  
+  2415|      // Bind analytics toggle
+  2416|      const toggleBtn = header.querySelector('#toggle-transactions-analytics');
+     |            ^
+  2417|      if (toggleBtn) {
+  2418|        toggleBtn.addEventListener('click', () => {
+  
+      at failureErrorWithLog (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:1649:15)
+      at /Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:847:29
+      at responseCallbacks.<computed> (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:703:9)
+      at handleIncomingPacket (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:762:9)
+      at Socket.readFromStdout (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:679:7)
+      at Socket.emit (node:events:507:28)
+      at addChunk (node:internal/streams/readable:559:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
+      at Readable.push (node:internal/streams/readable:390:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
+11:06:14 PM [vite] page reload src/app.jsx
+11:06:16 PM [vite] warning: Duplicate member "setupRealtimeListeners" in class body
+1514|  }
+1515|  
+1516|    setupRealtimeListeners() {
+   |    ^
+1517|      console.log('Setting up real-time listeners');
+1518|      // This is a placeholder for real-time functionality
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+11:06:16 PM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1535|       * @returns {Array} Filtered transactions
+1536|       */
+1537|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1538|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1539|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+11:06:16 PM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1563|       * @returns {Array} Filtered transactions
+1564|       */
+1565|    getTransactionsByDate(date) {
+   |    ^
+1566|      const startOfDay = new Date(date);
+1567|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+11:06:16 PM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1748|       * Set up event listeners for the calendar
+1749|       */
+1750|    setupCalendarEventListeners() {
+   |    ^
+1751|      const calendarEl = document.getElementById('calendar');
+1752|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+11:06:16 PM [vite] warning: Duplicate member "renderTransactions" in class body
+2244|  
+2245|      // Render transactions to the UI
+2246|      async renderTransactions() {
+   |            ^
+2247|        try {
+2248|          // Get the transactions view container
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+11:19:43 PM [vite] page reload index.html
+11:20:59 PM [vite] page reload index.html
+11:21:55 PM [vite] page reload index.html
+11:33:31 PM [vite] page reload src/app.jsx
+11:33:32 PM [vite] Internal server error: Transform failed with 1 error:
+/Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx:9:19: ERROR: Expected ";" but found "{"
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx:9:19
+  
+  Expected ";" but found "{"
+  7  |  class SearchManager {}
+  8  |  
+  9  |    constructor(app) {
+     |                     ^
+  10 |      console.log('SearchManager: Initializing SearchManager');
+  11 |      this.app = app;
+  
+      at failureErrorWithLog (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:1649:15)
+      at /Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:847:29
+      at responseCallbacks.<computed> (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:703:9)
+      at handleIncomingPacket (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:762:9)
+      at Socket.readFromStdout (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:679:7)
+      at Socket.emit (node:events:507:28)
+      at addChunk (node:internal/streams/readable:559:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
+      at Readable.push (node:internal/streams/readable:390:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
+11:33:32 PM [vite] Internal server error: Transform failed with 1 error:
+/Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx:9:19: ERROR: Expected ";" but found "{"
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx:9:19
+  
+  Expected ";" but found "{"
+  7  |  class SearchManager {}
+  8  |  
+  9  |    constructor(app) {
+     |                     ^
+  10 |      console.log('SearchManager: Initializing SearchManager');
+  11 |      this.app = app;
+  
+      at failureErrorWithLog (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:1649:15)
+      at /Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:847:29
+      at responseCallbacks.<computed> (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:703:9)
+      at handleIncomingPacket (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:762:9)
+      at Socket.readFromStdout (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:679:7)
+      at Socket.emit (node:events:507:28)
+      at addChunk (node:internal/streams/readable:559:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
+      at Readable.push (node:internal/streams/readable:390:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
+11:37:27 PM [vite] page reload src/app.jsx
+11:37:27 PM [vite] Internal server error: Transform failed with 1 error:
+/Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx:1979:4: ERROR: "await" can only be used inside an "async" function
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx:1979:4
+  
+  "await" can only be used inside an "async" function
+  1977|        this.selectedDate = new Date();
+  1978|      }
+  1979|      await this.renderCalendar(this.selectedDate);
+     |      ^
+  1980|    } 
+  1981|    
+  
+      at failureErrorWithLog (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:1649:15)
+      at /Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:847:29
+      at responseCallbacks.<computed> (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:703:9)
+      at handleIncomingPacket (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:762:9)
+      at Socket.readFromStdout (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:679:7)
+      at Socket.emit (node:events:507:28)
+      at addChunk (node:internal/streams/readable:559:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
+      at Readable.push (node:internal/streams/readable:390:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
+11:37:28 PM [vite] Internal server error: Transform failed with 1 error:
+/Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx:1979:4: ERROR: "await" can only be used inside an "async" function
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx:1979:4
+  
+  "await" can only be used inside an "async" function
+  1977|        this.selectedDate = new Date();
+  1978|      }
+  1979|      await this.renderCalendar(this.selectedDate);
+     |      ^
+  1980|    } 
+  1981|    
+  
+      at failureErrorWithLog (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:1649:15)
+      at /Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:847:29
+      at responseCallbacks.<computed> (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:703:9)
+      at handleIncomingPacket (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:762:9)
+      at Socket.readFromStdout (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:679:7)
+      at Socket.emit (node:events:507:28)
+      at addChunk (node:internal/streams/readable:559:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
+      at Readable.push (node:internal/streams/readable:390:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
+12:14:28 AM [vite] Internal server error: Transform failed with 1 error:
+/Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx:1979:4: ERROR: "await" can only be used inside an "async" function
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx:1979:4
+  
+  "await" can only be used inside an "async" function
+  1977|        this.selectedDate = new Date();
+  1978|      }
+  1979|      await this.renderCalendar(this.selectedDate);
+     |      ^
+  1980|    } 
+  1981|    
+  
+      at failureErrorWithLog (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:1649:15)
+      at /Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:847:29
+      at responseCallbacks.<computed> (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:703:9)
+      at handleIncomingPacket (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:762:9)
+      at Socket.readFromStdout (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:679:7)
+      at Socket.emit (node:events:507:28)
+      at addChunk (node:internal/streams/readable:559:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
+      at Readable.push (node:internal/streams/readable:390:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
+12:51:46 AM [vite] Internal server error: Transform failed with 1 error:
+/Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx:1979:4: ERROR: "await" can only be used inside an "async" function
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx:1979:4
+  
+  "await" can only be used inside an "async" function
+  1977|        this.selectedDate = new Date();
+  1978|      }
+  1979|      await this.renderCalendar(this.selectedDate);
+     |      ^
+  1980|    } 
+  1981|    
+  
+      at failureErrorWithLog (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:1649:15)
+      at /Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:847:29
+      at responseCallbacks.<computed> (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:703:9)
+      at handleIncomingPacket (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:762:9)
+      at Socket.readFromStdout (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:679:7)
+      at Socket.emit (node:events:507:28)
+      at addChunk (node:internal/streams/readable:559:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
+      at Readable.push (node:internal/streams/readable:390:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
+8:54:20 AM [vite] page reload src/app.jsx
+8:54:22 AM [vite] Internal server error: Transform failed with 1 error:
+/Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx:2012:10: ERROR: Expected ";" but found "dropzone"
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx:2012:10
+  
+  Expected ";" but found "dropzone"
+  2010|    }
+  2011|      // Initialize CSV dropzone
+  2012|      const dropzone = document.getElementById('csv-dropzone');
+     |            ^
+  2013|      if (dropzone) {
+  2014|        dropzone.addEventListener('dragover', (e) => {
+  
+      at failureErrorWithLog (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:1649:15)
+      at /Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:847:29
+      at responseCallbacks.<computed> (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:703:9)
+      at handleIncomingPacket (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:762:9)
+      at Socket.readFromStdout (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:679:7)
+      at Socket.emit (node:events:507:28)
+      at addChunk (node:internal/streams/readable:559:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
+      at Readable.push (node:internal/streams/readable:390:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
+8:56:35 AM [vite] page reload src/app.jsx
+8:56:37 AM [vite] Internal server error: Transform failed with 1 error:
+/Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx:2091:4: ERROR: Unexpected "}"
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx:2091:4
+  
+  Unexpected "}"
+  2089|                  `;
+  2090|        }
+  2091|      }
+     |      ^
+  2092|    }
+  2093|  
+  
+      at failureErrorWithLog (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:1649:15)
+      at /Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:847:29
+      at responseCallbacks.<computed> (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:703:9)
+      at handleIncomingPacket (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:762:9)
+      at Socket.readFromStdout (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:679:7)
+      at Socket.emit (node:events:507:28)
+      at addChunk (node:internal/streams/readable:559:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
+      at Readable.push (node:internal/streams/readable:390:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
+9:02:40 AM [vite] page reload src/app.jsx
+9:02:41 AM [vite] warning: Duplicate member "setupRealtimeListeners" in class body
+1516|  }
+1517|  
+1518|    setupRealtimeListeners() {
+   |    ^
+1519|      console.log('Setting up real-time listeners');
+1520|      // This is a placeholder for real-time functionality
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:02:41 AM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1537|       * @returns {Array} Filtered transactions
+1538|       */
+1539|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1540|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1541|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:02:41 AM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1565|       * @returns {Array} Filtered transactions
+1566|       */
+1567|    getTransactionsByDate(date) {
+   |    ^
+1568|      const startOfDay = new Date(date);
+1569|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:02:41 AM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1750|       * Set up event listeners for the calendar
+1751|       */
+1752|    setupCalendarEventListeners() {
+   |    ^
+1753|      const calendarEl = document.getElementById('calendar');
+1754|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:14:46 AM [vite] page reload src/app.jsx
+9:14:50 AM [vite] warning: Duplicate member "setupRealtimeListeners" in class body
+1516|  }
+1517|  
+1518|    setupRealtimeListeners() {
+   |    ^
+1519|      console.log('Setting up real-time listeners');
+1520|      // This is a placeholder for real-time functionality
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:14:50 AM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1537|       * @returns {Array} Filtered transactions
+1538|       */
+1539|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1540|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1541|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:14:50 AM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1565|       * @returns {Array} Filtered transactions
+1566|       */
+1567|    getTransactionsByDate(date) {
+   |    ^
+1568|      const startOfDay = new Date(date);
+1569|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:14:50 AM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1750|       * Set up event listeners for the calendar
+1751|       */
+1752|    setupCalendarEventListeners() {
+   |    ^
+1753|      const calendarEl = document.getElementById('calendar');
+1754|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:17:39 AM [vite] page reload src/app.jsx
+9:17:41 AM [vite] warning: Duplicate member "setupRealtimeListeners" in class body
+1516|  }
+1517|  
+1518|    setupRealtimeListeners() {
+   |    ^
+1519|      console.log('Setting up real-time listeners');
+1520|      // This is a placeholder for real-time functionality
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:17:41 AM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1537|       * @returns {Array} Filtered transactions
+1538|       */
+1539|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1540|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1541|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:17:41 AM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1565|       * @returns {Array} Filtered transactions
+1566|       */
+1567|    getTransactionsByDate(date) {
+   |    ^
+1568|      const startOfDay = new Date(date);
+1569|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:17:41 AM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1750|       * Set up event listeners for the calendar
+1751|       */
+1752|    setupCalendarEventListeners() {
+   |    ^
+1753|      const calendarEl = document.getElementById('calendar');
+1754|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:19:48 AM [vite] page reload src/app.jsx
+9:19:50 AM [vite] Internal server error: Transform failed with 1 error:
+/Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx:3300:26: ERROR: Expected "=>" but found "("
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx:3300:26
+  
+  Expected "=>" but found "("
+  3298|     * Render the transactions view – lightweight implementation to list transactions
+  3299|     */
+  3300|    async renderTransactions() {
+     |                            ^
+  3301|      const viewEl = document.getElementById('transactions-view');
+  3302|      if (!viewEl) {
+  
+      at failureErrorWithLog (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:1649:15)
+      at /Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:847:29
+      at responseCallbacks.<computed> (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:703:9)
+      at handleIncomingPacket (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:762:9)
+      at Socket.readFromStdout (/Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/esbuild/lib/main.js:679:7)
+      at Socket.emit (node:events:507:28)
+      at addChunk (node:internal/streams/readable:559:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
+      at Readable.push (node:internal/streams/readable:390:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
+9:22:54 AM [vite] page reload src/app.jsx
+9:22:56 AM [vite] warning: Duplicate member "setupRealtimeListeners" in class body
+1516|  }
+1517|  
+1518|    setupRealtimeListeners() {
+   |    ^
+1519|      console.log('Setting up real-time listeners');
+1520|      // This is a placeholder for real-time functionality
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:22:56 AM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1537|       * @returns {Array} Filtered transactions
+1538|       */
+1539|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1540|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1541|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:22:56 AM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1565|       * @returns {Array} Filtered transactions
+1566|       */
+1567|    getTransactionsByDate(date) {
+   |    ^
+1568|      const startOfDay = new Date(date);
+1569|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:22:56 AM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1750|       * Set up event listeners for the calendar
+1751|       */
+1752|    setupCalendarEventListeners() {
+   |    ^
+1753|      const calendarEl = document.getElementById('calendar');
+1754|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:31:18 AM [vite] page reload src/app.jsx
+9:31:20 AM [vite] warning: Duplicate member "setupRealtimeListeners" in class body
+1516|  }
+1517|  
+1518|    setupRealtimeListeners() {
+   |    ^
+1519|      console.log('Setting up real-time listeners');
+1520|      // This is a placeholder for real-time functionality
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:31:20 AM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1537|       * @returns {Array} Filtered transactions
+1538|       */
+1539|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1540|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1541|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:31:20 AM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1565|       * @returns {Array} Filtered transactions
+1566|       */
+1567|    getTransactionsByDate(date) {
+   |    ^
+1568|      const startOfDay = new Date(date);
+1569|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:31:20 AM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1750|       * Set up event listeners for the calendar
+1751|       */
+1752|    setupCalendarEventListeners() {
+   |    ^
+1753|      const calendarEl = document.getElementById('calendar');
+1754|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:32:51 AM [vite] page reload src/app.jsx
+9:32:53 AM [vite] warning: Duplicate member "setupRealtimeListeners" in class body
+1516|  }
+1517|  
+1518|    setupRealtimeListeners() {
+   |    ^
+1519|      console.log('Setting up real-time listeners');
+1520|      // This is a placeholder for real-time functionality
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:32:53 AM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1537|       * @returns {Array} Filtered transactions
+1538|       */
+1539|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1540|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1541|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:32:53 AM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1565|       * @returns {Array} Filtered transactions
+1566|       */
+1567|    getTransactionsByDate(date) {
+   |    ^
+1568|      const startOfDay = new Date(date);
+1569|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:32:53 AM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1750|       * Set up event listeners for the calendar
+1751|       */
+1752|    setupCalendarEventListeners() {
+   |    ^
+1753|      const calendarEl = document.getElementById('calendar');
+1754|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:33:41 AM [vite] page reload src/app.jsx
+9:33:43 AM [vite] warning: Duplicate member "setupRealtimeListeners" in class body
+1516|  }
+1517|  
+1518|    setupRealtimeListeners() {
+   |    ^
+1519|      console.log('Setting up real-time listeners');
+1520|      // This is a placeholder for real-time functionality
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:33:43 AM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1537|       * @returns {Array} Filtered transactions
+1538|       */
+1539|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1540|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1541|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:33:43 AM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1565|       * @returns {Array} Filtered transactions
+1566|       */
+1567|    getTransactionsByDate(date) {
+   |    ^
+1568|      const startOfDay = new Date(date);
+1569|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:33:43 AM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1750|       * Set up event listeners for the calendar
+1751|       */
+1752|    setupCalendarEventListeners() {
+   |    ^
+1753|      const calendarEl = document.getElementById('calendar');
+1754|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
