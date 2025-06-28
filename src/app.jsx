@@ -3339,6 +3339,35 @@ setupCalendarEventListeners() {
           <input type="date" class="form-control d-none" id="txn-custom-start">
           <input type="date" class="form-control d-none" id="txn-custom-end">
         </div>
+        <!-- Analytics expandable section -->
+        <div id="transactions-analytics-wrapper" class="mb-3">
+          <button id="toggle-analytics-btn" class="btn btn-outline-secondary btn-sm mb-2" type="button">
+            Show Analytics ▼
+          </button>
+          <button id="swap-order-btn" class="btn btn-outline-secondary btn-sm mb-2 ms-2" type="button">
+            Analytics Below ▼
+          </button>
+          <div id="transactions-analytics-section" class="card d-none">
+            <div class="card-body">
+              <div id="txn-analytics-stats" class="row row-cols-2 row-cols-md-3 g-3 mb-4"></div>
+              <div id="txn-analytics-charts" class="row g-4">
+                <div class="col-md-6">
+                  <canvas id="price-trend-chart"></canvas>
+                </div>
+                <div class="col-md-6">
+                  <canvas id="transactions-distribution-chart"></canvas>
+                </div>
+                <div class="col-md-6">
+                  <canvas id="transactions-seasonality-chart"></canvas>
+                </div>
+                <div class="col-md-6">
+                  <canvas id="transactions-boxplot-chart"></canvas>
+                </div>
+                <!-- Forecast & Johnson charts could be inserted similarly -->
+              </div>
+            </div>
+          </div>
+        </div>
         <div class="table-responsive">
           <table class="table table-striped" id="transactions-table">
             <thead><tr><th>Date</th><th>Description</th><th>Category</th><th class="text-end">Amount</th></tr></thead>
@@ -3364,6 +3393,10 @@ setupCalendarEventListeners() {
     const customStart = document.getElementById('txn-custom-start');
     const customEnd = document.getElementById('txn-custom-end');
     const tbody = document.getElementById('transactions-table-body');
+    const analyticsWrapper = document.getElementById('transactions-analytics-wrapper');
+    const analyticsSection = document.getElementById('transactions-analytics-section');
+    const toggleAnalyticsBtn = document.getElementById('toggle-analytics-btn');
+    const swapOrderBtn = document.getElementById('swap-order-btn');
 
     if (!searchInput || !rangeSelect || !tbody) return;
 
@@ -3417,6 +3450,7 @@ setupCalendarEventListeners() {
         return terms.every(term => haystack.includes(term));
       }).sort((a, b) => new Date(b.date) - new Date(a.date));
 
+      // update table
       tbody.innerHTML = filtered.map(t => `
         <tr data-id="${this.escapeHtml(t.id)}">
           <td>${new Date(t.date).toLocaleDateString()}</td>

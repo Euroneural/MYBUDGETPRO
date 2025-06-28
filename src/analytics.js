@@ -24,11 +24,13 @@ class TransactionAnalytics {
 
     // Show analytics section
     showAnalytics(show = true) {
-        const analyticsEl = document.getElementById('transactions-search-analytics');
+        const analyticsEl = document.getElementById('transactions-analytics-section');
         if (analyticsEl) {
-            analyticsEl.style.display = show ? 'block' : 'none';
+            analyticsEl.classList.toggle('d-none', !show);
         }
     }
+        
+
 
     // Calculate statistics for transactions
     calculateStatistics(transactions) {
@@ -81,6 +83,64 @@ class TransactionAnalytics {
         };
     }
     
+    
+    // Update analytics stats & charts based on filtered transactions
+    updateAnalytics(transactions = []) {
+        if (!transactions || transactions.length === 0) {
+            this.showAnalytics(false);
+            return;
+        }
+        this.showAnalytics(true);
+
+        // Sort transactions by date ascending for change metrics
+        const sorted = [...transactions].sort((a,b)=> new Date(a.date)-new Date(b.date));
+        const first = sorted[0];
+        const last = sorted[sorted.length-1];
+        const firstAmt = parseFloat(first?.amount)||0;
+        const lastAmt = parseFloat(last?.amount)||0;
+        const totalChange = lastAmt - firstAmt;
+        const pctChange = firstAmt !==0 ? (totalChange/Math.abs(firstAmt))*100 : 0;
+        // average change between consecutive points
+        let sumDelta=0;
+        for(let i=1;i<sorted.length;i++){
+            const prev=parseFloat(sorted[i-1].amount)||0;
+            const curr=parseFloat(sorted[i].amount)||0;
+            sumDelta += (curr-prev);
+        }
+        const avgChange = sorted.length>1? sumDelta/(sorted.length-1):0;
+
+        const stats = this.calculateStatistics(transactions) || {};
+        // render stats tiles
+        this.renderStatsTiles({
+            ...stats,
+            totalChange,
+            pctChange,
+            avgChange
+        });
+
+        // charts
+        this.renderPriceTrendChart(transactions);
+        this.analyzeSeasonality(transactions);
+        this.renderDistributionChart(transactions, stats, true);
+        this.renderBoxPlot(transactions, stats);
+    }
+
+    // Render metric tiles in UI
+    renderStatsTiles({min, max, avgAmount, median, totalChange, pctChange, avgChange}) {
+        const container = document.getElementById('txn-analytics-stats');
+        if (!container) return;
+        const tile = (label,value)=>`<div class="col"><div class="card shadow-sm"><div class="card-body p-2 text-center"><div class="fw-bold small text-muted">${label}</div><div class="h6 mb-0">${value}</div></div></div></div>`;
+        container.innerHTML = [
+            tile('Highest', this.formatCurrency(max)),
+            tile('Lowest', this.formatCurrency(min)),
+            tile('Average', this.formatCurrency(avgAmount)),
+            tile('Median', this.formatCurrency(median)),
+            tile('Total Δ', this.formatCurrency(totalChange)),
+            tile('% Δ', pctChange.toFixed(2)+'%'),
+            tile('Avg Δ', this.formatCurrency(avgChange))
+        ].join('');
+    }
+
     // Calculate percentile (0-100) of a sorted array
     calculatePercentile(sortedArray, percentile) {
         if (sortedArray.length === 0) return 0;
