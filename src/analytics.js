@@ -1,6 +1,19 @@
 // Analytics functions for transaction search
 class TransactionAnalytics {
     constructor() {
+        // Chart references
+        this.trendChart = null;
+        this.seasonalityChart = null;
+        this.forecastChart = null;
+        this.distributionChart = null;
+        this.boxplotChart = null;
+        this.priceTrendChart = null;
+        this.johnsonChart = null;
+        this.gammaChart = null;
+        // Persist last transactions
+        this.currentTransactions = [];
+        // Filter state – deposits (>0), debits (<0), credits (=0)
+        this.filterState = { deposits: true, debits: true, credits: true };
         this.trendChart = null;
         this.seasonalityChart = null;
         this.forecastChart = null;
@@ -22,6 +35,68 @@ class TransactionAnalytics {
         // Initialize any required resources
     }
 
+    /**
+     * Ensure type filter checkboxes exist and have listeners
+     */
+    ensureTypeFilterControls() {
+        const container = document.getElementById('txn-type-filters');
+        if (container) return; // Already exists
+        const parent = document.getElementById('transactions-analytics-section');
+        if (!parent) return;
+        const filtersDiv = document.createElement('div');
+        filtersDiv.id = 'txn-type-filters';
+        filtersDiv.className = 'mb-3';
+        filtersDiv.innerHTML = `
+            <label class="me-3"><input type="checkbox" id="filter-deposits" checked> Deposits</label>
+            <label class="me-3"><input type="checkbox" id="filter-debits" checked> Debits</label>
+            <label class="me-3"><input type="checkbox" id="filter-credits" checked> Credits</label>
+        `;
+        parent.prepend(filtersDiv);
+        // Add listeners
+        ['deposits','debits','credits'].forEach(key => {
+            const cb = document.getElementById(`filter-${key}`);
+            if (cb) {
+                cb.addEventListener('change', () => {
+                    this.filterState[key] = cb.checked;
+                    // Rerender charts with stored transactions
+                    this.updateAnalytics(this.currentTransactions);
+                });
+            }
+        });
+    }
+
+    /**
+     * Ensure Johnson & Gamma canvas elements exist
+     */
+    ensureDistributionCanvases() {
+        const parent = document.getElementById('transactions-analytics-charts');
+        // If a dedicated container not found, fall back to analytics section
+        const container = parent || document.getElementById('transactions-analytics-section');
+        if (!container) return;
+        const addCanvas = (id, title) => {
+            if (!document.getElementById(id)) {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'mb-4';
+                wrapper.innerHTML = `<h6 class="mb-2">${title}</h6><canvas id="${id}" style="width:100%;height:300px"></canvas>`;
+                container.appendChild(wrapper);
+            }
+        };
+        addCanvas('transactions-johnson-chart', 'Johnson Distribution');
+        addCanvas('transactions-gamma-chart', 'Gamma Distribution');
+    }
+
+    /**
+     * Filter transactions based on current filterState
+     */
+    applyTypeFilter(transactions = []) {
+        return transactions.filter(t => {
+            const amt = parseFloat(t.amount) || 0;
+            if (amt > 0) return this.filterState.deposits;
+            if (amt < 0) return this.filterState.debits;
+            return this.filterState.credits; // amt === 0
+        });
+    }
+
     // Show analytics section
     showAnalytics(show = true) {
         const analyticsEl = document.getElementById('transactions-analytics-section');
@@ -36,19 +111,26 @@ class TransactionAnalytics {
     calculateStatistics(transactions) {
         if (!transactions || transactions.length === 0) return null;
         
-        // Extract amounts and sort them
-        const amounts = transactions
+        // Extract absolute amounts for robust stats (IQR etc.)
+        const amountsAbs = transactions
             .map(t => Math.abs(parseFloat(t.amount) || 0))
+            .filter(a => !isNaN(a))
             .sort((a, b) => a - b);
-            
-        const totalCount = amounts.length;
-        const totalAmount = amounts.reduce((sum, amount) => sum + amount, 0);
+        
+        // Raw signed amounts – used for highest / lowest values the user expects
+        const amountsRaw = transactions
+            .map(t => parseFloat(t.amount) || 0)
+            .filter(a => !isNaN(a))
+            .sort((a, b) => a - b);
+        
+        const totalCount = amountsAbs.length;
+        const totalAmount = amountsRaw.reduce((sum, amount) => sum + amount, 0);
         const avgAmount = totalCount > 0 ? totalAmount / totalCount : 0;
         
         // Calculate quartiles
-        const q1 = this.calculatePercentile(amounts, 25);
-        const median = this.calculatePercentile(amounts, 50);
-        const q3 = this.calculatePercentile(amounts, 75);
+        const q1 = this.calculatePercentile(amountsAbs, 25);
+        const median = this.calculatePercentile(amountsAbs, 50);
+        const q3 = this.calculatePercentile(amountsAbs, 75);
         
         // Calculate interquartile range (IQR)
         const iqr = q3 - q1;
@@ -57,13 +139,20 @@ class TransactionAnalytics {
         const lowerBound = q1 - 1.5 * iqr;
         const upperBound = q3 + 1.5 * iqr;
         
-        // Find min and max non-outlier values
-        const nonOutliers = amounts.filter(amount => amount >= lowerBound && amount <= upperBound);
-        const min = nonOutliers.length > 0 ? Math.min(...nonOutliers) : amounts[0];
-        const max = nonOutliers.length > 0 ? Math.max(...nonOutliers) : amounts[amounts.length - 1];
+        // Find min and max non-outlier ABSOLUTE values
+        const nonOutliers = amountsAbs.filter(amount => amount >= lowerBound && amount <= upperBound);
+        const min = nonOutliers.length > 0 ? Math.min(...nonOutliers) : amountsAbs[0];
+        const max = nonOutliers.length > 0 ? Math.max(...nonOutliers) : amountsAbs[amountsAbs.length - 1];
+        // Maintain backward-compat alias names used elsewhere in code
+        const minAbs = min;
+        const maxAbs = max;
+        
+        // Highest / lowest SIGNED values (what user perceives)
+        const minRaw = amountsRaw[0];
+        const maxRaw = amountsRaw[amountsRaw.length - 1];
         
         // Calculate standard deviation
-        const squaredDiffs = amounts.map(amount => Math.pow(amount - avgAmount, 2));
+        const squaredDiffs = amountsAbs.map(amount => Math.pow(amount - avgAmount, 2));
         const variance = squaredDiffs.reduce((sum, val) => sum + val, 0) / (totalCount - 1);
         const stdDev = Math.sqrt(variance);
         
@@ -73,6 +162,10 @@ class TransactionAnalytics {
             avgAmount,
             min,
             max,
+            minAbs,
+            maxAbs,
+            minRaw,
+            maxRaw,
             q1,
             median,
             q3,
@@ -86,14 +179,26 @@ class TransactionAnalytics {
     
     // Update analytics stats & charts based on filtered transactions
     updateAnalytics(transactions = []) {
-        if (!transactions || transactions.length === 0) {
+        // store original transactions
+        this.currentTransactions = transactions || [];
+        // Ensure UI controls & canvases exist
+        this.ensureTypeFilterControls();
+        this.ensureDistributionCanvases();
+
+        // Apply type filter
+        const dataTxns = this.applyTypeFilter(this.currentTransactions);
+
+        if (!dataTxns || dataTxns.length === 0) {
             this.showAnalytics(false);
             return;
         }
-        this.showAnalytics(true);
+
+        if (!transactions || transactions.length === 0) {
+            return;
+        }
 
         // Sort transactions by date ascending for change metrics
-        const sorted = [...transactions].sort((a,b)=> new Date(a.date)-new Date(b.date));
+        const sorted = [...dataTxns].sort((a,b)=> new Date(a.date)-new Date(b.date));
         const first = sorted[0];
         const last = sorted[sorted.length-1];
         const firstAmt = parseFloat(first?.amount)||0;
@@ -109,30 +214,38 @@ class TransactionAnalytics {
         }
         const avgChange = sorted.length>1? sumDelta/(sorted.length-1):0;
 
-        const stats = this.calculateStatistics(transactions) || {};
+        const stats = this.calculateStatistics(dataTxns) || {};
         // render stats tiles
         this.renderStatsTiles({
-            ...stats,
+            highest: stats.maxRaw ?? stats.maxAbs,
+            lowest: stats.minRaw ?? stats.minAbs,
+            avgAmount: stats.avgAmount,
+            median: stats.median,
             totalChange,
             pctChange,
             avgChange
         });
 
         // charts
-        this.renderPriceTrendChart(transactions);
-        this.analyzeSeasonality(transactions);
-        this.renderDistributionChart(transactions, stats, true);
-        this.renderBoxPlot(transactions, stats);
+        this.renderPriceTrendChart(dataTxns);
+        this.analyzeSeasonality(dataTxns);
+        this.renderDistributionChart(dataTxns, stats, true);
+        this.renderBoxPlot(dataTxns, stats);
+        this.renderJohnsonDistributionChart(dataTxns);
+        this.renderGammaDistributionChart(dataTxns);
+        this.generateForecast(dataTxns);
     }
 
     // Render metric tiles in UI
-    renderStatsTiles({min, max, avgAmount, median, totalChange, pctChange, avgChange}) {
+    renderStatsTiles({ highest, lowest, avgAmount, median, totalChange, pctChange, avgChange }) {
         const container = document.getElementById('txn-analytics-stats');
         if (!container) return;
-        const tile = (label,value)=>`<div class="col"><div class="card shadow-sm"><div class="card-body p-2 text-center"><div class="fw-bold small text-muted">${label}</div><div class="h6 mb-0">${value}</div></div></div></div>`;
+        const tile = (label,value)=>`<div class="col mb-2"><div class="card shadow-sm h-100"><div class="card-body p-2 text-center"><div class="fw-bold small text-muted">${label}</div><div class="h6 mb-0">${value}</div></div></div></div>`;
+        const highestVal = this.formatCurrency(highest);
+        const lowestVal  = this.formatCurrency(lowest);
         container.innerHTML = [
-            tile('Highest', this.formatCurrency(max)),
-            tile('Lowest', this.formatCurrency(min)),
+            tile('Highest', highestVal),
+            tile('Lowest', lowestVal),
             tile('Average', this.formatCurrency(avgAmount)),
             tile('Median', this.formatCurrency(median)),
             tile('Total Δ', this.formatCurrency(totalChange)),
@@ -542,7 +655,8 @@ class TransactionAnalytics {
                         display: false
                     },
                     title: {
-                        display: false
+                        display: true,
+                        text: 'Seasonality – Avg Amount by Month'
                     }
                 },
                 scales: {
@@ -948,10 +1062,12 @@ class TransactionAnalytics {
             canvas.addEventListener('mousemove', handleMouseMove);
             canvas.addEventListener('mouseup', handleMouseUp);
             canvas.addEventListener('mouseout', () => {
-                if (isSelecting) {
-                    isSelecting = false;
+                if (selectionRect.isSelecting) {
+                    selectionRect.isSelecting = false;
                     selectionRect.isVisible = false;
-                    chart.update('none');
+                    if (this.priceTrendChart) {
+                        this.priceTrendChart.update('none');
+                    }
                 }
             });
             
@@ -1090,8 +1206,11 @@ class TransactionAnalytics {
                     },
                     plugins: {
                         tooltip: {
+                            enabled: true,
+                            mode: 'index',
+                            intersect: false,
                             callbacks: {
-                                label: (context) => {
+                                label: function(context) {
                                     const data = context.raw;
                                     return [
                                         `Merchant: ${data.merchant || 'N/A'}`,
@@ -1453,6 +1572,66 @@ class TransactionAnalytics {
                 }
             }
         });
+    }
+
+    /**
+     * Render Gamma distribution-style histogram for absolute transaction amounts.
+     * This is a simple histogram visual approximation; no complex fitting.
+     * @param {Array} transactions
+     * @param {string} canvasId – canvas element id
+     */
+    renderGammaDistributionChart(transactions = [], canvasId = 'transactions-gamma-chart') {
+        if (!transactions || transactions.length === 0) return;
+        const ctx = document.getElementById(canvasId);
+        if (!ctx) return; // Canvas not present in DOM – skip
+
+        // Destroy previous instance
+        if (this.gammaChart) this.gammaChart.destroy();
+
+        // Prepare absolute amounts
+        const amounts = transactions.map(t => Math.abs(parseFloat(t.amount) || 0));
+        if (amounts.length === 0) return;
+
+        // Build histogram (30 bins)
+        const bins = 30;
+        const minVal = Math.min(...amounts);
+        const maxVal = Math.max(...amounts);
+        const binSize = (maxVal - minVal) / bins || 1;
+        const counts = new Array(bins).fill(0);
+        amounts.forEach(val => {
+            const idx = Math.min(bins - 1, Math.floor((val - minVal) / binSize));
+            counts[idx]++;
+        });
+        const labels = counts.map((_, i) => (minVal + i * binSize).toFixed(0));
+
+        const config = {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Frequency',
+                    data: counts,
+                    backgroundColor: 'rgba(255, 206, 86, 0.6)'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Gamma-like Distribution of Transaction Amounts'
+                    },
+                    legend: { display: false }
+                },
+                scales: {
+                    x: { title: { display: true, text: 'Amount ($)' } },
+                    y: { title: { display: true, text: 'Count' }, beginAtZero: true }
+                }
+            }
+        };
+
+        this.gammaChart = new Chart(ctx, config);
     }
 
     /**

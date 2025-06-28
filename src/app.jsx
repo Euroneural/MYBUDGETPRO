@@ -1,5 +1,6 @@
 import { secureDB } from './secure-db.js';
 import PasswordPrompt from './components/PasswordPrompt.js';
+import { transactionAnalytics } from './analytics.js';
 
 // Chart.js is available globally via CDN in index.html
 
@@ -1150,6 +1151,49 @@ class SearchManager {
 
 class BudgetApp {
   /**
+   * Confirm with user and delete ALL transactions from the database.
+   * Clears in-memory list and refreshes all views.
+   */
+  async confirmAndDeleteAllTransactions() {
+    if (!confirm('Are you sure you want to delete ALL transactions? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      // Clear all transactions via secureDB helper when available
+      if (this.db && typeof this.db.clearAllTransactions === 'function') {
+        await this.db.clearAllTransactions();
+      } else if (this.db && typeof this.db.clearStore === 'function') {
+        await this.db.clearStore('transactions');
+      } else if (this.db && typeof this.db.deleteAllItems === 'function') {
+        await this.db.deleteAllItems('transactions');
+      } else {
+        // Fallback: retrieve all items and delete individually
+        const all = await this.db.getAllItems('transactions');
+        for (const item of all) {
+          await this.db.deleteItem('transactions', item.id);
+        }
+      }
+
+      // Reset local array
+      this.transactions = [];
+      this.pendingImport = [];
+
+      // Refresh relevant views
+      await Promise.all([
+        this.renderDashboard?.(),
+        this.renderTransactions?.(),
+        this.renderCalendar?.(),
+        this.renderTransactionsAnalyticsCharts?.(),
+      ]);
+
+      this.showToast?.('success', 'All transactions deleted');
+    } catch (error) {
+      console.error('Error deleting all transactions:', error);
+      this.showToast?.('error', 'Failed to delete all transactions');
+    }
+  }
+  /**
    * Show the CSV import modal
    */
   showCSVModal() {
@@ -1424,7 +1468,83 @@ return transactions;
 * @returns {string} Formatted date string
 */
 formatDateKey(date) {
-return date.toISOString().split('T')[0];
+    return date.toISOString().split('T')[0];
+}
+
+/**
+ * Parse a date string from CSV and return ISO YYYY-MM-DD or null if invalid
+ * Supports common formats like:
+ *   - YYYY-MM-DD / YYYY/MM/DD
+ *   - MM/DD/YYYY or M/D/YY
+ *   - DD/MM/YYYY or D/M/YY (day first)
+ *   - DD MMM YYYY (e.g. 01 Jan 2024)
+ *   - Locale strings that the built-in Date constructor can parse
+ * @param {string} str Raw date string
+ * @returns {string|null}
+ */
+parseDate(str) {
+    if (!str) return null;
+
+    // Remove surrounding quotes and trim whitespace
+    const clean = str.trim().replace(/^['"]|['"]$/g, '');
+
+    // 1. Let native Date handle ISO or recognised formats
+    let d = new Date(clean);
+    if (!isNaN(d)) {
+        return d.toISOString().split('T')[0];
+    }
+
+    // 2. Regex based parsing for the most common bank formats
+    const monthNames = {
+        jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+        jul: 6, aug: 7, sep: 8, sept: 8, oct: 9, nov: 10, dec: 11
+    };
+
+    // MM/DD/YYYY or M/D/YY (US style)
+    let m = clean.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2}|\d{4})$/);
+    if (m) {
+        let [ , mm, dd, yy] = m;
+        mm = parseInt(mm, 10) - 1;
+        dd = parseInt(dd, 10);
+        let yyyy = parseInt(yy, 10);
+        if (yyyy < 100) {
+            // assume 20xx for two-digit years
+            yyyy += 2000;
+        }
+        d = new Date(yyyy, mm, dd);
+        if (!isNaN(d)) return d.toISOString().split('T')[0];
+    }
+
+    // DD/MM/YYYY or D/M/YY (EU style)
+    m = clean.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2}|\d{4})$/);
+    if (m) {
+        let [ , dd, mm, yy] = m;
+        mm = parseInt(mm, 10) - 1;
+        dd = parseInt(dd, 10);
+        let yyyy = parseInt(yy, 10);
+        if (yyyy < 100) {
+            yyyy += 2000;
+        }
+        d = new Date(yyyy, mm, dd);
+        if (!isNaN(d)) return d.toISOString().split('T')[0];
+    }
+
+    // DD MMM YYYY (01 Jan 2024)
+    m = clean.match(/^(\d{1,2})[\s-]([A-Za-z]{3,4})[\s-](\d{2}|\d{4})$/);
+    if (m) {
+        let [ , dd, mon, yy] = m;
+        dd = parseInt(dd, 10);
+        mon = mon.toLowerCase();
+        if (monthNames.hasOwnProperty(mon)) {
+            let yyyy = parseInt(yy, 10);
+            if (yyyy < 100) yyyy += 2000;
+            d = new Date(yyyy, monthNames[mon], dd);
+            if (!isNaN(d)) return d.toISOString().split('T')[0];
+        }
+    }
+
+    console.warn('parseDate: Unable to parse date string', str);
+    return null;
 }
 
 /**
@@ -1515,20 +1635,7 @@ let calendarHTML = `
   this.setupCalendarEventListeners();
 }
 
-  setupRealtimeListeners() {
-    console.log('Setting up real-time listeners');
-    // This is a placeholder for real-time functionality
-    // In a real app, this would set up listeners for database changes
-    // For now, we'll just log that it was called
-    
-    // Example of what this might look like with a real-time database:
-    // this.db.on('transactions:changed', () => this.loadTransactions());
-    // this.db.on('categories:changed', () => this.loadBudgetCategories());
-    // this.db.on('accounts:changed', () => this.loadAccounts());
-    
-    // For now, we'll just return a resolved promise
-    return Promise.resolve();
-  }
+
     
   /**
      * Get transactions for a specific date range
@@ -1783,6 +1890,7 @@ setupCalendarEventListeners() {
       { id: 'add-category-btn', handler: () => this.showCategoryModal() },
       { id: 'csv-import-btn', handler: () => this.showCSVModal() },
       { id: 'export-csv-btn', handler: () => this.exportToCSV() },
+    { id: 'delete-all-btn', handler: () => this.confirmAndDeleteAllTransactions() },
       { id: 'close-transaction-modal', handler: () => this.closeModal('add-transaction-modal') },
       { id: 'close-category-modal', handler: () => this.closeModal('add-category-modal') },
       { id: 'close-budget-modal', handler: () => this.closeModal('set-budget-modal') },
@@ -2075,117 +2183,146 @@ setupCalendarEventListeners() {
   detectBankFormat(headers) {
     if (!headers || !headers.length) return null;
         
-    const headerLine = headers.join(',').toLowerCase();
-        
-    for (const [_key, format] of Object.entries(BudgetApp.BANK_FORMATS)) {
-      const requiredFields = [format.date, format.description, format.amount]
-        .filter(Boolean)
-        .map(f => f.toLowerCase());
-                
-      if (requiredFields.every(field => headerLine.includes(field))) {
-        console.log("Detected ${format.name} format");
-        return format;
-      }
-    }
-        
-    return null;
-  }
+  // Strip quotes from headers
+  headers = headers.map(header => header.trim().replace(/^"|"$/g, ''));
 
-  // Handle file selection
-  handleCSVFile(e) {
-    const file = e.target.files[0];
-    if (file) {
-      this.processCSVFile(file);
+  for (const [_key, format] of Object.entries(BudgetApp.BANK_FORMATS)) {
+    const requiredFields = [format.date, format.description, format.amount]
+      .filter(Boolean)
+      .map(f => f.toLowerCase());
+
+    // Check each required field against individual headers for more reliable match
+    const hasAllFields = requiredFields.every(reqField =>
+      headers.some(h => h.toLowerCase().includes(reqField))
+    );
+
+    if (hasAllFields) {
+      console.log(`Detected ${format.name} format`);
+      return format;
     }
   }
-
-  // Process CSV file and extract transactions
-  processCSVFile(file) {
-    if (!file) return Promise.reject(new Error('No file provided'));
         
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
+  return null;
+}
+
+// Process CSV file and extract transactions
+processCSVFile(file) {
+  if (!file) return Promise.reject(new Error('No file provided'));
+        
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
             
-      reader.onload = (e) => {
-        try {
-          const text = e.target.result;
-          const allLines = text.split(/\r\n|\n/).filter(line => line.trim() !== '');
+    reader.onload = (e) => {
+      try {
+        const text = e.target.result;
+        const allLines = text.split(/\r\n|\n/).filter(line => line.trim() !== '');
                     
-          if (allLines.length < 2) {
-            throw new Error('CSV file is empty or has no data rows');
+        if (allLines.length < 2) {
+          throw new Error('CSV file is empty or has no data rows');
+        }
+                    
+        // Parse header row to detect column indices
+        const headers = this.parseCSVLine(allLines[0]);
+        const bankFormat = this.detectBankFormat(headers);
+        let _skipLines = 0;
+        let columnIndices = {
+          date: -1,
+          description: -1,
+          amount: -1,
+          category: -1,
+          account: -1,
+          notes: -1,
+          type: -1,
+          credit: -1
+        };
+                    
+        // If bank format detected, use its column mapping
+        if (bankFormat) {
+          _skipLines = bankFormat.skipLines || 0;
+          switch (bankFormat.name) {
+            // Special handling for Citi credit cards
+            case 'citi':
+              columnIndices.date = headers.findIndex(h => h === 'Transaction Date');
+              columnIndices.description = headers.findIndex(h => h === 'Description');
+              columnIndices.amount = headers.findIndex(h => h === 'Amount');
+              columnIndices.type = headers.findIndex(h => h === 'Type');
+              break;        
+            default:
+              columnIndices = {
+                date: headers.findIndex(h => h.toLowerCase() === bankFormat.date.toLowerCase()),
+                description: headers.findIndex(h => h.toLowerCase() === bankFormat.description.toLowerCase()),
+                amount: headers.findIndex(h => h.toLowerCase() === bankFormat.amount.toLowerCase()),
+                type: bankFormat.type ? 
+                  headers.findIndex(h => h.toLowerCase() === bankFormat.type.toLowerCase()) : -1,
+                credit: bankFormat.credit ? 
+                  headers.findIndex(h => h.toLowerCase() === bankFormat.credit.toLowerCase()) : -1,
+                category: -1,
+                account: -1,
+                notes: -1
+              };
           }
-                    
-          // Parse header row to detect column indices
-          const headers = this.parseCSVLine(allLines[0]);
-          const bankFormat = this.detectBankFormat(headers);
-          let _skipLines = 0;
-          let columnIndices = {
-            date: -1,
-            description: -1,
-            amount: -1,
-            category: -1,
-            account: -1,
-            notes: -1,
-            type: -1,
-            credit: -1
-          };
-                    
-          // If bank format detected, use its column mapping
-          if (bankFormat) {
-            _skipLines = bankFormat.skipLines || 0;
-            switch (bankFormat.name) {
-              // Special handling for Citi credit cards
-              case 'citi':
-                columnIndices.date = headers.findIndex(h => h === 'Transaction Date');
-                columnIndices.description = headers.findIndex(h => h === 'Description');
-                columnIndices.amount = headers.findIndex(h => h === 'Amount');
-                columnIndices.type = headers.findIndex(h => h === 'Type');
-                break;        
-              default:
-                columnIndices = {
-                  date: headers.findIndex(h => h.toLowerCase() === bankFormat.date.toLowerCase()),
-                  description: headers.findIndex(h => h.toLowerCase() === bankFormat.description.toLowerCase()),
-                  amount: headers.findIndex(h => h.toLowerCase() === bankFormat.amount.toLowerCase()),
-                  type: bankFormat.type ? 
-                    headers.findIndex(h => h.toLowerCase() === bankFormat.type.toLowerCase()) : -1,
-                  credit: bankFormat.credit ? 
-                    headers.findIndex(h => h.toLowerCase() === bankFormat.credit.toLowerCase()) : -1,
-                  category: -1,
-                  account: -1,
-                  notes: -1
-                };
+          console.log(`Using ${bankFormat.name} format with column mapping:`, columnIndices);
+        } else {
+          // Default column mapping (try to auto-detect)
+          headers.forEach((header, index) => {
+            const lowerHeader = header.toLowerCase().trim();
+
+            // Detect date column - include a wider array of keywords, including concatenated variations
+            if (['date', 'transactiondate', 'transaction date', 'transdate', 'trans date', 'posting date', 'post date', 'date posted', 'posted'].some(k => lowerHeader.includes(k))) {
+              columnIndices.date = index;
+
+            // Detect description column
+            } else if (['desc', 'description', 'memo', 'details', 'note', 'narrative'].some(k => lowerHeader.includes(k))) {
+              columnIndices.description = index;
+
+            // Detect amount column - include debit/credit keywords as fallback
+            } else if (['amount', 'value', 'total', 'transaction amount', 'debit', 'credit'].some(k => lowerHeader.includes(k))) {
+              columnIndices.amount = index;
+
+            // Detect type column
+            } else if (['type', 'transaction type'].some(k => lowerHeader.includes(k))) {
+              columnIndices.type = index;
+
+            } else if (lowerHeader.includes('category') || lowerHeader.includes('cat')) {
+              columnIndices.category = index;
+            } else if (['account', 'bank', 'source'].some(k => lowerHeader.includes(k))) {
+              columnIndices.account = index;
             }
-            console.log(`Using ${bankFormat.name} format with column mapping:`, columnIndices);
-          } else {
-            // Default column mapping (try to auto-detect)
-            headers.forEach((header, index) => {
-              const lowerHeader = header.toLowerCase();
-              if (lowerHeader.includes('date')) {
-                columnIndices.date = index;
-              } else if (lowerHeader.includes('desc') || lowerHeader.includes('memo') || lowerHeader.includes('note')) {
-                columnIndices.description = index;
-              } else if (lowerHeader.includes('amount') || lowerHeader.includes('value') || lowerHeader.includes('total')) {
-                columnIndices.amount = index;
-              } else if (lowerHeader.includes('type') || lowerHeader.includes('transaction type')) {
-                columnIndices.type = index;
-              } else if (lowerHeader.includes('category') || lowerHeader.includes('cat')) {
-                columnIndices.category = index;
-              } else if (lowerHeader.includes('account') || lowerHeader.includes('bank') || lowerHeader.includes('source')) {
-                columnIndices.account = index;
-              }
-            });
-          }
+          });
+        }
                     
-          console.log('Detected column indices:', columnIndices);
+// --------------------------------------------------------------------
+// Fallback heuristic – if critical columns (date/description/amount) are
+// still undetected after the primary mapping logic above (e.g. when a
+// bank format is mistakenly detected but the exact header names differ),
+// attempt another pass using looser matching rules.
+// --------------------------------------------------------------------
+if (columnIndices.date === -1 || columnIndices.description === -1 || columnIndices.amount === -1) {
+  headers.forEach((header, index) => {
+    const h = header.toLowerCase().trim();
+
+    if (columnIndices.date === -1 && /date/.test(h)) {
+      columnIndices.date = index;
+    }
+    if (columnIndices.description === -1 && /(desc|description|memo|details|note|narrative)/.test(h)) {
+      columnIndices.description = index;
+    }
+    if (columnIndices.amount === -1 && /(amount|debit|credit|value|total|transaction)/.test(h)) {
+      columnIndices.amount = index;
+    }
+  });
+}
+
+console.log('Detected column indices (after fallback):', columnIndices);
                     
-          // Process data rows
-          const transactions = [];
-          const skippedRows = [];
+// Process data rows
+const transactions = [];
+const skippedRows = [];
                     
-          for (let i = 1; i < allLines.length; i++) {
-            try {
-              const values = this.parseCSVLine(allLines[i]);
-              if (values.length === 0) continue;
+for (let i = 1; i < allLines.length; i++) {
+try {
+const values = this.parseCSVLine(allLines[i]);
+if (values.length === 0) continue;
                             
               // Parse date with fallback to today
               let transactionDate;
@@ -2199,6 +2336,7 @@ setupCalendarEventListeners() {
                 console.warn(`No date column found in row ${i + 1}, using today's date`);
                 transactionDate = new Date().toISOString().split('T')[0];
               }
+              console.log(`CSV row ${i}: rawDate="${columnIndices.date >= 0 ? values[columnIndices.date] : ''}", parsedDate="${transactionDate}"`);
                             
               // Parse amount with validation
               let amount = 0;
@@ -2342,16 +2480,13 @@ setupCalendarEventListeners() {
      * @param {string} dateStr - The date string to parse
      * @param {string} [format='auto'] - Optional format hint (e.g., 'MM/DD/YYYY', 'DD-MM-YYYY')
      * @returns {string} Formatted date string (YYYY-MM-DD)
-     */
-  parseDate(dateStr, format = 'auto') {
-    if (!dateStr) return new Date().toISOString().split('T')[0];
-        
-    // Try parsing with Date object first (handles ISO 8601 and other standard formats)
-    const date = new Date(dateStr);
-    if (!isNaN(date.getTime())) {
-      return date.toISOString().split('T')[0];
-    }
-        
+    return new Date().toISOString().split('T')[0];
+  }
+
+  // Try native Date constructor first (handles ISO and RFC strings).
+  const native = new Date(dateStr);
+  if (!isNaN(native.getTime())) {
+    return native.toISOString().split('T')[0];
     // Try common date formats
     const formats = [
       // MM/DD/YYYY or M/D/YYYY
@@ -2362,30 +2497,13 @@ setupCalendarEventListeners() {
       /^(\d{1,2})-(\d{1,2})-(\d{4})$/,
       // Month DD, YYYY (e.g., Jan 5, 2023)
       /^([A-Za-z]{3,9})\s+(\d{1,2}),?\s*(\d{4})$/i
-    ];
-        
-    for (const pattern of formats) {
+
       const match = dateStr.match(pattern);
-      if (!match) continue;
-            
-      let day, month, year;
-            
-      // Handle different format patterns
-      if (pattern === formats[0]) { // MM/DD/YYYY or M/D/YYYY
-        if (format === 'DD-MM-YYYY' || format === 'DD/MM/YYYY') {
-          day = parseInt(match[1], 10);
-          month = parseInt(match[2], 10);
         } else {
-          month = parseInt(match[1], 10);
-          day = parseInt(match[2], 10);
+          // Ambiguous – default to US style
+          month = first;
+          day = second;
         }
-        year = parseInt(match[3], 10);
-      } else if (pattern === formats[1]) { // YYYY-MM-DD
-        year = parseInt(match[1], 10);
-        month = parseInt(match[2], 10);
-        day = parseInt(match[3], 10);
-      } else if (pattern === formats[2]) { // DD-MM-YYYY
-        day = parseInt(match[1], 10);
         month = parseInt(match[2], 10);
         year = parseInt(match[3], 10);
       } else if (pattern === formats[3]) { // Month DD, YYYY
@@ -2413,12 +2531,6 @@ setupCalendarEventListeners() {
         return parsedDate.toISOString().split('T')[0];
       }
     }
-        
-    // If we get here, return today's date as fallback
-    console.warn(`Could not parse date: ${dateStr}, using today's date`);
-    return new Date().toISOString().split('T')[0];
-  }
-    
   /**
      * Parse an amount string into a number
      * @param {string} amountStr - The amount string to parse
@@ -2744,6 +2856,11 @@ setupCalendarEventListeners() {
     
   // Confirm and import the CSV data
   async confirmCSVImport() {
+  // Prevent duplicate imports by tracking existing transactions
+  await this.loadTransactions();
+  const existingKeySet = new Set(
+    this.transactions.map(t => `${t.date}|${(t.description || '').trim().toLowerCase()}|${t.amount}`)
+  );
     if (!this.pendingImport || this.pendingImport.length === 0) {
       alert('No transactions to import. Please upload a CSV file first.');
       return;
@@ -2759,6 +2876,13 @@ setupCalendarEventListeners() {
             
       // Add transactions to database
       for (const [index, transaction] of this.pendingImport.entries()) {
+      const dedupKey = `${transaction.date}|${(transaction.description || '').trim().toLowerCase()}|${transaction.amount}`;
+      if (existingKeySet.has(dedupKey)) {
+        console.log(`Skipping duplicate transaction at import index ${index}:`, transaction);
+        results.skipped += 1;
+        continue;
+      }
+      existingKeySet.add(dedupKey);
         try {
           console.log(`Importing transaction ${index + 1}/${this.pendingImport.length}:`, transaction);
           const success = await this.addTransaction(transaction);
@@ -3342,6 +3466,10 @@ setupCalendarEventListeners() {
             Show Analytics ▼
           </button>
           <button id="swap-order-btn" class="btn btn-outline-secondary btn-sm mb-2 ms-2" type="button">
+ 
+           <button id="delete-all-btn" class="btn btn-outline-danger btn-sm mb-2 ms-2" type="button">
+             Delete All
+           </button>
             Analytics Below ▼
           </button>
           <div id="transactions-analytics-section" class="card d-none">
@@ -3349,16 +3477,16 @@ setupCalendarEventListeners() {
               <div id="txn-analytics-stats" class="row row-cols-2 row-cols-md-3 g-3 mb-4"></div>
               <div id="txn-analytics-charts" class="row g-4">
                 <div class="col-md-6">
-                  <div id="price-trend-chart" style="height:320px"></div>
+                  <canvas id="price-trend-chart" style="height:320px"></canvas>
                 </div>
                 <div class="col-md-6">
-                  <div id="transactions-distribution-chart" style="height:320px"></div>
+                  <canvas id="transactions-distribution-chart" style="height:320px"></canvas>
                 </div>
                 <div class="col-md-6">
-                  <div id="transactions-seasonality-chart" style="height:320px"></div>
+                  <canvas id="transactions-seasonality-chart" style="height:320px"></canvas>
                 </div>
                 <div class="col-md-6">
-                  <div id="transactions-boxplot-chart" style="height:320px"></div>
+                  <canvas id="transactions-boxplot-chart" style="height:320px"></canvas>
                 </div>
                 <!-- Forecast & Johnson charts could be inserted similarly -->
               </div>
@@ -3394,6 +3522,37 @@ setupCalendarEventListeners() {
     const analyticsSection = document.getElementById('transactions-analytics-section');
     const toggleAnalyticsBtn = document.getElementById('toggle-analytics-btn');
     const swapOrderBtn = document.getElementById('swap-order-btn');
+
+    // ---------------- Analytics Controls ------------------
+    // Expand/collapse analytics section
+    if (toggleAnalyticsBtn && analyticsSection) {
+      toggleAnalyticsBtn.addEventListener('click', () => {
+        const willShow = analyticsSection.classList.contains('d-none');
+        analyticsSection.classList.toggle('d-none', !willShow);
+        toggleAnalyticsBtn.innerHTML = willShow ? 'Hide Analytics ▲' : 'Show Analytics ▼';
+      });
+    }
+
+    // Swap analytics order (above/below table)
+    if (swapOrderBtn && analyticsWrapper) {
+      swapOrderBtn.addEventListener('click', () => {
+        const viewEl = document.getElementById('transactions-view');
+        if (!viewEl) return;
+        const tableContainer = viewEl.querySelector('.table-responsive');
+        if (!tableContainer) return;
+
+        const analyticsCurrentlyAbove = analyticsWrapper.nextElementSibling && analyticsWrapper.nextElementSibling.classList.contains('table-responsive');
+        if (analyticsCurrentlyAbove) {
+          // Move below table
+          viewEl.insertBefore(analyticsWrapper, tableContainer.nextSibling);
+          swapOrderBtn.innerHTML = 'Analytics Above ▲';
+        } else {
+          // Move above table
+          viewEl.insertBefore(analyticsWrapper, tableContainer);
+          swapOrderBtn.innerHTML = 'Analytics Below ▼';
+        }
+      });
+    }
 
     if (!searchInput || !rangeSelect || !tbody) return;
 
@@ -3448,6 +3607,10 @@ setupCalendarEventListeners() {
       }).sort((a, b) => new Date(b.date) - new Date(a.date));
 
       // update table
+      // Update analytics section
+transactionAnalytics.updateAnalytics(filtered);
+transactionAnalytics.showAnalytics(filtered.length > 0);
+
       tbody.innerHTML = filtered.map(t => `
         <tr data-id="${this.escapeHtml(t.id)}">
           <td>${new Date(t.date).toLocaleDateString()}</td>

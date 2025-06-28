@@ -121,6 +121,11 @@ class SecureDB {
         return Promise.all(transactions.map(txn => this.decryptItem('transactions', txn)));
     }
 
+    // Clear all transactions – used by delete-all feature
+    async clearAllTransactions() {
+        return localDB.clearAllTransactions();
+    }
+
     // Add other methods from localDB as needed...
 }
 
