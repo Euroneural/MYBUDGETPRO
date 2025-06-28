@@ -3295,6 +3295,75 @@ setupCalendarEventListeners() {
     }
   }
 
+  /**
+   * Render the transactions view – lightweight implementation to list transactions
+   */
+  async renderTransactions() {
+    const viewEl = document.getElementById('transactions-view');
+    if (!viewEl) {
+      console.warn('transactions-view container not found');
+      return;
+    }
+
+    try {
+      // Ensure transactions are in memory
+      if (!this.transactions || this.transactions.length === 0) {
+        await this.loadTransactions();
+      }
+
+      // Sort newest first
+      const txns = [...this.transactions].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+      const rowsHtml = txns.map(t => `
+        <tr data-id="${this.escapeHtml(t.id)}">
+          <td>${new Date(t.date).toLocaleDateString()}</td>
+          <td>${this.escapeHtml(t.description || '')}</td>
+          <td>${this.escapeHtml(t.category || 'Uncategorised')}</td>
+          <td class="${t.amount < 0 ? 'text-danger' : 'text-success'}">${this.formatCurrency(Math.abs(t.amount))}</td>
+        </tr>`).join('');
+
+      viewEl.innerHTML = `
+        <div class="table-responsive">
+          <table class="table table-striped" id="transactions-table">
+            <thead><tr><th>Date</th><th>Description</th><th>Category</th><th class="text-end">Amount</th></tr></thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </div>`;
+
+    } catch (err) {
+      console.error('Error rendering transactions view:', err);
+      viewEl.innerHTML = `<div class="alert alert-danger">Failed to load transactions: ${this.escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  /**
+   * Render the budget view – placeholder table until full implementation
+   */
+  async renderBudget() {
+    const viewEl = document.getElementById('budget-view');
+    if (!viewEl) {
+      console.warn('budget-view container not found');
+      return;
+    }
+
+    try {
+      if (!this.budgetCategories || this.budgetCategories.length === 0) {
+        await this.loadBudgetCategories();
+      }
+
+      const rows = this.budgetCategories.map(c => `
+        <tr><td>${this.escapeHtml(c.name)}</td><td>${this.formatCurrency(c.limit || 0)}</td></tr>`).join('');
+
+      viewEl.innerHTML = `
+        <div class="table-responsive">
+          <table class="table table-striped"><thead><tr><th>Category</th><th>Limit</th></tr></thead><tbody>${rows}</tbody></table>
+        </div>`;
+    } catch (err) {
+      console.error('Error rendering budget view:', err);
+      viewEl.innerHTML = `<div class="alert alert-danger">Failed to load budget data: ${this.escapeHtml(err.message)}</div>`;
+    }
+  }
+
   // Render the dashboard view
   async renderDashboard() {
     try {
@@ -3534,6 +3603,18 @@ setupCalendarEventListeners() {
     }
   }
     
+  /**
+   * Lightweight wrapper used by older code – maps to showNotification
+   * @param {string} type - success | error | info
+   * @param {string} title - Brief title text
+   * @param {string} message - Detailed description
+   */
+  showToast(type = 'info', title = '', message = '') {
+    // Concatenate title + message for a single notification line
+    const full = title ? `${title}${message ? ': ' + message : ''}` : message;
+    this.showNotification(full, type);
+  }
+
   /**
      * Show a notification to the user
      * @param {string} message - The message to display
