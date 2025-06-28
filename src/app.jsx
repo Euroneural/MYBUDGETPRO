@@ -3055,12 +3055,9 @@ setupCalendarEventListeners() {
         if (this.charts && this.charts.dashboard) {
           // Update dashboard chart with latest transactions
           this.charts.dashboard.data = this.transactions;
-          this.charts.dashboard.update();
         }
         if (this.charts && this.charts.analytics) {
-          // Update analytics chart with latest transactions
-          this.charts.analytics.data = this.transactions;
-          this.charts.analytics.update();
+          // Update analytics chart window.txnAnalytics = new TransactionAnalytics();
         }
       }
       // Optionally, update custom analytics summary UI here
@@ -3352,16 +3349,16 @@ setupCalendarEventListeners() {
               <div id="txn-analytics-stats" class="row row-cols-2 row-cols-md-3 g-3 mb-4"></div>
               <div id="txn-analytics-charts" class="row g-4">
                 <div class="col-md-6">
-                  <canvas id="price-trend-chart"></canvas>
+                  <div id="price-trend-chart" style="height:320px"></div>
                 </div>
                 <div class="col-md-6">
-                  <canvas id="transactions-distribution-chart"></canvas>
+                  <div id="transactions-distribution-chart" style="height:320px"></div>
                 </div>
                 <div class="col-md-6">
-                  <canvas id="transactions-seasonality-chart"></canvas>
+                  <div id="transactions-seasonality-chart" style="height:320px"></div>
                 </div>
                 <div class="col-md-6">
-                  <canvas id="transactions-boxplot-chart"></canvas>
+                  <div id="transactions-boxplot-chart" style="height:320px"></div>
                 </div>
                 <!-- Forecast & Johnson charts could be inserted similarly -->
               </div>
