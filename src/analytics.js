@@ -10,6 +10,10 @@ class TransactionAnalytics {
         this.priceTrendChart = null;
         this.johnsonChart = null;
         this.gammaChart = null;
+        // Chart for transaction count seasonality
+        this.seasonalityCountChart = null;
+        // Chart for average count per season
+        this.seasonalitySeasonChart = null;
         // Persist last transactions
         this.currentTransactions = [];
         // Filter state – deposits (>0), debits (<0), credits (=0)
@@ -417,15 +421,168 @@ class TransactionAnalytics {
             }
         });
 
-        // Calculate averages
+        // Ensure canvases exist for both charts
+        this.ensureSeasonalityCanvases();
+
+        // Calculate averages and counts
         const labels = monthNames;
-        const data = labels.map(month => {
+        const avgData = [];
+        const countData = [];
+
+        labels.forEach(month => {
             const monthData = monthlyAverages[month];
-            return monthData.count > 0 ? monthData.sum / monthData.count : 0;
+            avgData.push(monthData.count > 0 ? monthData.sum / monthData.count : 0);
+            countData.push(monthData.count);
         });
 
-        // Create or update seasonality chart
-        this.renderSeasonalityChart(labels, data);
+        // Render monthly charts
+        this.renderSeasonalityChart(labels, avgData);
+        this.renderSeasonalityCountChart(labels, countData);
+
+        // --- Seasonal average count chart ---
+        const seasonGroups = {
+            'Winter': ['Dec', 'Jan', 'Feb'],
+            'Spring': ['Mar', 'Apr', 'May'],
+            'Summer': ['Jun', 'Jul', 'Aug'],
+            'Fall':   ['Sep', 'Oct', 'Nov']
+        };
+    }
+
+    // Ensure seasonality canvases (avg amount & count) exist in analytics section
+    ensureSeasonalityCanvases() {
+        const parent = document.getElementById('transactions-analytics-section') ||
+                       document.getElementById('transactions-analytics-container');
+        if (!parent) return;
+
+        // Create a flex row container once
+        let row = document.getElementById('seasonality-chart-row');
+        if (!row) {
+            row = document.createElement('div');
+            row.id = 'seasonality-chart-row';
+            row.className = 'd-flex flex-row flex-wrap gap-3 mb-4';
+            parent.appendChild(row);
+        }
+
+                const addCanvas = (id, title) => {
+            if (!document.getElementById(id)) {
+                const wrapper = document.createElement('div');
+                wrapper.id = `${id}-wrapper`;
+                // flex:1 so cards align side-by-side when space permits
+                wrapper.className = 'analytics-card flex-fill';
+                wrapper.style.minWidth = '250px';
+                wrapper.innerHTML = `<h6 class="mb-2">${title}</h6><canvas id="${id}" style="width:100%;height:260px"></canvas>`;
+                row.appendChild(wrapper);
+            }
+        };
+        addCanvas('transactions-seasonality-chart', 'Seasonality – Avg Amount');
+        addCanvas('transactions-seasonality-count-chart', 'Seasonality – Transaction Count');
+        // Initialize drag-and-drop after canvases in place
+        this.ensureSortable(row);
+    }
+
+    // Render transaction count seasonality chart
+    renderSeasonalityCountChart(labels, data) {
+        const ctx = document.getElementById('transactions-seasonality-count-chart');
+        if (!ctx) return;
+
+        if (this.seasonalityCountChart) {
+            this.seasonalityCountChart.destroy();
+        }
+
+        const config = {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Avg Count',
+                    data,
+                    backgroundColor: 'rgba(153, 102, 255, 0.6)',
+                    borderColor: 'rgba(153, 102, 255, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins:{
+                    legend:{display:false},
+                    tooltip:{callbacks:{label:(c)=> `Avg Count: ${c.parsed.y.toFixed(0)}`}}
+                },
+                scales:{
+                    y:{beginAtZero:true}
+                }
+            }
+        };
+        this.seasonalityCountChart = new Chart(ctx, config);
+    }
+
+    // Enable drag-and-drop reordering of analytics cards
+    ensureSortable(parent){
+        if(this.sortableInit) return;
+        // dynamically load SortableJS if not present
+        const initSortable = () => {
+            const saved = JSON.parse(localStorage.getItem('analyticsOrder')||'[]');
+            const opts = {
+                animation:150,
+                onEnd: () => {
+                    const order=[...parent.children].map(el=>el.id);
+                    localStorage.setItem('analyticsOrder', JSON.stringify(order));
+                }
+            };
+            this.sortable = window.Sortable ? window.Sortable.create(parent, opts) : null;
+            // Apply saved order
+            if(saved.length){
+                saved.forEach(id=>{
+                    const el=document.getElementById(id);
+                    if(el) parent.appendChild(el);
+                });
+            }
+            this.sortableInit=true;
+        };
+        if(window.Sortable){ initSortable(); }
+        else{
+            const s=document.createElement('script');
+            s.src='https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js';
+            s.onload=initSortable;
+            document.head.appendChild(s);
+        }
+    }
+
+    renderSeasonalityCountChart(labels, data) {
+        const ctx = document.getElementById('transactions-seasonality-count-chart');
+        if (!ctx) return;
+
+        if (this.seasonalityCountChart) {
+            this.seasonalityCountChart.destroy();
+        }
+
+        const config = {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Transaction Count',
+                    data,
+                    backgroundColor: 'rgba(255, 159, 64, 0.6)',
+                    borderColor: 'rgba(255, 159, 64, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { display: false },
+                    title: { display: true, text: 'Seasonality – Count by Month' }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: { display: true, text: 'Count' }
+                    }
+                }
+            }
+        };
+
+        this.seasonalityCountChart = new Chart(ctx, config);
     }
 
     // Generate forecast

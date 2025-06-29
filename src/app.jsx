@@ -4,6 +4,10 @@ import { transactionAnalytics } from './analytics.js';
 
 // Chart.js is available globally via CDN in index.html
 
+// Import Budget Manager for auto budget rendering
+import { initBudgetManager } from './budget-manager.js';
+import { AccountManager, createAccountDB } from './account-manager.js';
+
 // SearchManager stub – original implementation removed as part of simplification
 class SearchManager {
 
@@ -1217,7 +1221,9 @@ class BudgetApp {
     this.dbInitialized = false;
     this.searchManager = new SearchManager(this);
     this.passwordPrompt = new PasswordPrompt();
+  this.accountManager = new AccountManager();
     this.charts = {}; // Initialize charts object
+  this.overviewCharts = []; // Store Chart.js instances for Overview tab
 
     // Show password prompt and initialize
     if (document.readyState === 'loading') {
@@ -1301,6 +1307,19 @@ class BudgetApp {
 
       this.dbInitialized = true;
       console.log('Secure database initialized');
+      // Initialize accounts and DB wrapper
+      await this.accountManager.init();
+      this.db = createAccountDB(this.accountManager.getActiveAccountId());
+      // Ensure object stores exist before any queries
+      await this.db.ensureStores();
+      // Listen for future account switches
+      window.addEventListener('account-switched', async (e) => {
+        this.db = createAccountDB(e.detail.accountId);
+      await this.db.ensureStores();
+        await this.loadTransactions();
+        this.renderCurrentView();
+        this.renderAccountDropdown();
+      });
 
       // Load initial data
       console.log('Loading initial data...');
@@ -1310,6 +1329,8 @@ class BudgetApp {
         this.loadAccounts()
       ]);
       
+      // Render account dropdown
+      this.renderAccountDropdown();
       // Initial render
       console.log('Rendering initial view...');
       await this.renderCurrentView();
@@ -1380,15 +1401,15 @@ return [];
 }
 
 async loadAccounts() {
-try {
-this.accounts = await this.db.getAllItems('accounts') || [];
-console.log("Loaded ${this.accounts.length} accounts");
-return this.accounts;
-} catch (error) {
-console.error('Error loading accounts:', error);
-this.accounts = [];
-return [];
-}
+  try {
+    this.accounts = await this.accountManager.listAccounts();
+    console.log(`Loaded ${this.accounts.length} accounts`);
+    return this.accounts;
+  } catch (error) {
+    console.error('Error loading accounts:', error);
+    this.accounts = [];
+    return [];
+  }
 }
 
 /**
@@ -2142,7 +2163,11 @@ setupCalendarEventListeners() {
           await this.renderBudget();
           break;
 
-        case 'reports':
+        case 'overview':
+        await this.renderOverview();
+        break;
+
+      case 'reports':
           await this.renderReports();
           break;
 
@@ -2408,8 +2433,8 @@ if (values.length === 0) continue;
           // Store transactions for confirmation
           this.pendingImport = transactions;
                     
-          // Show success message
-          alert(`Successfully parsed ${transactions.length} transactions. ${skippedRows.length} rows were skipped.`);
+          // Show success toast instead of multiple blocking alerts
+          this.showNotification(`Parsed ${transactions.length} transactions. ${skippedRows.length} row(s) skipped.`, 'success');
           resolve(transactions);
                     
         } catch (error) {
@@ -3603,7 +3628,7 @@ if (values.length === 0) continue;
 
         if (terms.length === 0) return true;
         const haystack = `${(t.description || '')} ${(t.category || '')} ${(t.notes || '')}`.toLowerCase();
-        return terms.every(term => haystack.includes(term));
+        return terms.some(term => haystack.includes(term));
       }).sort((a, b) => new Date(b.date) - new Date(a.date));
 
       // update table
@@ -3663,7 +3688,19 @@ transactionAnalytics.showAnalytics(filtered.length > 0);
 
       viewEl.innerHTML = `
         <div class="table-responsive">
-          <table class="table table-striped"><thead><tr><th>Category</th><th>Limit</th></tr></thead><tbody>${rows}</tbody></table>
+          <table class="table table-hover mb-0">
+            <thead>
+              <tr>
+                <th>Category</th>
+                <th>Budget</th>
+                <th>Spent</th>
+                <th>Remaining</th>
+                <th>Progress</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="budget-categories"></tbody>
+          </table>
         </div>`;
     } catch (err) {
       console.error('Error rendering budget view:', err);
@@ -3962,11 +3999,423 @@ transactionAnalytics.showAnalytics(filtered.length > 0);
       notification.style.transform = 'translateX(0)';
     }, 10);
 
-    // Remove after delay
+    // Auto-dismiss after 4 seconds
+    setTimeout(() => {
+      // Slide out
+      notification.style.transform = 'translateX(120%)';
+      // Remove element after transition
+      setTimeout(() => {
+        notification.remove();
+        // If container empty, remove it
+        if (notificationContainer.childElementCount === 0) {
+          notificationContainer.remove();
+        }
+      }, 300);
+    }, 4000);
   }
 
-// Export the BudgetApp class
+
+/**
+   * Render the Overview tab – interactive trend and forecast charts per description category
+   */
+  async renderOverview() {
+    // ------- Persist filter state -------
+    if (!this.overviewFilter) {
+      this.overviewFilter = { showDebits: true, showCredits: true };
+    } else {
+      // If header exists, capture live checkbox states before wiping DOM
+      const existingDebits = document.getElementById('overview-toggle-debits');
+      const existingCredits = document.getElementById('overview-toggle-credits');
+      if (existingDebits && existingCredits) {
+        this.overviewFilter.showDebits = existingDebits.checked;
+        this.overviewFilter.showCredits = existingCredits.checked;
+      }
+    }
+
+    // ----- Build / ensure control panel and summary -----
+    const headerContainerId = 'overview-header';
+    let headerContainer = document.getElementById(headerContainerId);
+    if (!headerContainer) {
+      headerContainer = document.createElement('div');
+      headerContainer.id = headerContainerId;
+      headerContainer.className = 'mb-3';
+      // Insert before charts container if exists later
+      const chartsEl = document.getElementById('overview-charts');
+      if (chartsEl) chartsEl.parentNode.insertBefore(headerContainer, chartsEl);
+    } else {
+      headerContainer.innerHTML = '';
+    }
+
+    // Control toggles
+    const controlsDiv = document.createElement('div');
+    controlsDiv.className = 'mb-2';
+    controlsDiv.innerHTML = `
+      <div class="form-check form-check-inline">
+        <input class="form-check-input" type="checkbox" id="overview-toggle-debits" ${this.overviewFilter.showDebits ? 'checked' : ''}>
+        <label class="form-check-label" for="overview-toggle-debits">Show Debits</label>
+      </div>
+      <div class="form-check form-check-inline">
+        <input class="form-check-input" type="checkbox" id="overview-toggle-credits" ${this.overviewFilter.showCredits ? 'checked' : ''}>
+        <label class="form-check-label" for="overview-toggle-credits">Show Credits</label>
+      </div>`;
+    headerContainer.appendChild(controlsDiv);
+
+    // Summary placeholder
+    const summaryDiv = document.createElement('div');
+    summaryDiv.id = 'overview-summary';
+    headerContainer.appendChild(summaryDiv);
+
+    // Add listeners (will overwrite each time safely)
+    const debitsCb = controlsDiv.querySelector('#overview-toggle-debits');
+    const creditsCb = controlsDiv.querySelector('#overview-toggle-credits');
+    debitsCb.onchange = () => {
+      this.overviewFilter.showDebits = debitsCb.checked;
+      this.renderOverview();
+    };
+    creditsCb.onchange = () => {
+      this.overviewFilter.showCredits = creditsCb.checked;
+      this.renderOverview();
+    };
+
+    const showDebits = this.overviewFilter.showDebits;
+    const showCredits = this.overviewFilter.showCredits;
+
+
+    const container = document.getElementById('overview-charts');
+    if (!container) {
+      console.warn('overview-charts container not found');
+      return;
+    }
+
+    // Ensure transactions are loaded
+    await this.loadTransactions();
+
+    // Clean previous charts and HTML
+    if (Array.isArray(this.overviewCharts)) {
+      this.overviewCharts.forEach(ch => {
+        try { ch.destroy(); } catch (e) { /* ignore */ }
+      });
+    }
+    this.overviewCharts = [];
+    container.innerHTML = '';
+
+    if (!this.transactions || this.transactions.length === 0) {
+      container.innerHTML = '<p class="text-muted">No transactions available to display.</p>';
+      return;
+    }
+
+    // Group transactions by description (case-insensitive) - apply debit/credit filter
+    const groups = {};
+    this.transactions.forEach(t => {
+      const amtRaw = parseFloat(t.amount) || 0;
+      if ((amtRaw < 0 && !showDebits) || (amtRaw > 0 && !showCredits)) return;
+      const desc = (t.description || 'Uncategorized').trim().toLowerCase();
+      if (!groups[desc]) groups[desc] = [];
+      groups[desc].push(t);
+    });
+
+    const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+    // ----- Compute summary data -----
+    let totalDebits = 0, totalCredits = 0;
+    this.transactions.forEach(t => {
+      const amtRaw = parseFloat(t.amount) || 0;
+      if (amtRaw < 0) totalDebits += Math.abs(amtRaw);
+      else totalCredits += amtRaw;
+    });
+    const net = totalCredits - totalDebits;
+    summaryDiv.innerHTML = `
+      <div class="d-flex flex-wrap gap-3">
+        <span><strong>Total Debits:</strong> ${this.formatCurrency(totalDebits)}</span>
+        <span><strong>Total Credits:</strong> ${this.formatCurrency(totalCredits)}</span>
+        <span><strong>Net:</strong> ${this.formatCurrency(net)}</span>
+        <span><strong>Transactions:</strong> ${this.transactions.length}</span>
+      </div>`;
+
+    let chartIdx = 0;
+
+    // ----- Combined Trend & Forecast for All Transactions -----
+    try {
+      const allMonthlyTotals = {};
+      this.transactions.forEach(txn => {
+        const amtRaw = parseFloat(txn.amount) || 0;
+        if ((amtRaw < 0 && !showDebits) || (amtRaw > 0 && !showCredits)) return;
+        const d = new Date(txn.date);
+        if (isNaN(d)) return;
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        const amt = Math.abs(parseFloat(txn.amount) || 0);
+        allMonthlyTotals[key] = (allMonthlyTotals[key] || 0) + amt;
+      });
+
+      const allKeys = Object.keys(allMonthlyTotals).sort();
+      if (allKeys.length >= 3) {
+        const labelsActualAll = allKeys.map(k => {
+          const [y, m] = k.split('-');
+          return `${monthNames[parseInt(m, 10) - 1]} ${y.slice(2)}`;
+        });
+        const amountsAll = allKeys.map(k => allMonthlyTotals[k]);
+
+        // Simple linear regression on index vs amount
+        const nAll = amountsAll.length;
+        let sumXAll = 0, sumYAll = 0, sumXYAll = 0, sumX2All = 0;
+        amountsAll.forEach((y, i) => {
+          sumXAll += i;
+          sumYAll += y;
+          sumXYAll += i * y;
+          sumX2All += i * i;
+        });
+        const denomAll = nAll * sumX2All - sumXAll * sumXAll || 1;
+        const slopeAll = (nAll * sumXYAll - sumXAll * sumYAll) / denomAll;
+        const interceptAll = (sumYAll - slopeAll * sumXAll) / nAll;
+
+        // Forecast next 3 months
+        const forecastPeriodsAll = 3;
+        const forecastLabelsAll = [];
+        const lastDatePartsAll = allKeys[allKeys.length - 1].split('-');
+        const lastDateObjAll = new Date(parseInt(lastDatePartsAll[0]), parseInt(lastDatePartsAll[1]) - 1, 1);
+        for (let i = 1; i <= forecastPeriodsAll; i++) {
+          const idx = nAll - 1 + i;
+          const d = new Date(lastDateObjAll);
+          d.setMonth(d.getMonth() + i);
+          forecastLabelsAll.push(`${monthNames[d.getMonth()]} ${String(d.getFullYear()).slice(2)}`);
+        }
+
+        const allLabels = [...labelsActualAll, ...forecastLabelsAll];
+        const trendValuesAll = allLabels.map((_, i) => parseFloat((interceptAll + slopeAll * i).toFixed(2)));
+
+        // Build DOM elements
+        const card = document.createElement('div');
+        card.className = 'card mb-4';
+        const header = document.createElement('div');
+        header.className = 'card-header';
+        header.innerHTML = '<strong>All Transactions - Trend & Forecast</strong>';
+        const body = document.createElement('div');
+        body.className = 'card-body';
+        const canvas = document.createElement('canvas');
+        canvas.id = `overview-all-chart-${Date.now()}`;
+        body.appendChild(canvas);
+        card.appendChild(header);
+        card.appendChild(body);
+        // Insert at the top of container
+        container.prepend(card);
+
+        const ctxAll = canvas.getContext('2d');
+        const chartAll = new Chart(ctxAll, {
+          type: 'line',
+          data: {
+            labels: allLabels,
+            datasets: [
+              {
+                label: 'Actual',
+                data: [...amountsAll, ...Array(forecastPeriodsAll).fill(null)],
+                borderColor: 'rgba(54,162,235,1)',
+                backgroundColor: 'rgba(54,162,235,0.2)',
+                tension: 0.3
+              },
+              {
+                label: 'Trend / Forecast',
+                data: trendValuesAll,
+                borderColor: 'rgba(255,159,64,1)',
+                borderDash: [5, 5],
+                pointRadius: 0,
+                tension: 0.3
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { display: true } },
+            scales: {
+              y: { beginAtZero: false, title: { display: true, text: 'Amount ($)' } },
+              x: { ticks: { autoSkip: false } }
+            }
+          }
+        });
+        this.overviewCharts.push(chartAll);
+        chartIdx++;
+      }
+    } catch (e) {
+      console.error('[Overview] Failed to render combined all-transactions chart', e);
+    }
+    // ----- End Combined Chart -----
+
+    for (const [desc, txns] of Object.entries(groups)) {
+      if (txns.length < 3) continue; // need enough data for trend
+
+      // Aggregate totals by month (YYYY-MM key)
+      const monthlyTotals = {};
+      txns.forEach(txn => {
+        const d = new Date(txn.date);
+        if (isNaN(d)) return;
+        const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+        const amtRaw = parseFloat(txn.amount) || 0;
+        const amt = Math.abs(amtRaw);
+        monthlyTotals[key] = (monthlyTotals[key] || 0) + amt;
+      });
+
+      const sortedKeys = Object.keys(monthlyTotals).sort();
+      if (sortedKeys.length < 3) continue;
+
+      const labelsActual = sortedKeys.map(k => {
+        const [y,m] = k.split('-');
+        return `${monthNames[parseInt(m,10)-1]} ${y.slice(2)}`;
+      });
+      const amounts = sortedKeys.map(k => monthlyTotals[k]);
+
+      // Simple linear regression on index vs amount
+      const n = amounts.length;
+      let sumX=0,sumY=0,sumXY=0,sumX2=0;
+      amounts.forEach((y,i) => {
+        sumX += i;
+        sumY += y;
+        sumXY += i * y;
+        sumX2 += i * i;
+      });
+      const denom = n * sumX2 - sumX * sumX || 1;
+      const slope = (n * sumXY - sumX * sumY) / denom;
+      const intercept = (sumY - slope * sumX) / n;
+
+      // Forecast next 3 months
+      const forecastPeriods = 3;
+      const forecastLabels = [];
+      const forecastValues = [];
+      const lastDateParts = sortedKeys[sortedKeys.length-1].split('-');
+      const lastDateObj = new Date(parseInt(lastDateParts[0]), parseInt(lastDateParts[1])-1, 1);
+      for (let i = 1; i <= forecastPeriods; i++) {
+        const idx = n - 1 + i;
+        const val = intercept + slope * idx;
+        forecastValues.push(parseFloat(val.toFixed(2)));
+        const d = new Date(lastDateObj);
+        d.setMonth(d.getMonth() + i);
+        forecastLabels.push(`${monthNames[d.getMonth()]} ${String(d.getFullYear()).slice(2)}`);
+      }
+
+      const allLabels = [...labelsActual, ...forecastLabels];
+      const trendValues = allLabels.map((_, i) => parseFloat((intercept + slope * i).toFixed(2)));
+
+      const actualDataset = {
+        label: 'Actual',
+        data: [...amounts, ...Array(forecastPeriods).fill(null)],
+        borderColor: 'rgba(75,192,192,1)',
+        backgroundColor: 'rgba(75,192,192,0.2)',
+        tension: 0.3
+      };
+      const trendDataset = {
+        label: 'Trend / Forecast',
+        data: trendValues,
+        borderColor: 'rgba(255,99,132,1)',
+        borderDash: [5,5],
+        pointRadius: 0,
+        tension: 0.3
+      };
+
+      // Create card wrapper
+      const card = document.createElement('div');
+      card.className = 'card mb-4';
+      card.innerHTML = `
+        <div class="card-body">
+          <h6 class="card-title text-capitalize">${this.escapeHtml(desc)}</h6>
+          <canvas id="overview-chart-${chartIdx}" style="width:100%;height:300px"></canvas>
+        </div>`;
+      container.appendChild(card);
+
+      const ctx = card.querySelector('canvas').getContext('2d');
+      const chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: allLabels,
+          datasets: [actualDataset, trendDataset]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: true }
+          },
+          scales: {
+            y: {
+              beginAtZero: false,
+              title: { display: true, text: 'Amount ($)' }
+            },
+            x: {
+              ticks: { autoSkip: false }
+            }
+          }
+        }
+      });
+      this.overviewCharts.push(chart);
+      chartIdx++;
+    }
+
+    if (this.overviewCharts.length === 0) {
+      container.innerHTML = '<p class="text-muted">Not enough data to generate overview charts.</p>';
+    }
+  }
+
 }
+
+
+
+// Render account dropdown in navbar
+BudgetApp.prototype.renderAccountDropdown = function renderAccountDropdown() {
+    let container = document.getElementById('account-dropdown');
+    if (!container) {
+      // Create minimal dropdown if not present
+      const nav = document.querySelector('nav.navbar, nav.nav');
+      if (!nav) return;
+      container = document.createElement('div');
+      container.id = 'account-dropdown';
+      container.className = 'dropdown ms-auto';
+      container.innerHTML = `<button class="btn btn-outline-secondary dropdown-toggle" id="accountDropdownBtn" data-bs-toggle="dropdown" aria-expanded="false">Account</button><ul class="dropdown-menu" id="accountDropdownMenu"></ul>`;
+      nav.appendChild(container);
+    }
+    const menu = container.querySelector('#accountDropdownMenu');
+    const btn = container.querySelector('#accountDropdownBtn');
+    menu.innerHTML = '';
+
+    this.accountManager.listAccounts().then(accounts => {
+      let activeName = 'Account';
+      accounts.forEach(ac => {
+        const li = document.createElement('li');
+        li.innerHTML = `<a class="dropdown-item${ac.id===this.accountManager.getActiveAccountId() ? ' active' : ''}" href="#">${ac.name}</a>`;
+        li.onclick = () => this.accountManager.switchAccount(ac.id);
+        menu.appendChild(li);
+        if (ac.id === this.accountManager.getActiveAccountId()) activeName = ac.name;
+      });
+
+      // divider
+      const div1 = document.createElement('li');
+      div1.innerHTML = '<hr class="dropdown-divider">';
+      menu.appendChild(div1);
+
+      // Reset account
+      const resetLi = document.createElement('li');
+      resetLi.innerHTML = '<a class="dropdown-item text-danger" href="#">Reset Account (delete all transactions)…</a>';
+      resetLi.onclick = () => {
+        if (confirm('Delete ALL transactions in this account? This cannot be undone.')) {
+          this.confirmAndDeleteAllTransactions();
+        }
+      };
+      menu.appendChild(resetLi);
+
+      // divider
+      const div2 = document.createElement('li');
+      div2.innerHTML = '<hr class="dropdown-divider">';
+      menu.appendChild(div2);
+
+      // New account
+      const newLi = document.createElement('li');
+      newLi.innerHTML = '<a class="dropdown-item" href="#">+ New Account…</a>';
+            newLi.onclick = async () => {
+        const name = prompt('Account name');
+        if (name) await this.accountManager.createAccount(name);
+      };
+      menu.appendChild(newLi);
+
+      // Update button label
+      btn.textContent = activeName;
+    });
+  }
+
 export { BudgetApp };
 
 // Initialize the app when the DOM is fully loaded
@@ -3977,3 +4426,17 @@ if (document.readyState === 'loading') {
 } else {
   window.app = new BudgetApp();
 }
+
+// Initialise Budget Manager only after the secure database is ready
+(function waitForAppReady() {
+  if (window.app && window.app.dbInitialized) {
+    try {
+      initBudgetManager(window.app);
+    } catch (e) {
+      console.error('Failed to initialise Budget Manager', e);
+    }
+  } else {
+    // Retry until the app reports dbInitialized
+    setTimeout(waitForAppReady, 300);
+  }
+})();

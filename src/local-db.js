@@ -8,41 +8,83 @@ class LocalDB {
 
     async init() {
         return new Promise((resolve, reject) => {
-            const request = indexedDB.open(this.dbName, this.dbVersion);
+            // First try opening using existing version (no explicit version)
+            let request = indexedDB.open(this.dbName);
 
             request.onerror = (event) => {
                 console.error('IndexedDB error:', event.target.error);
                 reject(event.target.error);
             };
 
-            request.onsuccess = (event) => {
-                this.db = event.target.result;
-                resolve(this.db);
+            // If database exists and opens fine, onupgradeneeded will not fire.
+            // We still need to ensure baseline stores exist; if missing we
+            // immediately close and reopen with bumped version to create them.
+            const ensureStores = (db) => {
+                const needed = ['transactions','categories','budgets','accounts'];
+                const missing = needed.filter(s=>!db.objectStoreNames.contains(s));
+                return missing;
             };
 
             request.onupgradeneeded = (event) => {
                 const db = event.target.result;
-                
-                // Create object stores
-                if (!db.objectStoreNames.contains('transactions')) {
-                    const store = db.createObjectStore('transactions', { keyPath: 'id', autoIncrement: true });
-                    store.createIndex('date', 'date', { unique: false });
-                    store.createIndex('category', 'category', { unique: false });
-                }
-                
-                if (!db.objectStoreNames.contains('categories')) {
-                    const store = db.createObjectStore('categories', { keyPath: 'id', autoIncrement: true });
-                    store.createIndex('name', 'name', { unique: true });
-                }
-                
-                if (!db.objectStoreNames.contains('budgets')) {
-                    const store = db.createObjectStore('budgets', { keyPath: 'id', autoIncrement: true });
-                    store.createIndex('month', 'month', { unique: true });
-                }
-                
-                if (!db.objectStoreNames.contains('accounts')) {
-                    const store = db.createObjectStore('accounts', { keyPath: 'id', autoIncrement: true });
-                    store.createIndex('name', 'name', { unique: true });
+                const missing = ensureStores(db);
+                if (missing.length===0) return;
+                // Create baseline stores during this upgrade
+                missing.forEach(storeName=>{
+                    const store=db.createObjectStore(storeName,{keyPath:'id',autoIncrement:true});
+                    if(storeName==='transactions'){
+                        store.createIndex('date','date',{unique:false});
+                        store.createIndex('category','category',{unique:false});
+                    }
+                    if(storeName==='categories'){
+                        store.createIndex('name','name',{unique:true});
+                    }
+                    if(storeName==='budgets'){
+                        store.createIndex('month','month',{unique:true});
+                    }
+                    if(storeName==='accounts'){
+                        store.createIndex('name','name',{unique:true});
+                    }
+                });
+            };
+
+            request.onsuccess = async (event) => {
+                this.db = event.target.result;
+                const missing = ensureStores(this.db);
+                if (missing.length>0){
+                    // need to upgrade version to add stores
+                    const newVersion = this.db.version + 1;
+                    this.db.close();
+                    const upgradeReq = indexedDB.open(this.dbName,newVersion);
+                    upgradeReq.onupgradeneeded = (ev)=>{
+                        const db=ev.target.result;
+                        missing.forEach(storeName=>{
+                            const store=db.createObjectStore(storeName,{keyPath:'id',autoIncrement:true});
+                            if(storeName==='transactions'){
+                                store.createIndex('date','date',{unique:false});
+                                store.createIndex('category','category',{unique:false});
+                            }
+                            if(storeName==='categories'){
+                                store.createIndex('name','name',{unique:true});
+                            }
+                            if(storeName==='budgets'){
+                                store.createIndex('month','month',{unique:true});
+                            }
+                            if(storeName==='accounts'){
+                                store.createIndex('name','name',{unique:true});
+                            }
+                        });
+                    };
+                    upgradeReq.onsuccess = ev2=>{
+                        this.db = ev2.target.result;
+                        resolve(this.db);
+                    };
+                    upgradeReq.onerror = ev2=>{
+                        console.error('IndexedDB upgrade error:',ev2.target.error);
+                        reject(ev2.target.error);
+                    };
+                } else {
+                    resolve(this.db);
                 }
             };
         });

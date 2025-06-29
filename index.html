@@ -54,6 +54,9 @@
                             // Create a global reference to the app
                             window.app = new module.BudgetApp();
                             console.log('App initialized successfully');
+                                import('./src/budget-manager.js')
+                                    .then(({ initBudgetManager }) => initBudgetManager(window.app))
+                                    .catch(console.error);
                         } catch (error) {
                             console.error('Error initializing app:', error);
                             document.body.innerHTML = `
@@ -109,8 +112,9 @@
             </div>
             <div class="nav__links">
                 <button class="nav__link nav__link--active" data-view="dashboard">Dashboard</button>
-                <button class="nav__link" data-view="budget">Budget</button>
+                <button class="nav__link" data-view="ynab">YNAB</button>
                 <button class="nav__link" data-view="transactions">Transactions</button>
+                <button class="nav__link" data-view="overview">Overview</button>
                 <button id="unlock-app-btn" class="btn btn--secondary btn--sm" style="margin-left: auto;">
                     <i class="fas fa-lock"></i> Unlock App
                 </button>
@@ -184,17 +188,26 @@
                 </div>
             </div>
 
-            <!-- Budget View -->
-            <div id="budget-view" class="view">
+            <!-- Overview View -->
+            <div id="overview-view" class="view">
                 <div class="view__header">
-                    <h2>Budget Categories</h2>
-                    <div>
-                        <button class="btn btn--secondary me-2" id="set-budget-btn">
-                            <i class="bi bi-piggy-bank me-1"></i>Set Monthly Budget
-                        </button>
-                        <button class="btn btn--primary" id="add-category-btn">
-                            <i class="bi bi-plus-lg me-1"></i>Add Category
-                        </button>
+                    <h2>Overview</h2>
+                </div>
+                <div id="overview-charts" class="overview-charts"></div>
+            </div>
+
+            <!-- YNAB Budget View -->
+            <div id="ynab-view" class="view">
+                <div class="view__header d-flex align-items-center justify-content-between">
+                    <div class="d-flex align-items-center">
+                        <button class="btn btn-sm btn-outline-secondary me-2" id="prev-month-btn"><i class="bi bi-chevron-left"></i></button>
+                        <h2 id="budget-month-label" class="mb-0">Month YYYY</h2>
+                        <button class="btn btn-sm btn-outline-secondary ms-2" id="next-month-btn"><i class="bi bi-chevron-right"></i></button>
+                    </div>
+                    <div class="d-flex align-items-center">
+                        <span class="fw-bold me-3">To be budgeted: <span id="to-be-budgeted" class="text-primary">$0.00</span></span>
+                        <button class="btn btn--secondary me-2" id="set-budget-btn"><i class="bi bi-piggy-bank me-1"></i></button>
+                        <button class="btn btn--primary" id="add-category-btn"><i class="bi bi-plus-lg me-1"></i></button>
                     </div>
                 </div>
 
@@ -230,6 +243,17 @@
                     </div>
                 </div>
 
+                <!-- Category Analytics Chart -->
+                <div class="card mb-4">
+                    <div class="card-header d-flex align-items-center">
+                        <h5 class="mb-0 flex-grow-1" id="budget-chart-title">Category Trend</h5>
+                        <span class="text-muted small">click a category to view</span>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="budget-category-chart" height="160"></canvas>
+                    </div>
+                </div>
+
                 <div class="card mb-4">
                     <div class="card-header">
                         <h5 class="mb-0">Category Budgets</h5>
@@ -239,11 +263,9 @@
                             <thead>
                                 <tr>
                                     <th>Category</th>
-                                    <th>Budget</th>
-                                    <th>Spent</th>
-                                    <th>Remaining</th>
-                                    <th>Progress</th>
-                                    <th>Actions</th>
+                                    <th>Budgeted</th>
+                                    <th>Activity</th>
+                                    <th>Available</th>
                                 </tr>
                             </thead>
                             <tbody id="budget-categories">
@@ -299,6 +321,17 @@
                             </table>
                             <div id="transactions-analytics-container" class="p-4 border-top">
                                 <h4 class="mb-4">Transaction Analytics</h4>
+                                <!-- Forecast Section -->
+                                <div class="card mb-4">
+                                    <div class="card__header">
+                                        <h5>Forecast</h5>
+                                    </div>
+                                    <div class="card__body">
+                                        <div id="forecast-text" class="mb-3"></div>
+                                        <canvas id="transactions-forecast-chart" height="150"></canvas>
+                                    </div>
+                                </div>
+
                                 <!-- Analytics charts will be rendered here -->
                             </div>
                             <div id="transactions-empty" class="text-center p-4">
