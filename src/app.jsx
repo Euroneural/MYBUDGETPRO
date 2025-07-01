@@ -1,4 +1,4 @@
-import { secureDB } from './secure-db.js';
+import { sqliteService } from './services/sqlite-service.js';
 import PasswordPrompt from './components/PasswordPrompt.js';
 import { transactionAnalytics } from './analytics.js';
 
@@ -1299,7 +1299,7 @@ class BudgetApp {
   }
 
   constructor() {
-    this.db = secureDB; 
+    this.db = sqliteService; 
     this.transactions = [];
     this.budgetCategories = [];
     this.accounts = [];
@@ -1334,13 +1334,8 @@ class BudgetApp {
 
   async initializeWithPassword() {
     try {
-      const password = await this.passwordPrompt.prompt();
-      if (!password) {
-        this.passwordPrompt.showError('Password is required to access the secure database');
-        throw new Error('Password is required to access the secure database');
-      }
-      await this.db.initialize(password);
-      this.passwordPrompt.close();
+      // No password needed for SQLite file; just initialize service
+      await sqliteService.init();
       this.initializeApp(); // Continue normal app initialization
     } catch (error) {
       this.passwordPrompt.showError(error.message || 'Failed to initialize secure storage');

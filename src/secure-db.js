@@ -1,9 +1,12 @@
-import { localDB } from './local-db.js';
+import { sqliteService } from './services/sqlite-service.js';
+// For backward compatibility: treat localDB as sqliteService
+const localDB = sqliteService;
 import { secureStorage } from './utils/crypto.js';
 
 class SecureDB {
     constructor() {
         this.initialized = false;
+        this.backend = sqliteService;
         this.encryptedFields = {
             transactions: ['description', 'notes', 'amount', 'category', 'account'],
             categories: ['name', 'description'],
@@ -20,7 +23,7 @@ class SecureDB {
             }
             
             // Initialize the underlying database
-            await localDB.init();
+            await this.backend.init();
             this.initialized = true;
             return true;
         } catch (error) {
@@ -87,11 +90,11 @@ class SecureDB {
     // Wrapper methods for localDB with encryption/decryption
     async addItem(storeName, item) {
         const encryptedItem = await this.encryptItem(storeName, item);
-        return localDB.addItem(storeName, encryptedItem);
+        return this.backend.addItem(storeName, encryptedItem);
     }
 
     async getItem(storeName, id) {
-        const item = await localDB.getItem(storeName, id);
+        const item = await this.backend.getItem(storeName, id);
         return this.decryptItem(storeName, item);
     }
 
@@ -104,32 +107,32 @@ class SecureDB {
         const updatedItem = { ...existingItem, ...updates };
         const encryptedItem = await this.encryptItem(storeName, updatedItem);
         
-        return localDB.updateItem(storeName, id, encryptedItem);
+        return this.backend.updateItem(storeName, { ...encryptedItem, id });
     }
 
     async deleteItem(storeName, id) {
-        return localDB.deleteItem(storeName, id);
+        return this.backend.deleteItem(storeName, id);
     }
 
     async getAllItems(storeName) {
-        const items = await localDB.getAllItems(storeName);
+        const items = await this.backend.getAllItems(storeName);
         return Promise.all(items.map(item => this.decryptItem(storeName, item)));
     }
 
     async queryItems(storeName, indexName, keyRange) {
-        const items = await localDB.queryItems(storeName, indexName, keyRange);
+        const items = await this.backend.getAllItems(storeName);
         return Promise.all(items.map(item => this.decryptItem(storeName, item)));
     }
 
     // Transaction-specific helper to support existing SearchManager & other code
     async getTransactions(filters = {}) {
-        const transactions = await localDB.getTransactions(filters);
+        const transactions = await this.backend.getAllItems('transactions');
         return Promise.all(transactions.map(txn => this.decryptItem('transactions', txn)));
     }
 
     // Clear all transactions – used by delete-all feature
     async clearAllTransactions() {
-        return localDB.clearAllTransactions();
+        return this.backend.deleteItem ? this.backend.clearAllTransactions?.() : Promise.resolve();
     }
 
     // Add other methods from localDB as needed...

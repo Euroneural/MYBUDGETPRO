@@ -1,6 +1,1063 @@
-error when starting dev server:
-Error: Port 3002 is already in use
-    at Server.onError (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:54873:28)
-    at Server.emit (node:events:507:28)
-    at emitErrorNT (node:net:1975:8)
-    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+
+  VITE v4.5.14  ready in 408 ms
+
+  ➜  Local:   http://localhost:3002/
+9:29:54 AM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1756|       * @returns {Array} Filtered transactions
+1757|       */
+1758|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1759|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1760|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:29:54 AM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1784|       * @returns {Array} Filtered transactions
+1785|       */
+1786|    getTransactionsByDate(date) {
+   |    ^
+1787|      const startOfDay = new Date(date);
+1788|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:29:54 AM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1969|       * Set up event listeners for the calendar
+1970|       */
+1971|    setupCalendarEventListeners() {
+   |    ^
+1972|      const calendarEl = document.getElementById('calendar');
+1973|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:40:43 AM [vite] page reload src/services/sqlite-service.js
+9:40:43 AM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1756|       * @returns {Array} Filtered transactions
+1757|       */
+1758|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1759|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1760|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:40:43 AM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1784|       * @returns {Array} Filtered transactions
+1785|       */
+1786|    getTransactionsByDate(date) {
+   |    ^
+1787|      const startOfDay = new Date(date);
+1788|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:40:43 AM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1969|       * Set up event listeners for the calendar
+1970|       */
+1971|    setupCalendarEventListeners() {
+   |    ^
+1972|      const calendarEl = document.getElementById('calendar');
+1973|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:40:43 AM [vite] ✨ new dependencies optimized: idb
+9:40:43 AM [vite] ✨ optimized dependencies changed. reloading
+9:40:43 AM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1756|       * @returns {Array} Filtered transactions
+1757|       */
+1758|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1759|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1760|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:40:43 AM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1784|       * @returns {Array} Filtered transactions
+1785|       */
+1786|    getTransactionsByDate(date) {
+   |    ^
+1787|      const startOfDay = new Date(date);
+1788|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:40:43 AM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1969|       * Set up event listeners for the calendar
+1970|       */
+1971|    setupCalendarEventListeners() {
+   |    ^
+1972|      const calendarEl = document.getElementById('calendar');
+1973|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:45:25 AM [vite] page reload src/services/sqlite-service.js
+9:45:26 AM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1756|       * @returns {Array} Filtered transactions
+1757|       */
+1758|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1759|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1760|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:45:26 AM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1784|       * @returns {Array} Filtered transactions
+1785|       */
+1786|    getTransactionsByDate(date) {
+   |    ^
+1787|      const startOfDay = new Date(date);
+1788|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:45:26 AM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1969|       * Set up event listeners for the calendar
+1970|       */
+1971|    setupCalendarEventListeners() {
+   |    ^
+1972|      const calendarEl = document.getElementById('calendar');
+1973|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:47:30 AM [vite] page reload src/services/sqlite-service.js
+9:47:31 AM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1756|       * @returns {Array} Filtered transactions
+1757|       */
+1758|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1759|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1760|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:47:31 AM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1784|       * @returns {Array} Filtered transactions
+1785|       */
+1786|    getTransactionsByDate(date) {
+   |    ^
+1787|      const startOfDay = new Date(date);
+1788|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:47:31 AM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1969|       * Set up event listeners for the calendar
+1970|       */
+1971|    setupCalendarEventListeners() {
+   |    ^
+1972|      const calendarEl = document.getElementById('calendar');
+1973|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:47:54 AM [vite] page reload src/secure-db.js
+9:47:54 AM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1756|       * @returns {Array} Filtered transactions
+1757|       */
+1758|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1759|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1760|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:47:54 AM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1784|       * @returns {Array} Filtered transactions
+1785|       */
+1786|    getTransactionsByDate(date) {
+   |    ^
+1787|      const startOfDay = new Date(date);
+1788|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:47:54 AM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1969|       * Set up event listeners for the calendar
+1970|       */
+1971|    setupCalendarEventListeners() {
+   |    ^
+1972|      const calendarEl = document.getElementById('calendar');
+1973|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:48:52 AM [vite] page reload src/secure-db.js
+9:48:52 AM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1756|       * @returns {Array} Filtered transactions
+1757|       */
+1758|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1759|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1760|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:48:52 AM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1784|       * @returns {Array} Filtered transactions
+1785|       */
+1786|    getTransactionsByDate(date) {
+   |    ^
+1787|      const startOfDay = new Date(date);
+1788|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:48:52 AM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1969|       * Set up event listeners for the calendar
+1970|       */
+1971|    setupCalendarEventListeners() {
+   |    ^
+1972|      const calendarEl = document.getElementById('calendar');
+1973|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:50:48 AM [vite] page reload src/services/sqlite-service.js
+9:50:48 AM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1756|       * @returns {Array} Filtered transactions
+1757|       */
+1758|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1759|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1760|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:50:48 AM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1784|       * @returns {Array} Filtered transactions
+1785|       */
+1786|    getTransactionsByDate(date) {
+   |    ^
+1787|      const startOfDay = new Date(date);
+1788|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:50:48 AM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1969|       * Set up event listeners for the calendar
+1970|       */
+1971|    setupCalendarEventListeners() {
+   |    ^
+1972|      const calendarEl = document.getElementById('calendar');
+1973|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:56:39 AM [vite] page reload src/account-manager.js
+9:56:40 AM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1756|       * @returns {Array} Filtered transactions
+1757|       */
+1758|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1759|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1760|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:56:40 AM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1784|       * @returns {Array} Filtered transactions
+1785|       */
+1786|    getTransactionsByDate(date) {
+   |    ^
+1787|      const startOfDay = new Date(date);
+1788|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:56:40 AM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1969|       * Set up event listeners for the calendar
+1970|       */
+1971|    setupCalendarEventListeners() {
+   |    ^
+1972|      const calendarEl = document.getElementById('calendar');
+1973|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:59:57 AM [vite] page reload src/services/sqlite-service.js
+9:59:57 AM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1756|       * @returns {Array} Filtered transactions
+1757|       */
+1758|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1759|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1760|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:59:57 AM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1784|       * @returns {Array} Filtered transactions
+1785|       */
+1786|    getTransactionsByDate(date) {
+   |    ^
+1787|      const startOfDay = new Date(date);
+1788|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+9:59:57 AM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1969|       * Set up event listeners for the calendar
+1970|       */
+1971|    setupCalendarEventListeners() {
+   |    ^
+1972|      const calendarEl = document.getElementById('calendar');
+1973|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+Failed to parse source for import analysis because the content contains invalid JS syntax. If you are using JSX, make sure to name the file with the .jsx or .tsx extension.
+Failed to parse source for import analysis because the content contains invalid JS syntax. If you are using JSX, make sure to name the file with the .jsx or .tsx extension.
+9:59:57 AM [vite] Internal server error: Failed to parse source for import analysis because the content contains invalid JS syntax. If you are using JSX, make sure to name the file with the .jsx or .tsx extension.
+  Plugin: vite:import-analysis
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/services/sqlite-service.js:295:5
+  293|      await writable.write(data);
+  294|      await writable.close();
+  295|    }
+     |      ^
+  296|  }
+  297|  
+      at formatError (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44066:46)
+      at TransformContext.error (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44062:19)
+      at TransformContext.transform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:41785:22)
+      at async Object.transform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44356:30)
+      at async loadAndTransform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:55088:29)
+      at async viteTransformMiddleware (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:64699:32)
+9:59:57 AM [vite] Internal server error: Failed to parse source for import analysis because the content contains invalid JS syntax. If you are using JSX, make sure to name the file with the .jsx or .tsx extension.
+  Plugin: vite:import-analysis
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/services/sqlite-service.js:295:5
+  293|      await writable.write(data);
+  294|      await writable.close();
+  295|    }
+     |      ^
+  296|  }
+  297|  
+      at formatError (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44066:46)
+      at TransformContext.error (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44062:19)
+      at TransformContext.transform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:41785:22)
+      at async Object.transform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44356:30)
+      at async loadAndTransform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:55088:29)
+      at async viteTransformMiddleware (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:64699:32)
+10:00:18 AM [vite] page reload src/services/sqlite-service.js
+10:00:18 AM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1756|       * @returns {Array} Filtered transactions
+1757|       */
+1758|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1759|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1760|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:00:18 AM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1784|       * @returns {Array} Filtered transactions
+1785|       */
+1786|    getTransactionsByDate(date) {
+   |    ^
+1787|      const startOfDay = new Date(date);
+1788|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:00:18 AM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1969|       * Set up event listeners for the calendar
+1970|       */
+1971|    setupCalendarEventListeners() {
+   |    ^
+1972|      const calendarEl = document.getElementById('calendar');
+1973|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+Failed to parse source for import analysis because the content contains invalid JS syntax. If you are using JSX, make sure to name the file with the .jsx or .tsx extension.
+Failed to parse source for import analysis because the content contains invalid JS syntax. If you are using JSX, make sure to name the file with the .jsx or .tsx extension.
+10:00:18 AM [vite] Internal server error: Failed to parse source for import analysis because the content contains invalid JS syntax. If you are using JSX, make sure to name the file with the .jsx or .tsx extension.
+  Plugin: vite:import-analysis
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/services/sqlite-service.js:281:5
+  279|      await writable.write(data);
+  280|      await writable.close();
+  281|    }
+     |      ^
+  282|  }
+  283|  
+      at formatError (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44066:46)
+      at TransformContext.error (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44062:19)
+      at TransformContext.transform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:41785:22)
+      at async Object.transform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44356:30)
+      at async loadAndTransform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:55088:29)
+      at async viteTransformMiddleware (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:64699:32)
+10:00:18 AM [vite] Internal server error: Failed to parse source for import analysis because the content contains invalid JS syntax. If you are using JSX, make sure to name the file with the .jsx or .tsx extension.
+  Plugin: vite:import-analysis
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/services/sqlite-service.js:281:5
+  279|      await writable.write(data);
+  280|      await writable.close();
+  281|    }
+     |      ^
+  282|  }
+  283|  
+      at formatError (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44066:46)
+      at TransformContext.error (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44062:19)
+      at TransformContext.transform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:41785:22)
+      at async Object.transform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44356:30)
+      at async loadAndTransform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:55088:29)
+      at async viteTransformMiddleware (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:64699:32)
+10:00:42 AM [vite] page reload src/services/sqlite-service.js
+10:00:43 AM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1756|       * @returns {Array} Filtered transactions
+1757|       */
+1758|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1759|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1760|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:00:43 AM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1784|       * @returns {Array} Filtered transactions
+1785|       */
+1786|    getTransactionsByDate(date) {
+   |    ^
+1787|      const startOfDay = new Date(date);
+1788|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:00:43 AM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1969|       * Set up event listeners for the calendar
+1970|       */
+1971|    setupCalendarEventListeners() {
+   |    ^
+1972|      const calendarEl = document.getElementById('calendar');
+1973|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:03:02 AM [vite] page reload src/services/sqlite-service.js
+10:03:03 AM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1756|       * @returns {Array} Filtered transactions
+1757|       */
+1758|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1759|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1760|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:03:03 AM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1784|       * @returns {Array} Filtered transactions
+1785|       */
+1786|    getTransactionsByDate(date) {
+   |    ^
+1787|      const startOfDay = new Date(date);
+1788|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:03:03 AM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1969|       * Set up event listeners for the calendar
+1970|       */
+1971|    setupCalendarEventListeners() {
+   |    ^
+1972|      const calendarEl = document.getElementById('calendar');
+1973|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+Failed to parse source for import analysis because the content contains invalid JS syntax. If you are using JSX, make sure to name the file with the .jsx or .tsx extension.
+Failed to parse source for import analysis because the content contains invalid JS syntax. If you are using JSX, make sure to name the file with the .jsx or .tsx extension.
+10:03:03 AM [vite] Internal server error: Failed to parse source for import analysis because the content contains invalid JS syntax. If you are using JSX, make sure to name the file with the .jsx or .tsx extension.
+  Plugin: vite:import-analysis
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/services/sqlite-service.js:299:5
+  297|      await writable.write(data);
+  298|      await writable.close();
+  299|    }
+     |      ^
+  300|  }
+  301|  
+      at formatError (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44066:46)
+      at TransformContext.error (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44062:19)
+      at TransformContext.transform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:41785:22)
+      at async Object.transform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44356:30)
+      at async loadAndTransform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:55088:29)
+      at async viteTransformMiddleware (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:64699:32)
+10:03:03 AM [vite] Internal server error: Failed to parse source for import analysis because the content contains invalid JS syntax. If you are using JSX, make sure to name the file with the .jsx or .tsx extension.
+  Plugin: vite:import-analysis
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/services/sqlite-service.js:299:5
+  297|      await writable.write(data);
+  298|      await writable.close();
+  299|    }
+     |      ^
+  300|  }
+  301|  
+      at formatError (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44066:46)
+      at TransformContext.error (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44062:19)
+      at TransformContext.transform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:41785:22)
+      at async Object.transform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44356:30)
+      at async loadAndTransform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:55088:29)
+      at async viteTransformMiddleware (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:64699:32)
+10:03:37 AM [vite] page reload src/services/sqlite-service.js
+10:03:37 AM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1756|       * @returns {Array} Filtered transactions
+1757|       */
+1758|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1759|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1760|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:03:37 AM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1784|       * @returns {Array} Filtered transactions
+1785|       */
+1786|    getTransactionsByDate(date) {
+   |    ^
+1787|      const startOfDay = new Date(date);
+1788|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:03:37 AM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1969|       * Set up event listeners for the calendar
+1970|       */
+1971|    setupCalendarEventListeners() {
+   |    ^
+1972|      const calendarEl = document.getElementById('calendar');
+1973|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:07:00 AM [vite] page reload src/account-manager.js
+10:07:01 AM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1756|       * @returns {Array} Filtered transactions
+1757|       */
+1758|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1759|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1760|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:07:01 AM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1784|       * @returns {Array} Filtered transactions
+1785|       */
+1786|    getTransactionsByDate(date) {
+   |    ^
+1787|      const startOfDay = new Date(date);
+1788|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:07:01 AM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1969|       * Set up event listeners for the calendar
+1970|       */
+1971|    setupCalendarEventListeners() {
+   |    ^
+1972|      const calendarEl = document.getElementById('calendar');
+1973|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:10:38 AM [vite] page reload src/account-manager.js
+10:10:38 AM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1756|       * @returns {Array} Filtered transactions
+1757|       */
+1758|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1759|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1760|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:10:38 AM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1784|       * @returns {Array} Filtered transactions
+1785|       */
+1786|    getTransactionsByDate(date) {
+   |    ^
+1787|      const startOfDay = new Date(date);
+1788|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:10:38 AM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1969|       * Set up event listeners for the calendar
+1970|       */
+1971|    setupCalendarEventListeners() {
+   |    ^
+1972|      const calendarEl = document.getElementById('calendar');
+1973|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:12:06 AM [vite] page reload src/account-manager.js
+10:12:06 AM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1756|       * @returns {Array} Filtered transactions
+1757|       */
+1758|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1759|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1760|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:12:06 AM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1784|       * @returns {Array} Filtered transactions
+1785|       */
+1786|    getTransactionsByDate(date) {
+   |    ^
+1787|      const startOfDay = new Date(date);
+1788|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:12:06 AM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1969|       * Set up event listeners for the calendar
+1970|       */
+1971|    setupCalendarEventListeners() {
+   |    ^
+1972|      const calendarEl = document.getElementById('calendar');
+1973|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:13:25 AM [vite] page reload src/services/sqlite-service.js
+10:13:26 AM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1756|       * @returns {Array} Filtered transactions
+1757|       */
+1758|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1759|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1760|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:13:26 AM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1784|       * @returns {Array} Filtered transactions
+1785|       */
+1786|    getTransactionsByDate(date) {
+   |    ^
+1787|      const startOfDay = new Date(date);
+1788|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:13:26 AM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1969|       * Set up event listeners for the calendar
+1970|       */
+1971|    setupCalendarEventListeners() {
+   |    ^
+1972|      const calendarEl = document.getElementById('calendar');
+1973|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+Failed to parse source for import analysis because the content contains invalid JS syntax. If you are using JSX, make sure to name the file with the .jsx or .tsx extension.
+Failed to parse source for import analysis because the content contains invalid JS syntax. If you are using JSX, make sure to name the file with the .jsx or .tsx extension.
+10:13:26 AM [vite] Internal server error: Failed to parse source for import analysis because the content contains invalid JS syntax. If you are using JSX, make sure to name the file with the .jsx or .tsx extension.
+  Plugin: vite:import-analysis
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/services/sqlite-service.js:308:5
+  306|      await writable.write(data);
+  307|      await writable.close();
+  308|    }
+     |      ^
+  309|  }
+  310|  
+      at formatError (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44066:46)
+      at TransformContext.error (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44062:19)
+      at TransformContext.transform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:41785:22)
+      at async Object.transform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44356:30)
+      at async loadAndTransform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:55088:29)
+      at async viteTransformMiddleware (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:64699:32)
+10:13:26 AM [vite] Internal server error: Failed to parse source for import analysis because the content contains invalid JS syntax. If you are using JSX, make sure to name the file with the .jsx or .tsx extension.
+  Plugin: vite:import-analysis
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/services/sqlite-service.js:308:5
+  306|      await writable.write(data);
+  307|      await writable.close();
+  308|    }
+     |      ^
+  309|  }
+  310|  
+      at formatError (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44066:46)
+      at TransformContext.error (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44062:19)
+      at TransformContext.transform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:41785:22)
+      at async Object.transform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44356:30)
+      at async loadAndTransform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:55088:29)
+      at async viteTransformMiddleware (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:64699:32)
+10:14:06 AM [vite] Internal server error: Failed to parse source for import analysis because the content contains invalid JS syntax. If you are using JSX, make sure to name the file with the .jsx or .tsx extension.
+  Plugin: vite:import-analysis
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/services/sqlite-service.js:308:5
+  306|      await writable.write(data);
+  307|      await writable.close();
+  308|    }
+     |      ^
+  309|  }
+  310|  
+      at formatError (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44066:46)
+      at TransformContext.error (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44062:19)
+      at TransformContext.transform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:41785:22)
+      at async Object.transform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44356:30)
+      at async loadAndTransform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:55088:29)
+      at async viteTransformMiddleware (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:64699:32)
+10:14:53 AM [vite] page reload src/services/sqlite-service.js
+10:14:54 AM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1756|       * @returns {Array} Filtered transactions
+1757|       */
+1758|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1759|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1760|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:14:54 AM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1784|       * @returns {Array} Filtered transactions
+1785|       */
+1786|    getTransactionsByDate(date) {
+   |    ^
+1787|      const startOfDay = new Date(date);
+1788|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:14:54 AM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1969|       * Set up event listeners for the calendar
+1970|       */
+1971|    setupCalendarEventListeners() {
+   |    ^
+1972|      const calendarEl = document.getElementById('calendar');
+1973|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:20:04 AM [vite] page reload src/services/sqlite-service.js
+10:20:05 AM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1756|       * @returns {Array} Filtered transactions
+1757|       */
+1758|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1759|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1760|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:20:05 AM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1784|       * @returns {Array} Filtered transactions
+1785|       */
+1786|    getTransactionsByDate(date) {
+   |    ^
+1787|      const startOfDay = new Date(date);
+1788|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:20:05 AM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1969|       * Set up event listeners for the calendar
+1970|       */
+1971|    setupCalendarEventListeners() {
+   |    ^
+1972|      const calendarEl = document.getElementById('calendar');
+1973|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:20:15 AM [vite] page reload src/account-manager.js
+10:20:15 AM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1756|       * @returns {Array} Filtered transactions
+1757|       */
+1758|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1759|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1760|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:20:15 AM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1784|       * @returns {Array} Filtered transactions
+1785|       */
+1786|    getTransactionsByDate(date) {
+   |    ^
+1787|      const startOfDay = new Date(date);
+1788|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:20:15 AM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1969|       * Set up event listeners for the calendar
+1970|       */
+1971|    setupCalendarEventListeners() {
+   |    ^
+1972|      const calendarEl = document.getElementById('calendar');
+1973|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:20:43 AM [vite] page reload src/account-manager.js
+10:20:44 AM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1756|       * @returns {Array} Filtered transactions
+1757|       */
+1758|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1759|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1760|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:20:44 AM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1784|       * @returns {Array} Filtered transactions
+1785|       */
+1786|    getTransactionsByDate(date) {
+   |    ^
+1787|      const startOfDay = new Date(date);
+1788|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:20:44 AM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1969|       * Set up event listeners for the calendar
+1970|       */
+1971|    setupCalendarEventListeners() {
+   |    ^
+1972|      const calendarEl = document.getElementById('calendar');
+1973|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:23:55 AM [vite] page reload src/services/sqlite-service.js
+10:23:55 AM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1756|       * @returns {Array} Filtered transactions
+1757|       */
+1758|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1759|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1760|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:23:55 AM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1784|       * @returns {Array} Filtered transactions
+1785|       */
+1786|    getTransactionsByDate(date) {
+   |    ^
+1787|      const startOfDay = new Date(date);
+1788|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:23:55 AM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1969|       * Set up event listeners for the calendar
+1970|       */
+1971|    setupCalendarEventListeners() {
+   |    ^
+1972|      const calendarEl = document.getElementById('calendar');
+1973|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+Failed to parse source for import analysis because the content contains invalid JS syntax. If you are using JSX, make sure to name the file with the .jsx or .tsx extension.
+Failed to parse source for import analysis because the content contains invalid JS syntax. If you are using JSX, make sure to name the file with the .jsx or .tsx extension.
+10:23:55 AM [vite] Internal server error: Failed to parse source for import analysis because the content contains invalid JS syntax. If you are using JSX, make sure to name the file with the .jsx or .tsx extension.
+  Plugin: vite:import-analysis
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/services/sqlite-service.js:349:51
+  347|  }
+  348|  
+  349|  export const sqliteService = new SQLiteService();
+     |                                                    ^
+  350|  
+      at formatError (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44066:46)
+      at TransformContext.error (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44062:19)
+      at TransformContext.transform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:41785:22)
+      at async Object.transform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44356:30)
+      at async loadAndTransform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:55088:29)
+      at async viteTransformMiddleware (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:64699:32)
+Failed to parse source for import analysis because the content contains invalid JS syntax. If you are using JSX, make sure to name the file with the .jsx or .tsx extension.
+10:23:56 AM [vite] Internal server error: Failed to parse source for import analysis because the content contains invalid JS syntax. If you are using JSX, make sure to name the file with the .jsx or .tsx extension.
+  Plugin: vite:import-analysis
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/services/sqlite-service.js:349:51
+  347|  }
+  348|  
+  349|  export const sqliteService = new SQLiteService();
+     |                                                    ^
+  350|  
+      at formatError (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44066:46)
+      at TransformContext.error (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44062:19)
+      at TransformContext.transform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:41785:22)
+      at async Object.transform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44356:30)
+      at async loadAndTransform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:55088:29)
+      at async viteTransformMiddleware (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:64699:32)
+10:24:57 AM [vite] page reload src/services/sqlite-service.js
+10:24:57 AM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1756|       * @returns {Array} Filtered transactions
+1757|       */
+1758|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1759|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1760|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:24:57 AM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1784|       * @returns {Array} Filtered transactions
+1785|       */
+1786|    getTransactionsByDate(date) {
+   |    ^
+1787|      const startOfDay = new Date(date);
+1788|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:24:57 AM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1969|       * Set up event listeners for the calendar
+1970|       */
+1971|    setupCalendarEventListeners() {
+   |    ^
+1972|      const calendarEl = document.getElementById('calendar');
+1973|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:40:36 AM [vite] page reload src/services/sqlite-service.js
+10:40:37 AM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1756|       * @returns {Array} Filtered transactions
+1757|       */
+1758|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1759|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1760|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:40:37 AM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1784|       * @returns {Array} Filtered transactions
+1785|       */
+1786|    getTransactionsByDate(date) {
+   |    ^
+1787|      const startOfDay = new Date(date);
+1788|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:40:37 AM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1969|       * Set up event listeners for the calendar
+1970|       */
+1971|    setupCalendarEventListeners() {
+   |    ^
+1972|      const calendarEl = document.getElementById('calendar');
+1973|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:43:58 AM [vite] page reload src/services/sqlite-service.js
+10:43:58 AM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1756|       * @returns {Array} Filtered transactions
+1757|       */
+1758|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1759|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1760|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:43:58 AM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1784|       * @returns {Array} Filtered transactions
+1785|       */
+1786|    getTransactionsByDate(date) {
+   |    ^
+1787|      const startOfDay = new Date(date);
+1788|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:43:58 AM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1969|       * Set up event listeners for the calendar
+1970|       */
+1971|    setupCalendarEventListeners() {
+   |    ^
+1972|      const calendarEl = document.getElementById('calendar');
+1973|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+Failed to parse source for import analysis because the content contains invalid JS syntax. If you are using JSX, make sure to name the file with the .jsx or .tsx extension.
+Failed to parse source for import analysis because the content contains invalid JS syntax. If you are using JSX, make sure to name the file with the .jsx or .tsx extension.
+Failed to parse source for import analysis because the content contains invalid JS syntax. If you are using JSX, make sure to name the file with the .jsx or .tsx extension.
+10:43:58 AM [vite] Internal server error: Failed to parse source for import analysis because the content contains invalid JS syntax. If you are using JSX, make sure to name the file with the .jsx or .tsx extension.
+  Plugin: vite:import-analysis
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/services/sqlite-service.js:378:5
+  376|      await writable.write(data);
+  377|      await writable.close();
+  378|    }
+     |      ^
+  379|  }
+  380|  
+      at formatError (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44066:46)
+      at TransformContext.error (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44062:19)
+      at TransformContext.transform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:41785:22)
+      at async Object.transform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44356:30)
+      at async loadAndTransform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:55088:29)
+      at async viteTransformMiddleware (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:64699:32)
+10:43:58 AM [vite] Internal server error: Failed to parse source for import analysis because the content contains invalid JS syntax. If you are using JSX, make sure to name the file with the .jsx or .tsx extension.
+  Plugin: vite:import-analysis
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/services/sqlite-service.js:378:5
+  376|      await writable.write(data);
+  377|      await writable.close();
+  378|    }
+     |      ^
+  379|  }
+  380|  
+      at formatError (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44066:46)
+      at TransformContext.error (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44062:19)
+      at TransformContext.transform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:41785:22)
+      at async Object.transform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44356:30)
+      at async loadAndTransform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:55088:29)
+      at async viteTransformMiddleware (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:64699:32)
+10:43:58 AM [vite] Internal server error: Failed to parse source for import analysis because the content contains invalid JS syntax. If you are using JSX, make sure to name the file with the .jsx or .tsx extension.
+  Plugin: vite:import-analysis
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/services/sqlite-service.js:378:5
+  376|      await writable.write(data);
+  377|      await writable.close();
+  378|    }
+     |      ^
+  379|  }
+  380|  
+      at formatError (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44066:46)
+      at TransformContext.error (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44062:19)
+      at TransformContext.transform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:41785:22)
+      at async Object.transform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:44356:30)
+      at async loadAndTransform (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:55088:29)
+      at async viteTransformMiddleware (file:///Users/adept/Documents/_My_Projects/redo_my_budget_pro/node_modules/vite/dist/node/chunks/dep-827b23df.js:64699:32)
+10:45:09 AM [vite] page reload src/services/sqlite-service.js
+10:45:09 AM [vite] warning: Duplicate member "getTransactionsByDateRange" in class body
+1756|       * @returns {Array} Filtered transactions
+1757|       */
+1758|    getTransactionsByDateRange(startDate, endDate) {
+   |    ^
+1759|      console.log('getTransactionsByDateRange - Input dates:', { startDate, endDate });
+1760|          
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:45:09 AM [vite] warning: Duplicate member "getTransactionsByDate" in class body
+1784|       * @returns {Array} Filtered transactions
+1785|       */
+1786|    getTransactionsByDate(date) {
+   |    ^
+1787|      const startOfDay = new Date(date);
+1788|      startOfDay.setHours(0, 0, 0, 0);
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx
+10:45:09 AM [vite] warning: Duplicate member "setupCalendarEventListeners" in class body
+1969|       * Set up event listeners for the calendar
+1970|       */
+1971|    setupCalendarEventListeners() {
+   |    ^
+1972|      const calendarEl = document.getElementById('calendar');
+1973|      if (!calendarEl) return;
+
+  Plugin: vite:esbuild
+  File: /Users/adept/Documents/_My_Projects/redo_my_budget_pro/src/app.jsx

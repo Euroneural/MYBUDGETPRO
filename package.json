@@ -26,7 +26,8 @@
   "dependencies": {
     "chart.js": "^4.4.0",
     "date-fns": "^2.30.0",
-    "idb": "^7.1.1"
+    "idb": "^7.1.1",
+    "sql.js": "^1.8.0"
   },
   "devDependencies": {
     "@babel/core": "^7.22.1",

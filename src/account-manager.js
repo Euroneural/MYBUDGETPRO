@@ -5,6 +5,7 @@
 // Emits window event 'account-switched' with detail { accountId } whenever switch occurs.
 
 import { secureDB } from './secure-db.js';
+import { sqliteService } from './services/sqlite-service.js';
 import { localDB } from './local-db.js';
 
 const ACCOUNTS_STORE = 'accounts';
@@ -16,6 +17,10 @@ export class AccountManager {
   }
 
   async ensureStores(id) {
+    // When using SQLite backend, IndexedDB object stores are not required.
+    if (!localDB.db || !localDB.db.objectStoreNames || typeof localDB.db.objectStoreNames.contains !== 'function') {
+      return;
+    }
     // create object stores for this account if they don't exist
     const needed = [`transactions-${id}`, `categories-${id}`, `budgets-${id}`];
     const missing = needed.filter(name => !localDB.db.objectStoreNames.contains(name));
@@ -73,12 +78,17 @@ export class AccountManager {
   }
 
   async createAccount(name) {
-    const id = crypto.randomUUID();
-    const acc = { id, name, created: Date.now() };
+    const acc = { name, created: Date.now() };
     await secureDB.addItem(ACCOUNTS_STORE, acc);
+    // Retrieve last inserted row id
+    const all = await secureDB.getAllItems(ACCOUNTS_STORE);
+    const inserted = all[all.length - 1];
+    const id = inserted.id;
+  // Create per-account SQLite tables for new account
+  sqliteService.createAccountTables(id);
     await this.ensureStores(id);
     await this.switchAccount(id);
-    return acc;
+    return inserted;
   }
 
   async deleteAccount(id) {
@@ -90,6 +100,8 @@ export class AccountManager {
   async switchAccount(id) {
     await this.ensureStores(id);
     if (id === this.currentAccountId) return;
+    // Create per-account tables if missing
+    sqliteService.createAccountTables(id);
     this.currentAccountId = id;
     localStorage.setItem(ACTIVE_KEY, id);
     window.dispatchEvent(new CustomEvent('account-switched', { detail: { accountId: id } }));
@@ -152,7 +164,7 @@ export function createAccountDB(accountId) {
     }
   }
   function withAccount(store) {
-    return `${store}-${accountId}`;
+    return accountId ? `${store}-${accountId}` : store;
   }
   return {
     ensureStores: ensure,

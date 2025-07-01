@@ -61,14 +61,20 @@ export class ViewLoader {
             const navLink = e.target.closest('[data-view]');
             if (navLink) {
                 e.preventDefault();
-                const viewId = navLink.getAttribute('data-view');
+                const viewKey = navLink.getAttribute('data-view');
+                const viewId = `${viewKey}-view`;
                 this.showView(viewId);
+
+                // Update the URL hash without triggering a page reload
+                if (window.location.hash !== `#${viewKey}`) {
+                    history.pushState({}, '', `#${viewKey}`);
+                }
                 
                 // Update active state
                 document.querySelectorAll('.nav__link').forEach(link => {
-                    link.classList.remove('active');
+                    link.classList.remove('nav__link--active');
                 });
-                navLink.classList.add('active');
+                navLink.classList.add('nav__link--active');
             }
         });
 
