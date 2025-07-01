@@ -182,6 +182,9 @@ class LocalDB {
         if (filters.category) {
             transactions = transactions.filter(t => t.category === filters.category);
         }
+
+        // Debugging info
+        console.log('[localDB] getTransactions', { total: transactions.length, filters });
         
         return transactions;
     }

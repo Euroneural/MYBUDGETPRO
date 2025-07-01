@@ -1,0 +1,146 @@
+<!-- Budget View -->
+<div id="budget-view" class="view-content">
+    <div class="container">
+    <div class="budget-header">
+        <h2>Budget</h2>
+        <div class="budget-summary">
+            <div class="summary-item">
+                <div class="summary-label">To Be Budgeted</div>
+                <div id="to-be-budgeted" class="summary-amount">$0.00</div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-label">Budgeted</div>
+                <div id="budgeted-amount" class="summary-amount">$0.00</div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-label">Activity</div>
+                <div id="activity-amount" class="summary-amount">$0.00</div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-label">Available</div>
+                <div id="available-amount" class="summary-amount">$0.00</div>
+            </div>
+        </div>
+        <div class="budget-actions">
+            <button id="add-category-btn" class="btn btn-primary">
+                <i class="fas fa-plus"></i> Add Category
+            </button>
+            <button id="set-budget-btn" class="btn btn-secondary">
+                <i class="fas fa-pen"></i> Set Monthly Budget
+            </button>
+        </div>
+    </div>
+
+    <div class="budget-content">
+        <!-- Categories List -->
+        <div class="categories-container">
+            <div class="categories-header">
+                <div class="category-name">Category</div>
+                <div class="category-budgeted">Budgeted</div>
+                <div class="category-activity">Activity</div>
+                <div class="category-available">Available</div>
+                <div class="category-actions">Actions</div>
+            </div>
+            <div id="categories-list" class="categories-list">
+                <!-- Categories will be populated here -->
+            </div>
+        </div>
+
+        <!-- Reports Section -->
+        <div class="reports-section">
+            <h3>Spending Overview</h3>
+            <div class="chart-container">
+                <canvas id="spending-chart"></canvas>
+            </div>
+            <div class="spending-breakdown">
+                <h4>Category Breakdown</h4>
+                <div id="category-breakdown" class="category-breakdown">
+                    <!-- Category breakdown will be populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    </div> <!-- Close container -->
+    
+    <!-- Modals -->
+    <div id="category-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h3 id="category-modal-title">Add Category</h3>
+            <form id="add-category-form">
+                <input type="hidden" id="edit-category-id">
+                <div class="form-group">
+                    <label for="new-category-name">Category Name</label>
+                    <input type="text" id="new-category-name" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label for="category-budgeted">Budgeted Amount</label>
+                    <div class="input-group">
+                        <span class="input-group-text">$</span>
+                        <input type="number" id="category-budgeted" class="form-control" step="0.01" min="0" value="0">
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Save</button>
+                    <button type="button" class="btn btn-secondary close-modal">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="budget-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h3>Set Monthly Budget</h3>
+            <form id="set-budget-form">
+                <div class="form-group">
+                    <label for="set-monthly-budget">Monthly Budget Amount</label>
+                    <div class="input-group">
+                        <span class="input-group-text">$</span>
+                        <input type="number" id="set-monthly-budget" class="form-control" step="0.01" min="0" required>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Update Budget</button>
+                    <button type="button" class="btn btn-secondary close-modal">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="goal-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h3>Add Goal</h3>
+            <form id="goal-form">
+                <input type="hidden" id="goal-category-id">
+                <div class="form-group">
+                    <label for="goal-amount">Target Amount</label>
+                    <div class="input-group">
+                        <span class="input-group-text">$</span>
+                        <input type="number" id="goal-amount" class="form-control" step="0.01" min="0.01" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="goal-date">Target Date</label>
+                    <input type="date" id="goal-date" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label for="goal-description">Description (Optional)</label>
+                    <textarea id="goal-description" class="form-control" rows="3"></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Save Goal</button>
+                    <button type="button" class="btn btn-secondary close-modal">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Include Font Awesome for icons -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+<!-- Include Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>

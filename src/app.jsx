@@ -1155,6 +1155,94 @@ class SearchManager {
 
 class BudgetApp {
   /**
+   * Compute Pearson correlation coefficient between two numeric arrays
+   * @param {number[]} x
+   * @param {number[]} y
+   * @returns {number}
+   */
+  static pearson(x, y) {
+    if (!Array.isArray(x) || !Array.isArray(y) || x.length !== y.length || x.length < 2) return 0;
+    const n = x.length;
+    let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0, sumY2 = 0;
+    for (let i = 0; i < n; i++) {
+      const xi = x[i];
+      const yi = y[i];
+      sumX += xi;
+      sumY += yi;
+      sumXY += xi * yi;
+      sumX2 += xi * xi;
+      sumY2 += yi * yi;
+    }
+    const numerator = (n * sumXY) - (sumX * sumY);
+    const denominator = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
+    if (denominator === 0) return 0;
+    return numerator / denominator;
+  }
+
+  /**
+   * Rough two-tailed p-value for Pearson r using normal approximation (large n)
+   * @param {number} r – correlation coefficient
+   * @param {number} n – sample size
+   * @returns {number}
+   */
+  static pValue(r, n) {
+    if (n < 3) return 1;
+    const t = Math.abs(r) * Math.sqrt((n - 2) / (1 - r * r));
+    // For df>30 normal approx is OK; otherwise this is still indicative
+    const z = t; // treat t as z
+    const p = 2 * (1 - BudgetApp.normalCdf(z));
+    return p;
+  }
+
+  // Standard normal cumulative distribution function
+  static normalCdf(z) {
+    // Abramowitz & Stegun approximation
+    const sign = z < 0 ? -1 : 1;
+    const absZ = Math.abs(z) / Math.sqrt(2);
+    const t = 1 / (1 + 0.3275911 * absZ);
+    const a1 = 0.254829592, a2 = -0.284496736, a3 = 1.421413741, a4 = -1.453152027, a5 = 1.061405429;
+    const erf = 1 - ((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t * Math.exp(-absZ * absZ);
+    const result = 0.5 * (1 + sign * erf);
+    return result;
+  }
+
+  /**
+   * Calculate correlation & p-value of each category monthly totals vs all-transactions monthly totals.
+   * Returns sorted array of { category, r, p }
+   */
+  calculateCategoryCorrelations() {
+    if (!Array.isArray(this.transactions) || this.transactions.length === 0) return [];
+    // Build monthly totals for All Transactions
+    const monthKey = d => d.slice(0, 7); // YYYY-MM from ISO date
+    const allTotals = {};
+    const catTotals = {};
+    this.transactions.forEach(txn => {
+      const key = monthKey(txn.date);
+      const amt = parseFloat(txn.amount) || 0;
+      allTotals[key] = (allTotals[key] || 0) + amt;
+      const cat = txn.category || '(Uncategorized)';
+      if (!catTotals[cat]) catTotals[cat] = {};
+      catTotals[cat][key] = (catTotals[cat][key] || 0) + amt;
+    });
+
+    const months = Object.keys(allTotals).sort();
+    const allVector = months.map(m => allTotals[m] || 0);
+
+    const results = [];
+    for (const [cat, map] of Object.entries(catTotals)) {
+      const vec = months.map(m => map[m] || 0);
+      if (vec.every(v => v === 0)) continue;
+      const r = BudgetApp.pearson(allVector, vec);
+      const p = BudgetApp.pValue(r, months.length);
+      results.push({ category: cat, r, p });
+    }
+
+    // Sort by absolute correlation descending
+    results.sort((a, b) => Math.abs(b.r) - Math.abs(a.r));
+    return results;
+  }
+
+  /**
    * Confirm with user and delete ALL transactions from the database.
    * Clears in-memory list and refreshes all views.
    */
@@ -1223,6 +1311,9 @@ class BudgetApp {
     this.passwordPrompt = new PasswordPrompt();
   this.accountManager = new AccountManager();
     this.charts = {}; // Initialize charts object
+    // --- View render cache ---
+    this._lastRenderKey = {}; // { viewName: transactionsKey }
+    this._currentTransactionsKey = '';
   this.overviewCharts = []; // Store Chart.js instances for Overview tab
 
     // Show password prompt and initialize
@@ -1378,6 +1469,11 @@ class BudgetApp {
       
       // Sort by date (newest first)
       this.transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+    // Update current transactions key for cache
+    const len = this.transactions.length;
+    const firstId = len ? this.transactions[0].id || '' : '';
+    const lastId = len ? this.transactions[len - 1].id || '' : '';
+    this._currentTransactionsKey = `${len}-${firstId}-${lastId}`;
       
       console.log("Loaded ${this.transactions.length} transactions into memory");
       return this.transactions;
@@ -2122,9 +2218,18 @@ setupCalendarEventListeners() {
         }
       }
 
-      // Update current view & render
-      this.currentView = view;
-      await this.renderCurrentView();
+      // --- Render cache check ---
+      const txKey = this._currentTransactionsKey || '';
+      if (this._lastRenderKey[view] === txKey) {
+        // Already rendered with same data; just set currentView and skip expensive render
+        this.currentView = view;
+        console.log(`Skipped re-render for ${view} (cache hit)`);
+      } else {
+        // Render freshly and store key
+        this.currentView = view;
+        await this.renderCurrentView();
+        this._lastRenderKey[view] = txKey;
+      }
 
       // Re-bind listeners that may have been replaced by new HTML
       this.bindEventListeners();
@@ -3720,7 +3825,7 @@ transactionAnalytics.showAnalytics(filtered.length > 0);
       const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
       const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
             
-      const transactions = await this.localDB.getTransactions({
+      const transactions = await this.db.getTransactions({
         startDate: firstDay,
         endDate: lastDay
       });
@@ -4124,12 +4229,41 @@ transactionAnalytics.showAnalytics(filtered.length > 0);
       else totalCredits += amtRaw;
     });
     const net = totalCredits - totalDebits;
+
+    // --- Correlation summary (top 10 categories vs overall monthly totals) ---
+    const correlations = this.calculateCategoryCorrelations().slice(0, 10);
+    let corrRows = '';
+    correlations.forEach((c, idx) => {
+      const rStr = isFinite(c.r) ? c.r.toFixed(3) : '0.000';
+      const pStr = isFinite(c.p) ? (c.p < 0.0001 ? '&lt;0.0001' : c.p.toFixed(4)) : '1.0000';
+      corrRows += `<tr><td>${idx + 1}</td><td>${this.escapeHtml(c.category)}</td><td class="text-end">${rStr}</td><td class="text-end">${pStr}</td></tr>`;
+    });
+    if (!corrRows) {
+      corrRows = '<tr><td colspan="4" class="text-center text-muted">Not enough data to compute correlations</td></tr>';
+    }
+
     summaryDiv.innerHTML = `
-      <div class="d-flex flex-wrap gap-3">
+      <div class="d-flex flex-wrap gap-3 mb-2">
         <span><strong>Total Debits:</strong> ${this.formatCurrency(totalDebits)}</span>
         <span><strong>Total Credits:</strong> ${this.formatCurrency(totalCredits)}</span>
         <span><strong>Net:</strong> ${this.formatCurrency(net)}</span>
         <span><strong>Transactions:</strong> ${this.transactions.length}</span>
+      </div>
+      <h5 class="mt-2 mb-1">Top 10 Correlated Categories</h5>
+      <div class="table-responsive">
+        <table class="table table-sm table-striped mb-0" id="overview-corr-table">
+          <thead>
+            <tr>
+              <th style="width:40px">#</th>
+              <th>Category</th>
+              <th class="text-end">r</th>
+              <th class="text-end">p</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${corrRows}
+          </tbody>
+        </table>
       </div>`;
 
     let chartIdx = 0;

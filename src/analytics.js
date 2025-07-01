@@ -15,6 +15,7 @@ class TransactionAnalytics {
         // Chart for average count per season
         this.seasonalitySeasonChart = null;
         // Persist last transactions
+        this._lastAnalyticsKey = null;
         this.currentTransactions = [];
         // Filter state – deposits (>0), debits (<0), credits (=0)
         this.filterState = { deposits: true, debits: true, credits: true };
@@ -208,6 +209,15 @@ class TransactionAnalytics {
     
     // Update analytics stats & charts based on filtered transactions
     updateAnalytics(transactions = []) {
+        // Compute robust cache key based on transaction id set + filter state
+        const ids = (transactions || []).map(t => t.id).join(',');
+        const filterKey = JSON.stringify(this.filterState);
+        const cacheKey = `${ids}-${filterKey}`;
+        if (cacheKey === this._lastAnalyticsKey) {
+            // Data unchanged → skip heavy re-render
+            return;
+        }
+        this._lastAnalyticsKey = cacheKey;
         // store original transactions
         this.currentTransactions = transactions || [];
         // Ensure UI controls & canvases exist
