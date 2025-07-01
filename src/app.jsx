@@ -1218,9 +1218,9 @@ class BudgetApp {
     const catTotals = {};
     this.transactions.forEach(txn => {
       const key = monthKey(txn.date);
-      const amt = parseFloat(txn.amount) || 0;
+      const amt = Math.abs(parseFloat(txn.amount) || 0);
       allTotals[key] = (allTotals[key] || 0) + amt;
-      const cat = txn.category || '(Uncategorized)';
+      const cat = (txn.category || txn.description || '(Uncategorized)').trim().toLowerCase();
       if (!catTotals[cat]) catTotals[cat] = {};
       catTotals[cat][key] = (catTotals[cat][key] || 0) + amt;
     });
@@ -1239,6 +1239,7 @@ class BudgetApp {
 
     // Sort by absolute correlation descending
     results.sort((a, b) => Math.abs(b.r) - Math.abs(a.r));
+    console.log('calculateCategoryCorrelations: top results', results.slice(0, 20));
     return results;
   }
 
@@ -1271,12 +1272,13 @@ class BudgetApp {
       this.transactions = [];
       this.pendingImport = [];
 
-      // Refresh relevant views
+      // Refresh relevant views, including Overview analytics
       await Promise.all([
         this.renderDashboard?.(),
         this.renderTransactions?.(),
         this.renderCalendar?.(),
         this.renderTransactionsAnalyticsCharts?.(),
+        this.renderOverview?.(),
       ]);
 
       this.showToast?.('success', 'All transactions deleted');
@@ -3809,6 +3811,68 @@ transactionAnalytics.showAnalytics(filtered.length > 0);
   }
 
   // Render the dashboard view
+  // --- Budget prediction helpers ---
+  /**
+   * Simple linear regression forecast for an array of numbers (y values).
+   * Returns nextValue (y at n), slope and intercept.
+   */
+  _linearForecast(values = []) {
+    if (!Array.isArray(values) || values.length < 2) return { next: 0 };
+    const n = values.length;
+    let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+    values.forEach((y, i) => {
+      sumX += i;
+      sumY += y;
+      sumXY += i * y;
+      sumX2 += i * i;
+    });
+    const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+    const intercept = (sumY - slope * sumX) / n;
+    const next = intercept + slope * n; // prediction for next period
+    return { next, slope, intercept };
+  }
+
+  /**
+   * Calculate suggested budget totals for this & next month by summing category forecasts.
+   * Uses last 6 monthly totals per category and linear regression.
+   */
+  async _calculateBudgetSuggestions() {
+    // Load last 7 months transactions (to predict current + next)
+    const now = new Date();
+    const pastStart = new Date(now.getFullYear(), now.getMonth() - 6, 1);
+    const txns = await this.db.getTransactions({
+      startDate: pastStart.toISOString().split('T')[0],
+      endDate: now.toISOString().split('T')[0]
+    });
+    const monthKey = d => d.slice(0, 7);
+
+    // Group totals per category per month
+    const catMonthTotals = {};
+    txns.forEach(t => {
+      const cat = (t.category || t.description || '(uncategorized)').trim().toLowerCase();
+      const key = monthKey(t.date);
+      const amt = Math.abs(parseFloat(t.amount) || 0);
+      if (!catMonthTotals[cat]) catMonthTotals[cat] = {};
+      catMonthTotals[cat][key] = (catMonthTotals[cat][key] || 0) + amt;
+    });
+
+    // For each category build chronological array of totals (ascending)
+    const months = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
+    }
+    let thisMonthSum = 0, nextMonthSum = 0;
+    Object.values(catMonthTotals).forEach(map => {
+      const series = months.map(m => map[m] || 0);
+      const { next } = this._linearForecast(series);
+      const lastVal = series[series.length-1];
+      thisMonthSum += lastVal; // observed/partial current month
+      nextMonthSum += next; // predicted next
+    });
+    return { thisMonth: thisMonthSum, nextMonth: nextMonthSum };
+  }
+
   async renderDashboard() {
     try {
       // Get the dashboard container
@@ -3820,7 +3884,10 @@ transactionAnalytics.showAnalytics(filtered.length > 0);
       const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
       const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
             
-      const transactions = await this.db.getTransactions({
+      // Compute budget suggestions in parallel
+    const budgetSuggestionsPromise = this._calculateBudgetSuggestions();
+
+    const transactions = await this.db.getTransactions({
         startDate: firstDay,
         endDate: lastDay
       });
@@ -3837,6 +3904,8 @@ transactionAnalytics.showAnalytics(filtered.length > 0);
       }, { income: 0, expenses: 0 });
             
       // Update the dashboard HTML
+      const budgetSuggestions = await budgetSuggestionsPromise;
+
       dashboardEl.innerHTML = `
                 <div class="dashboard-summary">
                     <div class="dashboard-card">
@@ -3854,7 +3923,21 @@ transactionAnalytics.showAnalytics(filtered.length > 0);
                         </div>
                     </div>
                 </div>
-                <div class="recent-transactions">
+                <div class="budget-suggestions card p-3 mb-3">
+                      <h3>Suggested Budget</h3>
+                      <div class="d-flex flex-column flex-md-row gap-3">
+                          <div>
+                              <div class="small text-muted">This Month</div>
+                              <div class="h5 mb-0">${this.formatCurrency(budgetSuggestions.thisMonth)}</div>
+                          </div>
+                          <div>
+                              <div class="small text-muted">Next Month</div>
+                              <div class="h5 mb-0">${this.formatCurrency(budgetSuggestions.nextMonth)}</div>
+                          </div>
+                      </div>
+                  </div>
+
+              <div class="recent-transactions">
                     <h3>Recent Transactions</h3>
                     ${this.renderTransactionList(transactions.slice(0, 5))}
                 </div>
@@ -4226,15 +4309,23 @@ transactionAnalytics.showAnalytics(filtered.length > 0);
     const net = totalCredits - totalDebits;
 
     // --- Correlation summary (top 10 categories vs overall monthly totals) ---
-    const correlations = this.calculateCategoryCorrelations().slice(0, 10);
+    const correlations = this.calculateCategoryCorrelations();
     let corrRows = '';
-    correlations.forEach((c, idx) => {
-      const rStr = isFinite(c.r) ? c.r.toFixed(3) : '0.000';
-      const pStr = isFinite(c.p) ? (c.p < 0.0001 ? '&lt;0.0001' : c.p.toFixed(4)) : '1.0000';
-      corrRows += `<tr><td>${idx + 1}</td><td>${this.escapeHtml(c.category)}</td><td class="text-end">${rStr}</td><td class="text-end">${pStr}</td></tr>`;
-    });
+    
+    if (correlations && correlations.length > 0) {
+      // Take up to 10 correlations
+      correlations.slice(0, 10).forEach((c, idx) => {
+        if (c && c.category !== undefined && isFinite(c.r) && isFinite(c.p)) {
+          const rStr = c.r.toFixed(3);
+          const pStr = c.p < 0.0001 ? '&lt;0.0001' : c.p.toFixed(4);
+          corrRows += `<tr><td>${idx + 1}</td><td>${this.escapeHtml(c.category)}</td><td class="text-end">${rStr}</td><td class="text-end">${pStr}</td></tr>`;
+        }
+      });
+    }
+    
+    // If no valid rows were added, show a message
     if (!corrRows) {
-      corrRows = '<tr><td colspan="4" class="text-center text-muted">Not enough data to compute correlations</td></tr>';
+      corrRows = '<tr><td colspan="4" class="text-center text-muted">Not enough data to compute correlations. Need at least 3 months of transaction data with multiple categories.</td></tr>';
     }
 
     summaryDiv.innerHTML = `
@@ -4245,11 +4336,11 @@ transactionAnalytics.showAnalytics(filtered.length > 0);
         <span><strong>Transactions:</strong> ${this.transactions.length}</span>
       </div>
       <h5 class="mt-2 mb-1">Top 10 Correlated Categories</h5>
-      <div class="table-responsive">
-        <table class="table table-sm table-striped mb-0" id="overview-corr-table">
-          <thead>
+      <div class="table-responsive" style="max-height: 300px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 4px;">
+        <table class="table table-sm table-striped mb-0" id="overview-corr-table" style="margin-bottom: 0;">
+          <thead style="position: sticky; top: 0; background-color: white; z-index: 1;">
             <tr>
-              <th style="width:40px">#</th>
+              <th style="width:40px; position: sticky; left: 0; background-color: white;">#</th>
               <th>Category</th>
               <th class="text-end">r</th>
               <th class="text-end">p</th>

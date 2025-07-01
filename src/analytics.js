@@ -16,9 +16,16 @@ class TransactionAnalytics {
         this.seasonalitySeasonChart = null;
         // Persist last transactions
         this._lastAnalyticsKey = null;
+        // Outlier toggle (default include outliers)
+        this.includeOutliers = true;
         this.currentTransactions = [];
         // Filter state – deposits (>0), debits (<0), credits (=0)
         this.filterState = { deposits: true, debits: true, credits: true };
+
+    // Ensure outlier toggle UI once DOM ready
+    document.addEventListener('DOMContentLoaded', () => {
+        this.ensureOutlierToggleControl();
+    });
         this.trendChart = null;
         this.seasonalityChart = null;
         this.forecastChart = null;
@@ -69,6 +76,8 @@ class TransactionAnalytics {
      * Ensure type filter checkboxes exist and have listeners
      */
     ensureTypeFilterControls() {
+    // Also make sure outlier toggle exists
+    this.ensureOutlierToggleControl();
         const container = document.getElementById('txn-type-filters');
         if (container) return; // Already exists
         const parent = document.getElementById('transactions-analytics-section');
@@ -116,6 +125,28 @@ class TransactionAnalytics {
     }
 
     /**
+     * Ensure outlier toggle checkbox exists and has listener
+     */
+    ensureOutlierToggleControl() {
+        const container = document.getElementById('txn-type-filters');
+        if (!container) return;
+        const toggleDiv = document.getElementById('outlier-toggle');
+        if (toggleDiv) return; // Already exists
+        const toggleHtml = `
+            <label class="me-3"><input type="checkbox" id="outlier-toggle" checked> Include Outliers</label>
+        `;
+        container.innerHTML += toggleHtml;
+        const toggleCb = document.getElementById('outlier-toggle');
+        if (toggleCb) {
+            toggleCb.addEventListener('change', () => {
+                this.includeOutliers = toggleCb.checked;
+                // Rerender charts with stored transactions
+                this.updateAnalytics(this.currentTransactions);
+            });
+        }
+    }
+
+    /**
      * Filter transactions based on current filterState
      */
     applyTypeFilter(transactions = []) {
@@ -136,6 +167,110 @@ class TransactionAnalytics {
     }
         
 
+
+    // --- Price change metrics ---
+    /**
+     * Calculate metrics related to price change intervals.
+     * @param {Array} transactions – array of transaction objects sorted by date
+     * @param {number} avgChange   – average price change amount (signed)
+     * @returns {Object} { daysSinceChange, avgDaysChange, nextChangeDate, estNextPrice }
+     */
+    calculatePriceChangeMetrics(transactions = [], avgChange = 0) {
+        try {
+            if (!Array.isArray(transactions) || transactions.length < 2) {
+                return { daysSinceChange: null, avgDaysChange: null, nextChangeDate: null, estNextPrice: null };
+            }
+            // Sort by date ascending
+            const sorted = [...transactions].sort((a, b) => new Date(a.date) - new Date(b.date));
+            // Determine a dynamic threshold to ignore very small dollar amounts
+            const absAmountsAll = sorted.map(t => Math.abs(parseFloat(t.amount) || 0)).filter(v => !isNaN(v));
+            const medianAbs = this.calculatePercentile([...absAmountsAll].sort((a,b)=>a-b), 50);
+            const MIN_STATIC = 5; // $5 absolute fallback threshold
+            const minAllowed = Math.max(MIN_STATIC, medianAbs * 0.05); // ignore amounts < 5% of median or < $5
+
+            const changeDates = [];
+            const amounts = [];
+            let prevAmount = parseFloat(sorted[0].amount) || 0;
+            amounts.push(prevAmount);
+            for (let i = 1; i < sorted.length; i++) {
+                const amt = parseFloat(sorted[i].amount) || 0;
+                if (Math.abs(amt) < minAllowed) continue; // skip low-dollar outliers
+                if (amt !== prevAmount) {
+                    changeDates.push(new Date(sorted[i].date));
+                    amounts.push(amt);
+                    prevAmount = amt;
+                }
+            }
+            if (changeDates.length === 0) {
+                // No changes detected
+                return { daysSinceChange: null, avgDaysChange: null, nextChangeDate: null, estNextPrice: null };
+            }
+            // Calculate intervals in days between consecutive change points
+            const intervals = [];
+            for (let i = 1; i < changeDates.length; i++) {
+                const diffMs = changeDates[i] - changeDates[i - 1];
+                intervals.push(diffMs / (1000 * 60 * 60 * 24));
+            }
+            const avgDaysChange = intervals.length ? intervals.reduce((s, d) => s + d, 0) / intervals.length : null;
+            const lastChangeDate = changeDates[changeDates.length - 1];
+            const now = new Date();
+            const daysSinceChange = Math.floor((now - lastChangeDate) / (1000 * 60 * 60 * 24));
+            let nextChangeDate = null;
+            let lastPastPredictionDate = null;
+            let lastPastPredictionPrice = null;
+            if (avgDaysChange && !isNaN(avgDaysChange) && avgDaysChange > 0) {
+                // Jump forward in multiples of avgDaysChange until date is in the future
+                const DAY_MS = 24 * 60 * 60 * 1000;
+                let offsetDays = avgDaysChange;
+                while (lastChangeDate.getTime() + offsetDays * DAY_MS <= now.getTime()) {
+                    lastPastPredictionDate = new Date(lastChangeDate.getTime() + offsetDays * DAY_MS);
+                    offsetDays += avgDaysChange;
+                }
+                nextChangeDate = new Date(lastChangeDate.getTime() + offsetDays * DAY_MS);
+            }
+
+            // --- Estimate next price using linear regression of change points ---
+            let estNextPrice = null;
+            try {
+                const xs = changeDates.map(d => d.getTime() / (1000 * 60 * 60 * 24)); // days since epoch
+                const ys = amounts;
+                if (xs.length >= 2) {
+                    const n = xs.length;
+                    let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+                    for (let i = 0; i < n; i++) {
+                        sumX += xs[i];
+                        sumY += ys[i];
+                        sumXY += xs[i] * ys[i];
+                        sumX2 += xs[i] * xs[i];
+                    }
+                    const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+                    const intercept = (sumY - slope * sumX) / n;
+                    const targetX = nextChangeDate ? nextChangeDate.getTime() / (1000 * 60 * 60 * 24) : xs[xs.length - 1] + avgDaysChange;
+                    estNextPrice = intercept + slope * targetX;
+                    if (lastPastPredictionDate) {
+                        const pastX = lastPastPredictionDate.getTime() / (1000 * 60 * 60 * 24);
+                        lastPastPredictionPrice = intercept + slope * pastX;
+                    }
+                }
+            } catch(e) { /* ignore regression errors */ }
+            // Fallback to lastAmount + avgChange
+            if (estNextPrice === null || isNaN(estNextPrice)) {
+                const lastAmount = amounts[amounts.length - 1];
+                estNextPrice = lastAmount + avgChange;
+            }
+            return {
+                daysSinceChange,
+                avgDaysChange,
+                nextChangeDate: nextChangeDate ? nextChangeDate.toISOString().split('T')[0] : null,
+                estNextPrice,
+                lastPastPredictionDate: lastPastPredictionDate ? lastPastPredictionDate.toISOString().split('T')[0] : null,
+                lastPastPredictionPrice: lastPastPredictionPrice
+            };
+        } catch (err) {
+            console.warn('Failed to calculate price change metrics:', err);
+            return { daysSinceChange: null, avgDaysChange: null, nextChangeDate: null, estNextPrice: null };
+        }
+    }
 
     // Calculate statistics for transactions
     calculateStatistics(transactions) {
@@ -209,9 +344,11 @@ class TransactionAnalytics {
     
     // Update analytics stats & charts based on filtered transactions
     updateAnalytics(transactions = []) {
+        // Always ensure the toggle controls exist
+        this.ensureOutlierToggleControl();
         // Compute robust cache key based on transaction id set + filter state
         const ids = (transactions || []).map(t => t.id).join(',');
-        const filterKey = JSON.stringify(this.filterState);
+        const filterKey = JSON.stringify({ ...this.filterState, includeOutliers: this.includeOutliers });
         const cacheKey = `${ids}-${filterKey}`;
         if (cacheKey === this._lastAnalyticsKey) {
             // Data unchanged → skip heavy re-render
@@ -220,23 +357,38 @@ class TransactionAnalytics {
         this._lastAnalyticsKey = cacheKey;
         // store original transactions
         this.currentTransactions = transactions || [];
+
+        // ----- Filtering logic -----
+        // First apply deposit/debit/credit type filter
+        const baseTxns = this.applyTypeFilter(this.currentTransactions);
+
+        // Calculate stats on base set to get IQR bounds
+        const baseStats = this.calculateStatistics(baseTxns);
+
+        // Apply outlier filtering if toggle disabled
+        let dataTxns = baseTxns;
+        let stats = baseStats;
+        if (!this.includeOutliers && baseStats) {
+            const { lowerBound, upperBound } = baseStats;
+            dataTxns = baseTxns.filter(t => {
+                const amt = Math.abs(parseFloat(t.amount) || 0);
+                return amt >= lowerBound && amt <= upperBound;
+            });
+            // Re-calculate stats after removing outliers
+            stats = this.calculateStatistics(dataTxns);
+        }
+
+        // Guard if stats missing
+        if (!stats || dataTxns.length === 0) {
+            this.showAnalytics(false);
+            return;
+        }
+
         // Ensure UI controls & canvases exist
         this.ensureTypeFilterControls();
         this.ensureDistributionCanvases();
 
         // Apply type filter
-        const dataTxns = this.applyTypeFilter(this.currentTransactions);
-
-        if (!dataTxns || dataTxns.length === 0) {
-            this.showAnalytics(false);
-            return;
-        }
-
-        if (!transactions || transactions.length === 0) {
-            return;
-        }
-
-        // Sort transactions by date ascending for change metrics
         const sorted = [...dataTxns].sort((a,b)=> new Date(a.date)-new Date(b.date));
         const first = sorted[0];
         const last = sorted[sorted.length-1];
@@ -253,7 +405,8 @@ class TransactionAnalytics {
         }
         const avgChange = sorted.length>1? sumDelta/(sorted.length-1):0;
 
-        const stats = this.calculateStatistics(dataTxns) || {};
+        const changeMetrics = this.calculatePriceChangeMetrics(dataTxns, avgChange);
+
         // render stats tiles
         this.renderStatsTiles({
             highest: stats.maxRaw ?? stats.maxAbs,
@@ -262,7 +415,8 @@ class TransactionAnalytics {
             median: stats.median,
             totalChange,
             pctChange,
-            avgChange
+            avgChange,
+            ...changeMetrics
         });
 
         // charts
@@ -276,12 +430,16 @@ class TransactionAnalytics {
     }
 
     // Render metric tiles in UI
-    renderStatsTiles({ highest, lowest, avgAmount, median, totalChange, pctChange, avgChange }) {
+    renderStatsTiles({ highest, lowest, avgAmount, median, totalChange, pctChange, avgChange, daysSinceChange, avgDaysChange, nextChangeDate, estNextPrice, lastPastPredictionDate, lastPastPredictionPrice }) {
         const container = document.getElementById('txn-analytics-stats');
         if (!container) return;
-        const tile = (label,value)=>`<div class="col mb-2"><div class="card shadow-sm h-100"><div class="card-body p-2 text-center"><div class="fw-bold small text-muted">${label}</div><div class="h6 mb-0">${value}</div></div></div></div>`;
+        // Ensure responsive grid classes for fewer scrolls
+        container.className = 'row row-cols-2 row-cols-md-3 row-cols-lg-4 g-2';
+        const tile = (label,value)=>`<div class="col"><div class="card shadow-sm h-100"><div class="card-body p-2 text-center"><div class="fw-bold small text-muted">${label}</div><div class="h6 mb-0">${value}</div></div></div></div>`;
         const highestVal = this.formatCurrency(highest);
         const lowestVal  = this.formatCurrency(lowest);
+        const nextChangeStr = nextChangeDate ? new Date(nextChangeDate).toLocaleDateString() : 'N/A';
+        const pastPredStr = lastPastPredictionDate ? `${new Date(lastPastPredictionDate).toLocaleDateString()} • ${this.formatCurrency(lastPastPredictionPrice)}` : null;
         container.innerHTML = [
             tile('Highest', highestVal),
             tile('Lowest', lowestVal),
@@ -289,7 +447,12 @@ class TransactionAnalytics {
             tile('Median', this.formatCurrency(median)),
             tile('Total Δ', this.formatCurrency(totalChange)),
             tile('% Δ', pctChange.toFixed(2)+'%'),
-            tile('Avg Δ', this.formatCurrency(avgChange))
+            tile('Avg Δ', this.formatCurrency(avgChange)),
+            tile('Days Since Change', daysSinceChange ?? 'N/A'),
+            tile('Avg Days/Change', avgDaysChange ? avgDaysChange.toFixed(1) : 'N/A'),
+            tile('Next Change ETA', nextChangeStr),
+            tile('Est. Next Price', this.formatCurrency(estNextPrice)),
+        pastPredStr ? tile('<span class="text-warning">Last Past Prediction</span>', `<span class="text-warning">${pastPredStr}</span>`) : ''
         ].join('');
     }
 

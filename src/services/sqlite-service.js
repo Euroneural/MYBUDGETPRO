@@ -161,13 +161,13 @@ class SQLiteService {
     if (stored) {
       // Check existing permission
       let perm = await stored.queryPermission({ mode: 'readwrite' });
-      if (perm === 'prompt') {
-        // Ask the browser to re-grant permission silently if possible
-        perm = await stored.requestPermission({ mode: 'readwrite' });
-      }
-      if (perm === 'granted') {
+      // If permission is denied, we cannot reuse it silently.
+      if (perm !== 'denied') {
+        // "granted" or "prompt" – both are usable without requiring the user to pick the file again.
+        // Browsers may still show a lightweight permission prompt on first access when state is "prompt",
+        // but we avoid forcing the user to locate the file via the picker.
         this.fileHandle = stored;
-        return; // Success – we can reuse the existing file without prompting the user
+        return; // Reuse existing handle
       }
     }
   } catch (e) {
