@@ -34,6 +34,31 @@ class TransactionAnalytics {
         };
     }
 
+    // Internal helper to reuse an existing Chart.js instance when the data hasn't changed.
+    // name        – unique string key per chart type.
+    // ctx         – canvas context where chart lives.
+    // existing    – previously created Chart instance (or null).
+    // config      – full Chart.js config for the desired state.
+    // cacheKey    – deterministic string representing the data + options. When unchanged, we skip heavy re-creation.
+    _updateOrCreateChart(name, ctx, existing, config, cacheKey) {
+        if (!this._chartCache) this._chartCache = {};
+        if (existing && this._chartCache[name] === cacheKey) {
+            // Nothing changed → no work needed.
+            return existing;
+        }
+        // Remember latest key.
+        this._chartCache[name] = cacheKey;
+        if (existing) {
+            // Soft-update: replace data/options then call update(). Much faster than destroy()/new Chart().
+            existing.data = config.data;
+            existing.options = config.options;
+            existing.update();
+            return existing;
+        }
+        // First time creation.
+        return new Chart(ctx, config);
+    }
+
     // Initialize analytics
     init() {
         // Initialize any required resources
@@ -485,76 +510,6 @@ class TransactionAnalytics {
         const ctx = document.getElementById('transactions-seasonality-count-chart');
         if (!ctx) return;
 
-        if (this.seasonalityCountChart) {
-            this.seasonalityCountChart.destroy();
-        }
-
-        const config = {
-            type: 'bar',
-            data: {
-                labels,
-                datasets: [{
-                    label: 'Avg Count',
-                    data,
-                    backgroundColor: 'rgba(153, 102, 255, 0.6)',
-                    borderColor: 'rgba(153, 102, 255, 1)',
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins:{
-                    legend:{display:false},
-                    tooltip:{callbacks:{label:(c)=> `Avg Count: ${c.parsed.y.toFixed(0)}`}}
-                },
-                scales:{
-                    y:{beginAtZero:true}
-                }
-            }
-        };
-        this.seasonalityCountChart = new Chart(ctx, config);
-    }
-
-    // Enable drag-and-drop reordering of analytics cards
-    ensureSortable(parent){
-        if(this.sortableInit) return;
-        // dynamically load SortableJS if not present
-        const initSortable = () => {
-            const saved = JSON.parse(localStorage.getItem('analyticsOrder')||'[]');
-            const opts = {
-                animation:150,
-                onEnd: () => {
-                    const order=[...parent.children].map(el=>el.id);
-                    localStorage.setItem('analyticsOrder', JSON.stringify(order));
-                }
-            };
-            this.sortable = window.Sortable ? window.Sortable.create(parent, opts) : null;
-            // Apply saved order
-            if(saved.length){
-                saved.forEach(id=>{
-                    const el=document.getElementById(id);
-                    if(el) parent.appendChild(el);
-                });
-            }
-            this.sortableInit=true;
-        };
-        if(window.Sortable){ initSortable(); }
-        else{
-            const s=document.createElement('script');
-            s.src='https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js';
-            s.onload=initSortable;
-            document.head.appendChild(s);
-        }
-    }
-
-    renderSeasonalityCountChart(labels, data) {
-        const ctx = document.getElementById('transactions-seasonality-count-chart');
-        if (!ctx) return;
-
-        if (this.seasonalityCountChart) {
-            this.seasonalityCountChart.destroy();
-        }
-
         const config = {
             type: 'bar',
             data: {
@@ -582,148 +537,57 @@ class TransactionAnalytics {
             }
         };
 
-        this.seasonalityCountChart = new Chart(ctx, config);
+        this.seasonalityCountChart = this._updateOrCreateChart('seasonalityCount', ctx, this.seasonalityCountChart, config, JSON.stringify({ labels, data }));
     }
 
-    // Generate forecast
-    generateForecast(transactions) {
-        if (!transactions || transactions.length < 3) {
-            this.updateForecastText('Not enough data to generate forecast');
-            return;
-        }
+    // Render seasonality chart
+    renderSeasonalityChart(labels, data) {
+        const ctx = document.getElementById('transactions-seasonality-chart');
+        if (!ctx) return;
 
-        try {
-            // Simple linear regression for forecasting
-            const timeSeries = this.prepareTimeSeries(transactions);
-            const forecast = this.calculateForecast(timeSeries);
-            
-            // Update UI with forecast
-            this.updateForecast(forecast);
-        } catch (e) {
-            console.error('Error generating forecast:', e);
-            this.updateForecastText('Error generating forecast');
-        }
-    }
-
-    // Helper methods
-    groupByTimePeriod(transactions, period = 'month') {
-        const groups = {};
-        
-        transactions.forEach(transaction => {
-            try {
-                const date = new Date(transaction.date);
-                if (isNaN(date.getTime())) return;
-                
-                let key;
-                if (period === 'month') {
-                    key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-                } else if (period === 'day') {
-                    key = date.toISOString().split('T')[0];
-                } else {
-                    // Default to month
-                    key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        const config = {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Average Amount',
+                    data: data,
+                    backgroundColor: 'rgba(75, 192, 192, 0.6)',
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    title: {
+                        display: true,
+                        text: 'Seasonality – Avg Amount by Month'
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Average Amount ($)'
+                        }
+                    }
                 }
-                
-                if (!groups[key]) {
-                    groups[key] = [];
-                }
-                groups[key].push(transaction);
-            } catch (e) {
-                console.error('Error processing transaction date:', e);
             }
-        });
-        
-        return groups;
-    }
-
-    prepareTimeSeries(transactions) {
-        // Group transactions by date and sum amounts
-        const dailyTotals = {};
-        
-        transactions.forEach(transaction => {
-            try {
-                const date = new Date(transaction.date);
-                if (isNaN(date.getTime())) return;
-                
-                const dateStr = date.toISOString().split('T')[0];
-                const amount = parseFloat(transaction.amount) || 0;
-                
-                if (!dailyTotals[dateStr]) {
-                    dailyTotals[dateStr] = 0;
-                }
-                dailyTotals[dateStr] += amount;
-            } catch (e) {
-                console.error('Error processing transaction date:', e);
-            }
-        });
-        
-        // Convert to array of {x, y} points
-        return Object.entries(dailyTotals)
-            .map(([date, amount]) => ({
-                x: new Date(date).getTime(),
-                y: Math.abs(amount)
-            }))
-            .sort((a, b) => a.x - b.x);
-    }
-
-    calculateForecast(timeSeries) {
-        if (timeSeries.length < 3) {
-            throw new Error('Not enough data points for forecast');
-        }
-
-        // Simple linear regression
-        const n = timeSeries.length;
-        let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
-        
-        timeSeries.forEach((point, i) => {
-            sumX += i;
-            sumY += point.y;
-            sumXY += i * point.y;
-            sumX2 += i * i;
-        });
-        
-        const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
-        const intercept = (sumY - slope * sumX) / n;
-        
-        // Generate forecast for next 3 periods
-        const forecastPeriods = 3;
-        const forecast = [];
-        const lastDate = new Date(timeSeries[timeSeries.length - 1].x);
-        
-        for (let i = 0; i < forecastPeriods; i++) {
-            const nextDate = new Date(lastDate);
-            nextDate.setMonth(nextDate.getMonth() + i + 1);
-            
-            forecast.push({
-                date: nextDate,
-                value: intercept + slope * (n + i)
-            });
-        }
-        
-        // Calculate forecast change percentage
-        const lastValue = timeSeries[timeSeries.length - 1].y;
-        const nextValue = forecast[0].value;
-        const changePercent = ((nextValue - lastValue) / lastValue) * 100;
-        
-        return {
-            lastValue,
-            nextValue,
-            changePercent,
-            forecast,
-            trend: slope > 0 ? 'up' : slope < 0 ? 'down' : 'neutral'
         };
+
+        this.seasonalityChart = this._updateOrCreateChart('seasonality', ctx, this.seasonalityChart, config, JSON.stringify({ labels, data }));
     }
 
-    // Chart rendering methods
+    // Render trend chart
     renderTrendChart(labels, amounts, counts) {
         const ctx = document.getElementById('transactions-trend-chart');
         if (!ctx) return;
-        
-        // Destroy existing chart if it exists
-        if (this.trendChart) {
-            this.trendChart.destroy();
-        }
-        
+
         const config = {
             type: 'line',
             data: {
@@ -780,55 +644,8 @@ class TransactionAnalytics {
                 }
             }
         };
-        
-        this.trendChart = new Chart(ctx, config);
-    }
 
-    renderSeasonalityChart(labels, data) {
-        const ctx = document.getElementById('transactions-seasonality-chart');
-        if (!ctx) return;
-        
-        // Destroy existing chart if it exists
-        if (this.seasonalityChart) {
-            this.seasonalityChart.destroy();
-        }
-        
-        const config = {
-            type: 'bar',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: 'Average Amount',
-                    data: data,
-                    backgroundColor: 'rgba(75, 192, 192, 0.6)',
-                    borderColor: 'rgba(75, 192, 192, 1)',
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    legend: {
-                        display: false
-                    },
-                    title: {
-                        display: true,
-                        text: 'Seasonality – Avg Amount by Month'
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        title: {
-                            display: true,
-                            text: 'Average Amount ($)'
-                        }
-                    }
-                }
-            }
-        };
-        
-        this.seasonalityChart = new Chart(ctx, config);
+        this.trendChart = this._updateOrCreateChart('trend', ctx, this.trendChart, config, JSON.stringify({ labels, amounts, counts }));
     }
 
     updateForecast(forecast) {
@@ -1597,6 +1414,124 @@ class TransactionAnalytics {
     }
     
     // Helper method to sample an array (for performance)
+    /**
+     * Ensure given container becomes sortable (drag & drop) using SortableJS if it's loaded.
+     * We guard against multiple initializations by tracking containers in a WeakSet.
+     * @param {HTMLElement} container
+     */
+    ensureSortable(container) {
+        try {
+            if (!container || typeof Sortable === 'undefined') return; // SortableJS not available
+            if (!this._sortables) this._sortables = new WeakSet();
+            if (this._sortables.has(container)) return; // Already initialized
+            Sortable.create(container, {
+                animation: 150,
+                ghostClass: 'sortable-ghost',
+                dragClass: 'sortable-drag'
+            });
+            this._sortables.add(container);
+        } catch (err) {
+            console.warn('Failed to initialize Sortable:', err);
+        }
+    }
+
+    // --- Forecast & time-series helpers ---
+    /**
+     * Group transactions by period (month/day). Returns object keyed by period string.
+     */
+    groupByTimePeriod(transactions, period = 'month') {
+        const groups = {};
+        (transactions || []).forEach(txn => {
+            try {
+                const date = new Date(txn.date);
+                if (isNaN(date.getTime())) return;
+                let key;
+                if (period === 'day') {
+                    key = date.toISOString().split('T')[0];
+                } else { // default month
+                    key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                }
+                if (!groups[key]) groups[key] = [];
+                groups[key].push(txn);
+            } catch (_) {}
+        });
+        return groups;
+    }
+
+    /**
+     * Convert transactions into daily total time-series sorted by date.
+     * Each point is {x: timestamp, y: abs(amount)}.
+     */
+    prepareTimeSeries(transactions) {
+        const dailyTotals = {};
+        (transactions || []).forEach(txn => {
+            try {
+                const date = new Date(txn.date);
+                if (isNaN(date.getTime())) return;
+                const dateStr = date.toISOString().split('T')[0];
+                const amt = Math.abs(parseFloat(txn.amount) || 0);
+                dailyTotals[dateStr] = (dailyTotals[dateStr] || 0) + amt;
+            } catch (_) {}
+        });
+        return Object.entries(dailyTotals)
+            .map(([d, amt]) => ({ x: new Date(d).getTime(), y: amt }))
+            .sort((a, b) => a.x - b.x);
+    }
+
+    /**
+     * Simple linear-regression forecast of next 3 periods.
+     * Returns object with summary & array of forecast values.
+     */
+    calculateForecast(timeSeries) {
+        if (!timeSeries || timeSeries.length < 3) {
+            throw new Error('Not enough data points for forecast');
+        }
+        const n = timeSeries.length;
+        let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+        timeSeries.forEach((p, i) => {
+            sumX += i;
+            sumY += p.y;
+            sumXY += i * p.y;
+            sumX2 += i * i;
+        });
+        const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+        const intercept = (sumY - slope * sumX) / n;
+        const forecastPeriods = 3;
+        const forecastVals = [];
+        const lastDate = new Date(timeSeries[n - 1].x);
+        for (let i = 0; i < forecastPeriods; i++) {
+            forecastVals.push(intercept + slope * (n + i));
+        }
+        const lastValue = timeSeries[n - 1].y;
+        const nextValue = forecastVals[0];
+        const changePercent = ((nextValue - lastValue) / lastValue) * 100;
+        return {
+            lastValue,
+            nextValue,
+            changePercent,
+            forecast: forecastVals,
+            trend: slope > 0 ? 'up' : slope < 0 ? 'down' : 'neutral'
+        };
+    }
+
+    /**
+     * Public wrapper to generate forecast, update UI & chart.
+     */
+    generateForecast(transactions) {
+        if (!transactions || transactions.length < 3) {
+            this.updateForecastText('Not enough data to generate forecast');
+            return;
+        }
+        try {
+            const ts = this.prepareTimeSeries(transactions);
+            const result = this.calculateForecast(ts);
+            this.updateForecast(result);
+        } catch (err) {
+            console.error('Error generating forecast:', err);
+            this.updateForecastText('Error generating forecast');
+        }
+    }
+
     sampleArray(array, size) {
         const result = [];
         const length = array.length;

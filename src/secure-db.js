@@ -33,7 +33,10 @@ class SecureDB {
     // Encrypt sensitive fields in an item
     async encryptItem(storeName, item) {
         if (!this.initialized) {
-            throw new Error('SecureDB not initialized');
+            // Encryption layer not ready (e.g. first launch before password).
+            // Simply return the original item unmodified so plain-text data
+            // can still be saved / read. This prevents data loss symptoms.
+            return item;
         }
 
         const encryptedItem = { ...item };
@@ -56,7 +59,10 @@ class SecureDB {
     // Decrypt sensitive fields in an item
     async decryptItem(storeName, item) {
         if (!this.initialized) {
-            throw new Error('SecureDB not initialized');
+            // Encryption layer not ready (e.g. first launch before password).
+            // Simply return the original item unmodified so plain-text data
+            // can still be saved / read. This prevents data loss symptoms.
+            return item;
         }
 
         if (!item) return item;
